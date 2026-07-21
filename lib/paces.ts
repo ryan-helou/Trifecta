@@ -119,9 +119,16 @@ export const SWIM_PR_OPTIONS = [
   { label: "1500m", distanceM: 1500 },
 ];
 
+export const BIKE_PR_OPTIONS = [
+  { label: "20K", distanceM: 20000 },
+  { label: "40K", distanceM: 40000 },
+  { label: "90K", distanceM: 90000 },
+  { label: "180K", distanceM: 180000 },
+];
+
 /** Nice label for a PR distance: preset name if it matches one, else a formatted distance. */
-export function prLabel(discipline: "run" | "swim", distanceM: number): string {
-  const opts = discipline === "run" ? RUN_PR_OPTIONS : SWIM_PR_OPTIONS;
+export function prLabel(discipline: "run" | "swim" | "bike", distanceM: number): string {
+  const opts = discipline === "run" ? RUN_PR_OPTIONS : discipline === "swim" ? SWIM_PR_OPTIONS : BIKE_PR_OPTIONS;
   const preset = opts.find((o) => o.distanceM === distanceM);
   return preset ? preset.label : fmtDistance(distanceM);
 }

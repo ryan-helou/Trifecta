@@ -107,6 +107,11 @@ export interface SwimPR {
   timeSec: number;
   label: string;
 }
+export interface BikePR {
+  distanceM: number; // e.g. 40000 for a 40 km TT
+  timeSec: number;
+  label: string;
+}
 
 // ---- deep personalization ----
 
@@ -117,12 +122,13 @@ export interface SportFreq {
   run: number;
 }
 
-export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "core";
+export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "core" | "custom";
 
 export interface StrengthPref {
   enabled: boolean;
   daysPerWeek: number; // 0–4 gym sessions a week
   split: StrengthSplit;
+  customSplit?: string; // athlete's own split, in their words (used when split === "custom")
 }
 
 export type InjurySeverity = "niggle" | "moderate" | "severe";
@@ -166,6 +172,7 @@ export interface Profile {
   // optional performance references (drive the paces)
   runPR?: RunPR;
   swimPR?: SwimPR;
+  bikePR?: BikePR; // a benchmark best time (e.g. 40 km TT) — recorded; bike pacing still runs off FTP
   ftp?: number; // cycling functional threshold power, watts
   maxHR?: number; // bpm
   // extras
@@ -176,7 +183,7 @@ export interface Profile {
   // ---- deep personalization (all optional; the engine honours them) ----
   perSport?: SportFreq; // explicit swim/bike/run sessions per week
   strength?: StrengthPref; // resistance training preference
-  injuries?: Injury[]; // niggles to train around
+  injuries?: Injury[]; // injuries/aches to train around
   blackouts?: DateRange[]; // days off (vacation, work travel)
   equipment?: EquipmentAccess; // what the athlete can actually access
   intakeNotes?: string; // free-text "anything else" the athlete told us

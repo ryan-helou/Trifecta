@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit } from "@/lib/types";
+import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthPref, StrengthSplit } from "@/lib/types";
 import { generatePlan } from "@/lib/planEngine";
 import { rebuildFromToday } from "@/lib/adapt";
 import { apiIntake, ParsedInjury } from "@/lib/api";
-import { prLabel, RUN_PR_OPTIONS, SWIM_PR_OPTIONS } from "@/lib/paces";
+import { prLabel, RUN_PR_OPTIONS, SWIM_PR_OPTIONS, BIKE_PR_OPTIONS } from "@/lib/paces";
 import { fmtClock } from "@/lib/format";
 import { addDays, fmtFullDate, todayISO } from "@/lib/dates";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
@@ -42,7 +42,9 @@ const SPLITS: { key: StrengthSplit; name: string }[] = [
   { key: "upper-lower", name: "Upper / Lower" },
   { key: "push-pull-legs", name: "Push / Pull / Legs" },
   { key: "core", name: "Core & mobility" },
+  { key: "custom", name: "My own split" },
 ];
+const SEV_LABEL: Record<Injury["severity"], string> = { niggle: "mild", moderate: "moderate", severe: "severe" };
 const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function toInjuries(parsed: ParsedInjury[]): Injury[] {
@@ -72,7 +74,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [showCatalog, setShowCatalog] = useState(false);
   const [level, setLevel] = useState<Level>(profile.level);
   const [perSport, setPerSport] = useState(profile.perSport ?? { swim: 2, bike: 2, run: 2 });
-  const [strength, setStrength] = useState(profile.strength ?? { enabled: false, daysPerWeek: 2, split: "full" as StrengthSplit });
+  const [strength, setStrength] = useState<StrengthPref>(profile.strength ?? { enabled: false, daysPerWeek: 2, split: "full" });
   const [restDay, setRestDay] = useState<number | undefined>(profile.restDayPreference);
   const [ftp, setFtp] = useState(profile.ftp);
   const [maxHR, setMaxHR] = useState(profile.maxHR);
@@ -88,6 +90,8 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [runTime, setRunTime] = useState(profile.runPR ? fmtClock(profile.runPR.timeSec) : "");
   const [swimDistM, setSwimDistM] = useState(profile.swimPR ? String(profile.swimPR.distanceM) : "");
   const [swimTime, setSwimTime] = useState(profile.swimPR ? fmtClock(profile.swimPR.timeSec) : "");
+  const [bikeDistKm, setBikeDistKm] = useState(profile.bikePR ? String(profile.bikePR.distanceM / 1000) : "");
+  const [bikeTime, setBikeTime] = useState(profile.bikePR ? fmtClock(profile.bikePR.timeSec) : "");
 
   const runPR = (() => {
     const m = Math.round(parseFloat(runDistKm) * 1000);
@@ -98,6 +102,11 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
     const m = Math.round(parseFloat(swimDistM));
     const sec = parseTime(swimTime);
     return m > 0 && sec ? { distanceM: m, timeSec: sec, label: prLabel("swim", m) } : undefined;
+  })();
+  const bikePR = (() => {
+    const m = Math.round(parseFloat(bikeDistKm) * 1000);
+    const sec = parseTime(bikeTime);
+    return m > 0 && sec ? { distanceM: m, timeSec: sec, label: prLabel("bike", m) } : undefined;
   })();
 
   const total = perSport.swim + perSport.bike + perSport.run + (strength.enabled ? strength.daysPerWeek : 0);
@@ -147,6 +156,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       restDayPreference: restDay,
       runPR,
       swimPR,
+      bikePR,
       ftp,
       maxHR,
       weeklyHoursCap: hoursCap,
@@ -306,12 +316,20 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                     <Pill key={sp.key} on={strength.split === sp.key} onClick={() => setStrength((s) => ({ ...s, split: sp.key }))}>{sp.name}</Pill>
                   ))}
                 </div>
+                {strength.split === "custom" && (
+                  <textarea
+                    className="input min-h-[80px] resize-none"
+                    placeholder="Write your own split — e.g. Mon: Push · Wed: Pull · Fri: Legs."
+                    value={strength.customSplit ?? ""}
+                    onChange={(e) => setStrength((s) => ({ ...s, customSplit: e.target.value }))}
+                  />
+                )}
               </div>
             )}
           </Field>
 
           {/* injuries */}
-          <Field label="Injuries & niggles">
+          <Field label="Injuries & aches">
             <textarea
               className="input min-h-[90px] resize-none"
               placeholder="Describe anything to work around — e.g. left knee on long runs."
@@ -330,7 +348,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                   <div key={i.id} className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3 py-2">
                     <div>
                       <div className="text-sm font-semibold capitalize">{i.area}</div>
-                      <div className="text-[0.7rem] text-muted">{i.severity} · {i.disciplines.join(", ")}</div>
+                      <div className="text-[0.7rem] text-muted">{SEV_LABEL[i.severity]} · {i.disciplines.join(", ")}</div>
                     </div>
                     <button onClick={() => setInjuries((xs) => xs.filter((x) => x.id !== i.id))} aria-label="Remove" className="text-muted transition hover:text-danger">✕</button>
                   </div>
@@ -364,6 +382,18 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-1.5"><input className="input" inputMode="numeric" placeholder="Distance" value={swimDistM} onChange={(e) => setSwimDistM(e.target.value)} /><span className="text-xs text-muted">m</span></div>
                   <input className="input" placeholder="Time 6:30" value={swimTime} onChange={(e) => setSwimTime(e.target.value)} />
+                </div>
+              </div>
+              <div className="rounded-2xl border border-line bg-surface-2 p-3.5">
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span>🚴 Bike PR</span></div>
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {BIKE_PR_OPTIONS.map((o) => (
+                    <button key={o.label} onClick={() => setBikeDistKm(String(o.distanceM / 1000))} className={`chip ${Math.round(parseFloat(bikeDistKm) * 1000) === o.distanceM ? "border-accent bg-accent/10" : ""}`}>{o.label}</button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center gap-1.5"><input className="input" inputMode="decimal" placeholder="Distance" value={bikeDistKm} onChange={(e) => setBikeDistKm(e.target.value)} /><span className="text-xs text-muted">km</span></div>
+                  <input className="input" placeholder="Time 1:05:00" value={bikeTime} onChange={(e) => setBikeTime(e.target.value)} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">

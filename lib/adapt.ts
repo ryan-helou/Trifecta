@@ -291,7 +291,11 @@ export function summarizeForCoach(plan: Plan, todayISO: string): string {
       `Working around: ${p.injuries.map((i) => `${i.area} (${i.severity}, ${i.disciplines.join("/")})`).join("; ")}.`,
     );
   }
-  if (p.strength?.enabled) lines.push(`Strength: ${p.strength.daysPerWeek}×/week, ${p.strength.split} split.`);
+  if (p.strength?.enabled) {
+    const split =
+      p.strength.split === "custom" ? `their own (${p.strength.customSplit?.trim() || "athlete-defined"})` : `${p.strength.split} split`;
+    lines.push(`Strength: ${p.strength.daysPerWeek}×/week, ${split}.`);
+  }
   if (today.length) {
     lines.push(
       `Today's sessions: ${today
@@ -324,7 +328,11 @@ export function planSummaryContext(plan: Plan): string {
   if (p.perSport) lines.push(`Weekly sessions: swim ${p.perSport.swim}, bike ${p.perSport.bike}, run ${p.perSport.run}.`);
   else lines.push(`About ${p.workoutsPerWeek} sessions a week.`);
   if (p.focusDiscipline) lines.push(`Prioritising their ${p.focusDiscipline}.`);
-  if (p.strength?.enabled) lines.push(`Strength: ${p.strength.daysPerWeek}×/week, ${p.strength.split} split.`);
+  if (p.strength?.enabled) {
+    const split =
+      p.strength.split === "custom" ? `their own (${p.strength.customSplit?.trim() || "athlete-defined"})` : `${p.strength.split} split`;
+    lines.push(`Strength: ${p.strength.daysPerWeek}×/week, ${split}.`);
+  }
   else lines.push("No strength training.");
   if (p.restDayPreference != null) lines.push(`Preferred rest day: ${DOW[p.restDayPreference]}.`);
   if (p.weeklyHoursCap) lines.push(`Weekly hours capped at ${p.weeklyHoursCap}.`);

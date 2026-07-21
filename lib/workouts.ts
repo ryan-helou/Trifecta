@@ -741,18 +741,45 @@ export function strengthHome(ctx: BuildCtx, min = 35): Draft {
   );
 }
 
+// The athlete brings their own resistance plan — we reserve the time and keep it
+// clear of their hardest swim/bike/run days, but leave the session itself to them.
+export function strengthCustom(ctx: BuildCtx, min = 35, note?: string): Draft {
+  const own = note?.trim();
+  return finish(ctx, {
+    discipline: "strength",
+    type: "strength",
+    title: "Your Strength Session",
+    purpose: "Your own resistance plan — we've reserved the time and slotted it clear of your hardest swim, bike and run days.",
+    primaryZone: 3,
+    segments: [
+      seg({ kind: "warmup", discipline: "strength", zone: 2, durationSec: M(8), description: "8 min dynamic mobility — leg swings, hip openers, band walks" }),
+      seg({
+        kind: "main",
+        discipline: "strength",
+        zone: 3,
+        durationSec: M(Math.max(15, min - 13)),
+        description: own ? own : "Your planned strength work",
+        cue: "Run your own session — leave 1–2 reps in reserve and keep your form honest.",
+      }),
+      seg({ kind: "cooldown", discipline: "strength", zone: 1, durationSec: M(5), description: "5 min mobility — calves, hips, T-spine" }),
+    ],
+  });
+}
+
 // Dispatch to the right session for the athlete's chosen split + which strength
 // day of the week this is. Recovery weeks fall back to core/mobility; no gym
-// falls back to the bodyweight home circuit.
+// falls back to the bodyweight home circuit. A "custom" split is honored as-is.
 export function strengthFor(
   ctx: BuildCtx,
   split: StrengthSplit,
   index: number,
   recover: boolean,
   home = false,
+  note?: string,
 ): Draft {
   const min = recover ? 25 : 35;
   if (recover || split === "core") return strengthCore(ctx, min);
+  if (split === "custom") return strengthCustom(ctx, min, note);
   if (home) return strengthHome(ctx, min);
   switch (split) {
     case "upper-lower":
