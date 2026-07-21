@@ -79,6 +79,19 @@ export interface Workout {
     estDistanceM?: number;
     primaryZone: Zone;
   };
+  /** filled when a connected device (Strava) auto-completed this session */
+  actuals?: WorkoutActuals;
+}
+
+/** What the athlete actually did, pulled from a synced device activity. */
+export interface WorkoutActuals {
+  source: "strava";
+  activityId: number;
+  name?: string;
+  distanceM?: number;
+  durationSec?: number;
+  avgHr?: number;
+  startedAtISO?: string;
 }
 
 export type Phase = "base" | "build" | "peak" | "taper";

@@ -79,3 +79,26 @@ export async function apiPlanSummary(context: string) {
   });
   return data as { enabled?: boolean; text?: string; phases?: Record<string, string> };
 }
+
+// ---- Strava device sync ----
+
+export interface StravaStatus {
+  connected: boolean;
+  configured: boolean;
+  athleteId?: number | null;
+  lastSyncAtISO?: string | null;
+}
+
+export async function apiStravaStatus(): Promise<StravaStatus> {
+  const { data } = await jsonFetch("/api/strava/status");
+  return data as StravaStatus;
+}
+
+export async function apiStravaSync() {
+  const { ok, data } = await jsonFetch("/api/strava/sync", { method: "POST" });
+  return { ok, ...(data as { scanned?: number; matched?: number; error?: string }) };
+}
+
+export async function apiStravaDisconnect() {
+  return jsonFetch("/api/strava/status", { method: "DELETE" });
+}
