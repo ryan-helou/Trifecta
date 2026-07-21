@@ -1,6 +1,7 @@
 "use client";
 
 import { Reactor } from "./Reactor";
+import { Wordmark } from "./Wordmark";
 
 export function BootSplash() {
   return (
@@ -8,7 +9,7 @@ export function BootSplash() {
       <Reactor size={120} />
       <div className="text-center">
         <div className="font-display text-2xl font-bold tracking-tight">
-          IRON<span className="text-gradient">PATH</span>
+          <Wordmark />
         </div>
         <div className="mt-1 text-sm text-muted">Loading your training…</div>
       </div>

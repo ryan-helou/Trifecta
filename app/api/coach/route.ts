@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // Cheap, optional AI coach. Uses Claude Haiku 4.5 with a tight output cap so
 // cost stays a fraction of a cent per call. The whole app works without it.
 
-const SYSTEM = `You are the AmagohTrain Coach — an expert, encouraging triathlon coach.
+const SYSTEM = `You are the AMAGOH train Coach — an expert, encouraging triathlon coach.
 Rules:
 - Be concise: 2–4 short sentences, no preamble, no markdown headers.
 - Ground every answer in the athlete's data you're given (their race, level, phase, today's session).

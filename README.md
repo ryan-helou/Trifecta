@@ -1,7 +1,7 @@
-# AmagohTrain — Triathlon Training Coach 🔥
+# AMAGOH train — Triathlon Training Coach 🔥
 
 Your personal, adaptive triathlon training plan. Pick your race (Olympic, 70.3,
-full Ironman, or a custom distance), share your PRs, and AmagohTrain forges a full
+full Ironman, or a custom distance), share your PRs, and AMAGOH train forges a full
 **day-by-day** plan — swim, bike, run, brick, and strength — with a Runna-style
 calendar, per-session pace/power/HR targets, and a plan that adapts when life
 gets in the way.
@@ -97,4 +97,4 @@ scripts/        icon generator, plan-engine test harness
 
 ---
 
-*AmagohTrain — your path to the finish line.*
+*AMAGOH train — your path to the finish line.*

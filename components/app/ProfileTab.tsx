@@ -7,6 +7,7 @@ import { fmtPace, fmtPace100 } from "@/lib/format";
 import { fmtFullDate } from "@/lib/dates";
 import { raceDistances } from "@/lib/planEngine";
 import { InstallHint } from "./InstallHint";
+import { Wordmark } from "../Wordmark";
 
 export function ProfileTab() {
   const { plan, username, profile, logout, resetPlan } = useApp();
@@ -32,7 +33,7 @@ export function ProfileTab() {
         </div>
         <div>
           <div className="font-display text-2xl font-bold capitalize">{username}</div>
-          <div className="text-sm text-muted">AmagohTrain athlete</div>
+          <div className="text-sm text-muted">AMAGOH train athlete</div>
         </div>
       </div>
 
@@ -78,7 +79,7 @@ export function ProfileTab() {
         <button onClick={logout} className="btn btn-ghost w-full py-3">Log out</button>
       </div>
 
-      <div className="pb-4 text-center text-xs text-muted">AmagohTrain · your path to the finish line</div>
+      <div className="pb-4 text-center text-xs text-muted"><Wordmark /> · your path to the finish line</div>
     </div>
   );
 }

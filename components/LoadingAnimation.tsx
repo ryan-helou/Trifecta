@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Profile } from "@/lib/types";
 import { Reactor } from "./Reactor";
+import { Wordmark } from "./Wordmark";
 
 const RACE_LABEL: Record<string, string> = {
   olympic: "Olympic-distance",
@@ -77,7 +78,7 @@ export function LoadingAnimation({
         {steps[stepIndex]}
       </div>
       <div className="mt-10 font-display text-lg font-semibold tracking-tight">
-        Building your <span className="text-gradient">AmagohTrain</span>
+        Building your <Wordmark />
       </div>
     </div>
   );

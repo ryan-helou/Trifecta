@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useApp } from "./AppProvider";
 import { Reactor } from "./Reactor";
+import { Wordmark } from "./Wordmark";
 
 export function AuthScreen() {
   const { signup, login } = useApp();
@@ -27,7 +28,7 @@ export function AuthScreen() {
         <div className="mb-8 flex flex-col items-center text-center">
           <Reactor size={96} />
           <h1 className="mt-5 font-display text-4xl font-bold tracking-tight">
-            IRON<span className="text-gradient">PATH</span>
+            <Wordmark />
           </h1>
           <p className="mt-2 max-w-xs text-sm text-muted">
             Your personal triathlon coach. A day-by-day plan that adapts to you — swim, bike, run, all the way to the finish line.
