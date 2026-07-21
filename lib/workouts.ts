@@ -1,4 +1,4 @@
-import { Discipline, Level, PaceModel, Segment, SessionType, Zone } from "./types";
+import { Discipline, Level, PaceModel, Segment, SessionType, StrengthSplit, Zone } from "./types";
 import { ZONES } from "./zones";
 
 // ---------------------------------------------------------------------------
@@ -623,22 +623,32 @@ export function brick(ctx: BuildCtx, bikeMin = 40, runMin = 15, racePace = false
 // STRENGTH
 // ===========================================================================
 
-export function strength(ctx: BuildCtx, min = 30): Draft {
+// A generic gym session: dynamic-mobility warm-up, a repeated circuit, mobility
+// cool-down. `min` sets the number of rounds so recovery weeks run lighter.
+function gym(
+  ctx: BuildCtx,
+  title: string,
+  purpose: string,
+  circuit: string,
+  min: number,
+  cue = "Leave 1–2 reps in reserve. Control the movement, own each rep.",
+): Draft {
+  const rounds = min >= 35 ? 3 : 2;
   return finish(ctx, {
     discipline: "strength",
     type: "strength",
-    title: "Triathlon Strength Circuit",
-    purpose: "In-season strength keeps you durable and powerful — it protects against injury and holds form when fatigue sets in.",
-    primaryZone: 2,
+    title,
+    purpose,
+    primaryZone: 3,
     segments: [
       seg({ kind: "warmup", discipline: "strength", zone: 2, durationSec: M(8), description: "8 min dynamic mobility — leg swings, hip openers, band walks" }),
       seg({
         kind: "main",
         discipline: "strength",
         zone: 3,
-        repeat: 3,
-        description: "3 rounds: goblet squat ×12 · RDL ×12 · step-up ×10/side · push-up ×12 · plank 45s · side plank 30s/side",
-        cue: "Leave 1–2 reps in reserve. Control the movement, own each rep.",
+        repeat: rounds,
+        description: `${rounds} rounds: ${circuit}`,
+        cue,
         children: [
           seg({ kind: "main", discipline: "strength", zone: 3, durationSec: M(6), description: "circuit round" }),
           seg({ kind: "rest", discipline: "strength", durationSec: M(1.5), description: "90s rest" }),
@@ -647,4 +657,98 @@ export function strength(ctx: BuildCtx, min = 30): Draft {
       seg({ kind: "cooldown", discipline: "strength", zone: 1, durationSec: M(5), description: "5 min mobility — calves, hips, T-spine" }),
     ],
   });
+}
+
+export function strength(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Full-Body Strength Circuit",
+    "In-season strength keeps you durable and powerful — it protects against injury and holds form when fatigue sets in.",
+    "goblet squat ×12 · RDL ×12 · step-up ×10/side · push-up ×12 · plank 45s · side plank 30s/side",
+    min,
+  );
+}
+
+export function strengthLower(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Lower-Body Strength",
+    "Strong legs and hips hold your form deep into the bike and run — the antidote to the late-race fade.",
+    "back/goblet squat ×8 · Romanian deadlift ×10 · walking lunge ×10/side · single-leg calf raise ×15 · glute bridge ×12",
+    min,
+  );
+}
+
+export function strengthUpper(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Upper-Body & Core Strength",
+    "A resilient upper body and trunk keep your stroke powerful and your posture honest when fatigue sets in.",
+    "push-up ×12 · single-arm row ×12/side · overhead press ×10 · band pull-apart ×15 · front plank 45s",
+    min,
+  );
+}
+
+export function strengthPush(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Push Strength",
+    "Pressing strength builds the durable chest, shoulders and triceps that protect your posture on long days.",
+    "push-up ×12 · overhead press ×10 · dips ×10 · incline press ×12 · triceps extension ×12",
+    min,
+  );
+}
+
+export function strengthPull(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Pull Strength",
+    "A strong back and pulling chain power your swim catch and keep your shoulders balanced and injury-free.",
+    "single-arm row ×12/side · lat pulldown or pull-up ×8 · face pull ×15 · biceps curl ×12 · rear-delt fly ×15",
+    min,
+  );
+}
+
+export function strengthLegs(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Leg Strength",
+    "Leg day is where cycling power and running durability are forged — the base of a strong finish.",
+    "squat ×10 · Romanian deadlift ×10 · split squat ×10/side · step-up ×10/side · calf raise ×15",
+    min,
+  );
+}
+
+export function strengthCore(ctx: BuildCtx, min = 25): Draft {
+  return gym(
+    ctx,
+    "Core & Mobility",
+    "A stable core transfers power between all three disciplines and protects your back over long sessions.",
+    "dead bug ×10/side · front plank 45s · side plank 30s/side · bird-dog ×10/side · pallof press ×12/side · hollow hold 30s",
+    min,
+    "Move slowly and breathe — quality of bracing beats speed.",
+  );
+}
+
+// Dispatch to the right session for the athlete's chosen split + which strength
+// day of the week this is. Recovery weeks fall back to core/mobility.
+export function strengthFor(
+  ctx: BuildCtx,
+  split: StrengthSplit,
+  index: number,
+  recover: boolean,
+): Draft {
+  const min = recover ? 25 : 35;
+  if (recover || split === "core") return strengthCore(ctx, min);
+  switch (split) {
+    case "upper-lower":
+      return index % 2 === 0 ? strengthLower(ctx, min) : strengthUpper(ctx, min);
+    case "push-pull-legs": {
+      const m = index % 3;
+      return m === 0 ? strengthPush(ctx, min) : m === 1 ? strengthPull(ctx, min) : strengthLegs(ctx, min);
+    }
+    case "full":
+    default:
+      return strength(ctx, min);
+  }
 }

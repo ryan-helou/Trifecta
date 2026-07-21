@@ -37,6 +37,14 @@ const scenarios: { name: string; p: Profile }[] = [
   { name: "Doubles 14/wk", p: mk({ raceType: "full", level: "advanced", raceDateISO: raceInWeeks(24), workoutsPerWeek: 14 }) },
   { name: "Max 21/wk", p: mk({ raceType: "full", level: "elite", raceDateISO: raceInWeeks(28), workoutsPerWeek: 21 }) },
   { name: "Rest-day pref 8/wk (Mon off)", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), workoutsPerWeek: 8, restDayPreference: 0 }) },
+  // ---- deep-personalization scenarios ----
+  { name: "Per-sport 3/2/4 + strength full 2×", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 3, bike: 2, run: 4 }, strength: { enabled: true, daysPerWeek: 2, split: "full" } }) },
+  { name: "Strength PPL 3× (advanced)", p: mk({ raceType: "full", level: "advanced", raceDateISO: raceInWeeks(24), perSport: { swim: 2, bike: 3, run: 3 }, strength: { enabled: true, daysPerWeek: 3, split: "push-pull-legs" } }) },
+  { name: "Injury: moderate knee (run+bike)", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, injuries: [{ id: "i1", area: "left knee", disciplines: ["run", "bike"], severity: "moderate" }] }) },
+  { name: "Injury: severe run (substitute)", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, injuries: [{ id: "i2", area: "achilles", disciplines: ["run"], severity: "severe" }] }) },
+  { name: "Injury: niggle shoulder (swim)", p: mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), perSport: { swim: 3, bike: 2, run: 2 }, injuries: [{ id: "i3", area: "right shoulder", disciplines: ["swim"], severity: "niggle" }] }) },
+  { name: "Blackout: week 3 off", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, blackouts: [{ startISO: raceInWeeks(3), endISO: raceInWeeks(4), label: "Holiday" }] }) },
+  { name: "Focus: swim limiter", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), workoutsPerWeek: 8, focusDiscipline: "swim" }) },
 ];
 
 let problems = 0;
@@ -77,6 +85,24 @@ for (const { name, p } of scenarios) {
     // rest-day preference honoured whenever the other 6 days can hold the load (≤18)
     if (restPref != null && !wk.isRaceWeek && wk.workoutIds.length <= 18 && perDay.get(restPref)) {
       console.log(`  !! ${wk.label}: session on preferred rest day ${restPref}`); problems++;
+    }
+    // injury intensity caps: affected disciplines never exceed their zone ceiling
+    for (const inj of p.injuries ?? []) {
+      const cap = inj.severity === "niggle" ? 3 : 2;
+      for (const id of wk.workoutIds) {
+        const w = plan.workouts[id];
+        if (!w || w.type === "race_prep") continue; // race week openers/race are special
+        if (inj.disciplines.includes(w.discipline) && (w.primaryZone ?? 0) > cap) {
+          console.log(`  !! ${wk.label}: ${w.discipline} "${w.title}" Z${w.primaryZone} exceeds injury cap Z${cap} (${inj.area})`); problems++;
+        }
+      }
+    }
+  }
+  // blackout dates: no non-race sessions land inside a blocked-out range
+  for (const b of p.blackouts ?? []) {
+    for (const w of Object.values(plan.workouts)) {
+      if (w.type === "race_prep") continue;
+      if (w.date >= b.startISO && w.date <= b.endISO) { console.log(`  !! session ${w.id} on blackout day ${w.date}`); problems++; }
     }
   }
   console.log(`  phases: ${JSON.stringify(phaseCounts)}  totalWorkouts=${totalWk}`);
