@@ -12,7 +12,7 @@ import { useToast } from "./Toast";
   one-way door. Race day gets no swipe actions — it's finished from its sheet.
 */
 export function SwipeableWorkout({ workout, compact }: { workout: Workout; compact?: boolean }) {
-  const { openWorkout, actions } = useUI();
+  const { openWorkout, openCheckin, actions } = useUI();
   const toast = useToast();
   const isRace = workout.id === "w-race-day";
   const done = workout.status === "done";
@@ -20,12 +20,12 @@ export function SwipeableWorkout({ workout, compact }: { workout: Workout; compa
 
   const complete = () => {
     actions.toggleDone(workout.id);
-    toast({
-      text: done ? "Marked not done" : "Session complete 💪",
-      tone: "success",
-      actionLabel: "Undo",
-      onAction: () => actions.toggleDone(workout.id),
-    });
+    if (done) {
+      toast({ text: "Marked not done", tone: "default", actionLabel: "Undo", onAction: () => actions.toggleDone(workout.id) });
+    } else {
+      // just completed → open the quick check-in (it carries the celebration + an undo)
+      openCheckin(workout.id);
+    }
   };
 
   const skip = () => {

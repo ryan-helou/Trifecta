@@ -29,9 +29,9 @@ const PHASE_COLOR: Record<Phase, string> = {
 };
 const PHASE_LABEL: Record<Phase, string> = { base: "Base", build: "Build", peak: "Peak", taper: "Taper" };
 
-/** The Today hero — "the longest day". A day-arc traces the sun from the start of
- *  your block (dawn) to race day (the finish at dusk), with the sun sitting at
- *  today; below it, the countdown, projected finish, and the race's three legs. */
+/** The Today hero — the countdown as a chronograph. A large dial numeral counts
+ *  the days to race day; a hairline progress track (block start → race day) marks
+ *  how far through training you are, like a minute scale filling toward the top. */
 export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
   const dist = raceDistances(plan.profile);
   const days = Math.max(0, daysBetween(today, plan.raceDateISO));
@@ -46,35 +46,31 @@ export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
   ];
 
   return (
-    <div className="card-glass forge-card relative overflow-hidden p-[18px]">
-      <div className="forge-edge" aria-hidden />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full"
-        style={{ background: "radial-gradient(closest-side, rgba(255,133,87,.22), transparent)" }}
-      />
-      <div className="relative">
-        <div className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.2em] text-muted">{dist.name} · Race day</div>
-        <DayArc progress={progress} />
-        <div className="mt-1 flex items-end justify-between gap-3">
-          <div className="flex items-baseline gap-2.5">
-            <CountUp value={days} className="heat-molten font-display text-[3.4rem] font-bold leading-[0.8] tabular-nums" />
-            <span className="text-sm leading-[1.05] text-muted">
-              days
-              <br />
-              to go
-            </span>
-          </div>
-          <div className="text-right">
-            <div className="font-mono text-[0.58rem] font-bold uppercase tracking-[0.12em] text-muted">Projected</div>
-            <div className="mt-0.5 font-display text-[1.25rem] font-bold tabular-nums">{fmtClock(est)}</div>
-          </div>
+    <div className="card-glass relative overflow-hidden p-5">
+      <div className="eyebrow text-[0.72rem]">{dist.name} · Race day</div>
+
+      <div className="mt-4 flex items-end justify-between gap-4">
+        <div className="flex items-baseline gap-3">
+          <CountUp value={days} className="font-display text-[3.6rem] font-semibold leading-[0.85] tabular-nums text-accent" />
+          <span className="text-sm leading-[1.1] text-muted">
+            days
+            <br />
+            to go
+          </span>
+        </div>
+        <div className="text-right">
+          <div className="eyebrow text-[0.66rem]">Projected</div>
+          <div className="mt-0.5 font-display text-[1.4rem] font-semibold tabular-nums">{fmtClock(est)}</div>
         </div>
       </div>
-      <div className="mt-4 flex border-t border-line-soft pt-3 font-mono text-[0.72rem] font-bold">
+
+      <ProgressTrack progress={progress} />
+
+      <div className="mt-4 flex border-t border-line-soft pt-3.5">
         {legs.map((l) => (
           <div key={l.label} className={`flex-1 ${l.align}`}>
-            <span style={{ color: l.c }}>{l.label.toUpperCase()}</span> <span className="tabular-nums text-foreground/75">{l.v}</span>
+            <span className="eyebrow text-[0.72rem]" style={{ color: l.c }}>{l.label}</span>{" "}
+            <span className="tabular-nums text-sm text-foreground/80">{l.v}</span>
           </div>
         ))}
       </div>
@@ -82,52 +78,59 @@ export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
   );
 }
 
-/** The signature: the sun's path across one enormous day. The arc runs from dawn
- *  (block start, left) to dusk (race day, right); the lit portion + the sun sit at
- *  today's progress and sweep into place on mount. */
-function DayArc({ progress }: { progress: number }) {
+/** The signature: a chronograph minute-scale. The track runs from block start
+ *  (left) to race day (right); the elapsed portion fills in champagne and a
+ *  slim marker sits at today, sweeping into place on mount. */
+function ProgressTrack({ progress }: { progress: number }) {
   const mounted = useMounted();
   const p = mounted ? Math.max(0, Math.min(1, progress)) : 0;
-  const theta = Math.PI * (1 - p);
-  const sx = (170 + 150 * Math.cos(theta)).toFixed(1);
-  const sy = (92 - 78 * Math.sin(theta)).toFixed(1);
-  const arc = "M20 92 A150 78 0 0 1 320 92";
+  const x0 = 10;
+  const x1 = 310;
+  const y = 26;
+  const mx = x0 + (x1 - x0) * p;
   const ease = "cubic-bezier(.22,.8,.28,1)";
   return (
-    <svg viewBox="0 0 340 100" width="100%" height="80" aria-hidden className="mt-2 block overflow-visible">
-      <defs>
-        <linearGradient id="dayarc" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="var(--tide)" />
-          <stop offset="50%" stopColor="var(--sun)" />
-          <stop offset="100%" stopColor="var(--run)" />
-        </linearGradient>
-        <radialGradient id="daysun" cx="50%" cy="42%" r="60%">
-          <stop offset="0%" stopColor="#fff4e2" />
-          <stop offset="42%" stopColor="var(--sun)" />
-          <stop offset="100%" stopColor="var(--accent)" />
-        </radialGradient>
-      </defs>
-      <line x1="14" y1="92" x2="326" y2="92" stroke="var(--line)" strokeWidth="1" />
-      <path d={arc} fill="none" stroke="var(--line)" strokeWidth="2.5" strokeDasharray="1 8" strokeLinecap="round" pathLength={100} />
-      <path
-        d={arc}
-        fill="none"
-        stroke="url(#dayarc)"
-        strokeWidth="3.5"
+    <svg viewBox="0 0 320 40" width="100%" height="40" aria-hidden className="mt-5 block overflow-visible">
+      {/* baseline */}
+      <line x1={x0} y1={y} x2={x1} y2={y} stroke="var(--line)" strokeWidth="1" />
+      {/* minute ticks */}
+      {Array.from({ length: 25 }).map((_, i) => {
+        const major = i % 6 === 0;
+        const x = x0 + ((x1 - x0) / 24) * i;
+        return (
+          <line
+            key={i}
+            x1={x}
+            y1={y}
+            x2={x}
+            y2={y - (major ? 7 : 4)}
+            stroke="var(--text-faint)"
+            strokeWidth={major ? 1.2 : 0.8}
+            opacity={major ? 0.9 : 0.5}
+          />
+        );
+      })}
+      {/* elapsed fill — animated via stroke-dasharray (reliable across browsers) */}
+      <line
+        x1={x0}
+        y1={y}
+        x2={x1}
+        y2={y}
+        stroke="var(--accent)"
+        strokeWidth="2"
         strokeLinecap="round"
         pathLength={100}
         strokeDasharray={`${p * 100} 100`}
         style={{ transition: `stroke-dasharray .9s ${ease}` }}
       />
-      <circle cx="20" cy="92" r="3" fill="var(--tide)" />
-      <g transform="translate(320,92)">
-        <circle r="3.5" fill="var(--run)" />
-        <circle r="6.5" fill="none" stroke="var(--run)" strokeWidth="1" opacity=".5" />
+      {/* today marker — a slim champagne indicator */}
+      <g transform={`translate(${mx},${y})`} style={{ transition: `transform .9s ${ease}` }}>
+        <line x1="0" y1="-9" x2="0" y2="5" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="0" cy="-9" r="2.2" fill="var(--accent)" />
       </g>
-      <g transform={`translate(${sx},${sy})`} style={{ transition: `transform .9s ${ease}` }}>
-        <circle r="16" fill="url(#daysun)" opacity=".22" />
-        <circle r="8.5" fill="url(#daysun)" />
-      </g>
+      {/* endpoints */}
+      <circle cx={x0} cy={y} r="1.8" fill="var(--text-faint)" />
+      <circle cx={x1} cy={y} r="2.2" fill="var(--accent)" />
     </svg>
   );
 }
@@ -156,7 +159,7 @@ export function PhaseBar({ plan, current }: { plan: Plan; current: number }) {
               )}
               {isPast && <div className="h-full w-full rounded-full" style={{ background: PHASE_COLOR[b.phase], opacity: 0.6 }} />}
             </div>
-            <div className={`text-center font-mono text-[9px] font-bold uppercase tracking-wide ${isCurrent ? "text-foreground" : "text-muted"}`}>
+            <div className={`eyebrow text-center text-[0.62rem] ${isCurrent ? "text-foreground" : ""}`}>
               {PHASE_LABEL[b.phase]}
             </div>
           </div>

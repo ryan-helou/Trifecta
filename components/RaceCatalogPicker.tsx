@@ -82,7 +82,7 @@ export function RaceCatalogPicker({
       <div className="mt-1.5 max-h-80 space-y-4 overflow-y-auto pr-1">
         {groups.map((g) => (
           <div key={g.key}>
-            <div className="mb-1.5 px-1 font-mono text-[0.6rem] font-bold uppercase tracking-[0.2em] text-muted">
+            <div className="eyebrow mb-1.5 px-1 text-[0.68rem]">
               {g.key}
             </div>
             <div className="space-y-2">

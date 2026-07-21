@@ -1,24 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Big_Shoulders, Manrope, Geist_Mono } from "next/font/google";
+import { Fraunces, Geist } from "next/font/google";
 import "./globals.css";
 import { ServiceWorker } from "@/components/ServiceWorker";
 
-// Big Shoulders — a tall, athletic, monumental face for endurance-race lettering.
-// Carries the "longest day" identity in headlines, the wordmark, and big numbers.
-const display = Big_Shoulders({
+// Fraunces — an editorial high-contrast serif with optical sizing. It carries the
+// "chronograph" identity: dial numerals, headlines, the wordmark. Used with
+// restraint. opsz + wght are variable, so no weight list is needed.
+const display = Fraunces({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
+  style: ["normal", "italic"],
 });
 
-const body = Manrope({
+// Geist — a crisp neo-grotesque for body and data. Not Inter; has quiet character.
+const body = Geist({
   variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const mono = Geist_Mono({
-  variable: "--font-mono",
   subsets: ["latin"],
 });
 
@@ -44,7 +40,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0f1e",
+  themeColor: "#101114",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -58,7 +54,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
+      className={`${display.variable} ${body.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}

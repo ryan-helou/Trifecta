@@ -75,7 +75,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div className="mx-auto max-w-md">
             <div
               role="status"
-              className={`pointer-events-auto flex items-center gap-3 rounded-2xl border border-line bg-surface-2/95 py-3 pl-4 pr-2 shadow-2xl backdrop-blur ${
+              className={`pointer-events-auto flex items-center gap-3 rounded-2xl border border-line bg-surface-2 py-3 pl-4 pr-2 shadow-xl ${
                 toast.closing ? "animate-toast-out" : "animate-toast-in"
               }`}
             >
@@ -88,7 +88,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                     toast.onAction?.();
                     dismiss();
                   }}
-                  className="flex-shrink-0 rounded-full px-3 py-1.5 font-display text-sm font-bold"
+                  className="flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold"
                   style={{ color }}
                 >
                   {toast.actionLabel}

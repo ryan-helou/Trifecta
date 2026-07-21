@@ -24,11 +24,11 @@ export function TodayTab() {
     <div className="space-y-5 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
       <div className="animate-fade-up flex items-center justify-between">
         <div>
-          <div className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.24em] text-muted">{greeting}</div>
-          <div className="font-display text-2xl font-bold capitalize tracking-tight">{username}</div>
+          <div className="eyebrow text-[0.72rem]">{greeting}</div>
+          <div className="font-display text-2xl font-semibold capitalize tracking-tight">{username}</div>
         </div>
         <button onClick={() => openCoach()} className="card-glass flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold">
-          <span aria-hidden className="h-[7px] w-[7px] rounded-full bg-accent" style={{ boxShadow: "0 0 8px var(--accent)" }} />
+          <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
           Coach
         </button>
       </div>
@@ -48,13 +48,13 @@ export function TodayTab() {
       {plan.coachSummary && (
         <div className="animate-fade-up card-glass rounded-2xl p-4" style={{ animationDelay: "90ms" }}>
           <div className="mb-1.5 flex items-center gap-2">
-            <span aria-hidden className="h-[7px] w-[7px] rounded-full bg-accent" style={{ boxShadow: "0 0 8px var(--accent)" }} />
-            <span className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-accent-soft">Why this plan</span>
+            <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
+            <span className="eyebrow text-[0.72rem]">Why this plan</span>
           </div>
           <p className="text-sm leading-relaxed text-foreground/90">{plan.coachSummary}</p>
           {plan.phaseNotes?.[wk.phase] && (
             <p className="mt-2.5 border-t border-line/60 pt-2.5 text-sm leading-relaxed text-muted">
-              <span className="font-semibold capitalize text-accent-soft">{wk.phase} block · </span>
+              <span className="font-semibold capitalize text-accent">{wk.phase} block · </span>
               {plan.phaseNotes[wk.phase]}
             </p>
           )}
@@ -63,8 +63,8 @@ export function TodayTab() {
 
       <div className="animate-fade-up" style={{ animationDelay: "120ms" }}>
         <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="font-display text-[1.06rem] font-bold">Today</h2>
-          <span className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-muted">{fullDate(today)}</span>
+          <h2 className="font-display text-[1.15rem] font-semibold">Today</h2>
+          <span className="eyebrow text-[0.72rem]">{fullDate(today)}</span>
         </div>
         {todays.length === 0 ? (
           <div className="card flex flex-col items-center p-6 text-center">
@@ -89,8 +89,8 @@ export function TodayTab() {
       >
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <div className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-accent-soft">{wk.phase} phase</div>
-            <div className="mt-0.5 font-display text-[1.05rem] font-bold">{wk.label.replace(" · Recovery", "")}</div>
+            <div className="eyebrow text-[0.72rem]">{wk.phase} phase</div>
+            <div className="mt-0.5 font-display text-[1.12rem] font-semibold">{wk.label.replace(" · Recovery", "")}</div>
           </div>
           <ProgressRing value={pct / 100} size={48} stroke={5}>
             <span className="font-display text-[0.72rem] font-bold tabular-nums">{prog.done}/{prog.total}</span>

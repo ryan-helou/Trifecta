@@ -242,7 +242,7 @@ export function Onboarding() {
 function Head({ title, sub }: { title: string; sub?: string }) {
   return (
     <div className="mb-5">
-      <h2 className="font-display text-2xl font-bold leading-tight tracking-tight">{title}</h2>
+      <h2 className="font-display text-2xl font-semibold leading-tight tracking-tight">{title}</h2>
       {sub && <p className="mt-1.5 text-sm text-muted">{sub}</p>}
     </div>
   );
@@ -370,7 +370,7 @@ function RaceStep({ draft, set }: StepProps) {
 function NumField({ label, value, unit, onChange }: { label: string; value: number; unit: string; onChange: (n: number) => void }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
+      <span className="eyebrow text-[0.72rem]">{label}</span>
       <div className="flex items-center gap-2">
         <input className="input" type="number" inputMode="decimal" value={value} onChange={(e) => onChange(Number(e.target.value))} />
         <span className="text-sm text-muted">{unit}</span>
@@ -387,7 +387,7 @@ function CustomStep({ draft, set }: StepProps) {
       <Head title="Your custom race" sub="Enter the distances — we'll structure the training around them." />
       <div className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted">Race name</span>
+          <span className="eyebrow text-[0.72rem]">Race name</span>
           <input className="input" value={c.name} onChange={(e) => upd({ name: e.target.value })} />
         </label>
         <NumField label="Swim" unit="m" value={c.swimM} onChange={(n) => upd({ swimM: n })} />
@@ -512,7 +512,7 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
         {draft.strength.enabled ? " (incl. strength)" : ""}
       </p>
       <div className="mt-6">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Which sport is your weakness? (optional)</div>
+        <div className="mb-2 eyebrow text-[0.72rem]">Which sport is your weakness? (optional)</div>
         <div className="flex gap-2">
           {foci.map((f) => (
             <button
@@ -569,11 +569,11 @@ function StrengthStep({ draft, set }: StepProps) {
       {s.enabled && (
         <div className="mt-6 space-y-5 animate-fade-up">
           <div>
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Days a week</div>
+            <div className="mb-2 eyebrow text-[0.72rem]">Days a week</div>
             <Stepper label="Strength days" icon="🏋️" value={s.daysPerWeek} min={1} max={4} onChange={(n) => upd({ daysPerWeek: n })} />
           </div>
           <div>
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Which split?</div>
+            <div className="mb-2 eyebrow text-[0.72rem]">Which split?</div>
             <div className="flex flex-col gap-2.5">
               {SPLITS.map((sp) => (
                 <Card key={sp.key} active={s.split === sp.key} onClick={() => upd({ split: sp.key })}>
@@ -623,7 +623,7 @@ function ScheduleStep({ draft, set }: StepProps) {
       <Head title="Your schedule & life" sub="All optional — tell us how your week and calendar really look." />
 
       <div className="mb-5">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Preferred rest day</div>
+        <div className="mb-2 eyebrow text-[0.72rem]">Preferred rest day</div>
         <div className="flex flex-wrap gap-2">
           {WD.map((w, i) => (
             <button
@@ -638,7 +638,7 @@ function ScheduleStep({ draft, set }: StepProps) {
       </div>
 
       <div className="mb-5">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">What can you access?</div>
+        <div className="mb-2 eyebrow text-[0.72rem]">What can you access?</div>
         <div className="flex gap-2">
           {equip.map((e) => (
             <button
@@ -664,7 +664,7 @@ function ScheduleStep({ draft, set }: StepProps) {
 
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted">Time off (vacation, travel)</span>
+          <span className="eyebrow text-[0.72rem]">Time off (vacation, travel)</span>
           <button onClick={addBlackout} className="chip">+ Add</button>
         </div>
         {draft.blackouts.length === 0 && <p className="text-sm text-muted">No blocked-out dates — add any weeks you know you’ll miss.</p>}
@@ -908,7 +908,7 @@ function InjuriesStep({ draft, set }: StepProps) {
 
       {draft.injuries.length > 0 && (
         <div className="mt-5 animate-fade-up">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">We’ll train around</div>
+          <div className="mb-2 eyebrow text-[0.72rem]">We’ll train around</div>
           <div className="flex flex-col gap-2">
             {draft.injuries.map((i) => (
               <div key={i.id} className="flex items-center justify-between rounded-2xl border border-line bg-surface-2 px-4 py-3">

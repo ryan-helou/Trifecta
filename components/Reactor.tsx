@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * The AmaTri sun — a radiant emblem for "the longest day". The bright core is the
- * risen sun; the orbital rings trace its path across the sky. When `progress`
- * (0–100) is supplied the outer ring fills and the core brightens as the day
- * "breaks", used on the plan-generation loading screen.
+ * The AmaTri chronograph mark — a fine watch dial rather than a sci-fi reactor.
+ * A hairline bezel, minute ticks, and a single champagne hand. When `progress`
+ * (0–100) is supplied the hand points to it and an accent arc fills the bezel
+ * (used on the plan-generation loading screen). Otherwise the hand sweeps once
+ * every few seconds like a running second-hand. Calm, precise, unadorned.
  */
 export function Reactor({
   size = 180,
@@ -16,86 +17,77 @@ export function Reactor({
   spinning?: boolean;
 }) {
   const p = progress == null ? null : Math.max(0, Math.min(100, progress));
-  const R = 46;
+  const R = 50;
   const C = 2 * Math.PI * R;
-  const dash = p == null ? C : (p / 100) * C;
-  const glow = p == null ? 0.5 : 0.35 + (p / 100) * 0.5;
+  const dash = p == null ? 0 : (p / 100) * C;
+  const handAngle = p == null ? 0 : (p / 100) * 360;
+  const sweep = spinning && p == null;
 
   return (
-    <div style={{ width: size, height: size, position: "relative" }}>
-      {/* radial glow */}
-      <div
-        className="glow-breathe"
-        style={{
-          position: "absolute",
-          inset: "-20%",
-          background: "radial-gradient(circle, rgba(255,160,95,0.5), transparent 60%)",
-          filter: "blur(10px)",
-          opacity: glow,
-        }}
-      />
-      <svg viewBox="0 0 120 120" width={size} height={size} style={{ position: "relative" }}>
-        <defs>
-          <linearGradient id="molten" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="var(--accent-soft)" />
-            <stop offset="55%" stopColor="var(--accent)" />
-            <stop offset="100%" stopColor="var(--accent-2)" />
-          </linearGradient>
-          <radialGradient id="coreGrad" cx="50%" cy="45%" r="60%">
-            <stop offset="0%" stopColor="#fff6ec" />
-            <stop offset="35%" stopColor="var(--accent-soft)" />
-            <stop offset="100%" stopColor="var(--accent-2)" />
-          </radialGradient>
-        </defs>
+    <svg
+      viewBox="0 0 120 120"
+      width={size}
+      height={size}
+      style={{ display: "block" }}
+      aria-hidden
+    >
+      {/* hairline bezel */}
+      <circle cx="60" cy="60" r={R + 6} fill="none" stroke="var(--line)" strokeWidth="1" />
+      <circle cx="60" cy="60" r={R} fill="none" stroke="var(--line)" strokeWidth="1.5" />
 
-        {/* faint base ring */}
-        <circle cx="60" cy="60" r={R} fill="none" stroke="var(--line)" strokeWidth="3" opacity="0.6" />
+      {/* minute ticks — subtle, with accented cardinal marks */}
+      {Array.from({ length: 60 }).map((_, i) => {
+        const cardinal = i % 15 === 0;
+        const major = i % 5 === 0;
+        const a = (i / 60) * Math.PI * 2 - Math.PI / 2;
+        const outer = R - 1;
+        const inner = major ? R - (cardinal ? 8 : 6) : R - 3;
+        const x1 = (60 + Math.cos(a) * outer).toFixed(2);
+        const y1 = (60 + Math.sin(a) * outer).toFixed(2);
+        const x2 = (60 + Math.cos(a) * inner).toFixed(2);
+        const y2 = (60 + Math.sin(a) * inner).toFixed(2);
+        return (
+          <line
+            key={i}
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
+            stroke={cardinal ? "var(--accent)" : "var(--text-faint)"}
+            strokeWidth={major ? 1.4 : 0.8}
+            opacity={major ? 0.9 : 0.5}
+          />
+        );
+      })}
 
-        {/* progress / energy ring */}
+      {/* progress arc (only when measuring) */}
+      {p != null && (
         <circle
           cx="60"
           cy="60"
           r={R}
           fill="none"
-          stroke="url(#molten)"
-          strokeWidth="4"
+          stroke="var(--accent)"
+          strokeWidth="2.5"
           strokeLinecap="round"
           strokeDasharray={`${dash} ${C}`}
           transform="rotate(-90 60 60)"
-          style={{ transition: "stroke-dasharray 0.4s ease", filter: "drop-shadow(0 0 4px var(--accent))" }}
+          style={{ transition: "stroke-dasharray 0.3s ease" }}
         />
+      )}
 
-        {/* rotating segmented rings */}
-        <g className={spinning ? "spin-slow" : undefined} opacity="0.9">
-          {Array.from({ length: 12 }).map((_, i) => {
-            const a = (i / 12) * Math.PI * 2;
-            const x1 = (60 + Math.cos(a) * 34).toFixed(2);
-            const y1 = (60 + Math.sin(a) * 34).toFixed(2);
-            const x2 = (60 + Math.cos(a) * 39).toFixed(2);
-            const y2 = (60 + Math.sin(a) * 39).toFixed(2);
-            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--accent)" strokeWidth="2" opacity={0.5} />;
-          })}
-        </g>
-        <g className={spinning ? "spin-rev" : undefined}>
-          <circle cx="60" cy="60" r="30" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="4 6" opacity="0.55" />
-        </g>
+      {/* the hand — sweeps when idle, points to progress when measuring */}
+      <g
+        className={sweep ? "sweep" : undefined}
+        style={sweep ? undefined : { transform: `rotate(${handAngle}deg)`, transformOrigin: "60px 60px", transition: "transform 0.3s ease" }}
+      >
+        <line x1="60" y1="60" x2="60" y2={60 - (R - 4)} stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" />
+        <line x1="60" y1="60" x2="60" y2="70" stroke="var(--accent-2)" strokeWidth="2" strokeLinecap="round" />
+      </g>
 
-        {/* inner hex frame */}
-        <g className={spinning ? "spin-fast" : undefined} opacity="0.85">
-          <polygon
-            points="60,38 79,49 79,71 60,82 41,71 41,49"
-            fill="none"
-            stroke="url(#molten)"
-            strokeWidth="2"
-          />
-        </g>
-
-        {/* molten core */}
-        <g className="core-pulse">
-          <circle cx="60" cy="60" r="16" fill="url(#coreGrad)" style={{ filter: "drop-shadow(0 0 10px var(--accent-2))" }} />
-          <circle cx="60" cy="60" r="9" fill="#fff3e6" opacity="0.9" />
-        </g>
-      </svg>
-    </div>
+      {/* center hub */}
+      <circle cx="60" cy="60" r="3.4" fill="var(--accent)" />
+      <circle cx="60" cy="60" r="1.4" fill="var(--background)" />
+    </svg>
   );
 }

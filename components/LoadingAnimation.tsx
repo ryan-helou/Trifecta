@@ -66,13 +66,11 @@ export function LoadingAnimation({
         {Math.round(progress)}
         <span className="text-2xl text-muted">%</span>
       </div>
-      <div className="mt-4 h-2 w-full max-w-xs overflow-hidden rounded-full bg-surface-2">
+      <div className="mt-4 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-surface-2">
         <div
-          className="relative h-full rounded-full accent-gradient"
+          className="h-full rounded-full bg-accent"
           style={{ width: `${progress}%`, transition: "width 0.1s linear" }}
-        >
-          <div className="shimmer absolute inset-0 rounded-full" />
-        </div>
+        />
       </div>
       <div key={stepIndex} className="animate-rise mt-5 h-6 text-sm font-medium text-muted">
         {steps[stepIndex]}

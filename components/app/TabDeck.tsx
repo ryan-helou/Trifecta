@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { haptic } from "@/lib/haptics";
 import { TabKey } from "./ui";
 
-const ORDER: TabKey[] = ["today", "plan", "progress", "profile"];
+const ORDER: TabKey[] = ["today", "plan", "progress", "friends", "profile"];
 const COMMIT = 64; // px of horizontal travel that flips to the next tab
 
 /*
