@@ -171,12 +171,18 @@ body {
 .btn-ghost:hover { background: var(--surface-3); }
 
 .input {
-  width: 100%; background: var(--surface-2); border: 1px solid var(--line);
+  width: 100%; box-sizing: border-box; background: var(--surface-2); border: 1px solid var(--line);
   border-radius: 0.9rem; padding: 0.85rem 1rem; color: var(--text);
   font-size: 1rem; outline: none; transition: border-color .12s ease, box-shadow .12s ease;
 }
 .input::placeholder { color: var(--text-muted); }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 106, 44, 0.15); }
+/* iOS gives date/time inputs an intrinsic content width and won't shrink them to
+   the container — strip the native appearance and let them fill their box. */
+input[type="date"].input, input[type="time"].input, input[type="datetime-local"].input {
+  -webkit-appearance: none; appearance: none; min-width: 0;
+}
+input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin: 0; }
 
 .chip {
   display: inline-flex; align-items: center; gap: .35rem; padding: .3rem .6rem;
