@@ -37,7 +37,7 @@ export function ProgressTab() {
   );
 
   return (
-    <div className="space-y-5 px-4 py-4">
+    <div className="space-y-5 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
       <div className="animate-fade-up">
         <div className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.24em] text-muted">Progress</div>
         <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">
