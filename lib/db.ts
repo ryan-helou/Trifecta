@@ -19,6 +19,19 @@ export interface AppState {
   updatedAtISO?: string;
 }
 
+/** A user's linked Strava account. Kept in its own table (not the `data` blob)
+ *  so token refreshes and webhook writes never clobber the plan JSON, and so the
+ *  webhook can find the owner by athlete id. */
+export interface StravaConn {
+  userId: string;
+  athleteId: number;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number; // unix seconds
+  scope?: string;
+  lastSyncAtISO?: string;
+}
+
 export interface Store {
   init(): Promise<void>;
   getUserByUsername(username: string): Promise<UserRow | null>;
@@ -26,6 +39,13 @@ export interface Store {
   createUser(username: string, passwordHash: string): Promise<UserRow>;
   getData(userId: string): Promise<AppState>;
   setData(userId: string, data: AppState): Promise<void>;
+  // Strava
+  getStravaByUser(userId: string): Promise<StravaConn | null>;
+  getStravaByAthlete(athleteId: number): Promise<StravaConn | null>;
+  upsertStrava(conn: StravaConn): Promise<void>;
+  updateStravaTokens(userId: string, t: { accessToken: string; refreshToken: string; expiresAt: number }): Promise<void>;
+  deleteStrava(userId: string): Promise<void>;
+  touchStravaSync(userId: string): Promise<void>;
 }
 
 function newId(): string {
@@ -58,9 +78,80 @@ class PgStore implements Store {
              updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
            )`,
         )
+        .then(() =>
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS strava_connections (
+               user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+               athlete_id BIGINT UNIQUE NOT NULL,
+               access_token TEXT NOT NULL,
+               refresh_token TEXT NOT NULL,
+               expires_at BIGINT NOT NULL,
+               scope TEXT,
+               connected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+               last_sync_at TIMESTAMPTZ
+             )`,
+          ),
+        )
         .then(() => undefined);
     }
     return this.ready;
+  }
+
+  private mapStrava(row: Record<string, unknown>): StravaConn {
+    return {
+      userId: row.user_id as string,
+      athleteId: Number(row.athlete_id),
+      accessToken: row.access_token as string,
+      refreshToken: row.refresh_token as string,
+      expiresAt: Number(row.expires_at),
+      scope: (row.scope as string) ?? undefined,
+      lastSyncAtISO: row.last_sync_at ? new Date(row.last_sync_at as string).toISOString() : undefined,
+    };
+  }
+
+  async getStravaByUser(userId: string): Promise<StravaConn | null> {
+    await this.init();
+    const r = await this.pool.query("SELECT * FROM strava_connections WHERE user_id = $1", [userId]);
+    return r.rows[0] ? this.mapStrava(r.rows[0]) : null;
+  }
+
+  async getStravaByAthlete(athleteId: number): Promise<StravaConn | null> {
+    await this.init();
+    const r = await this.pool.query("SELECT * FROM strava_connections WHERE athlete_id = $1", [athleteId]);
+    return r.rows[0] ? this.mapStrava(r.rows[0]) : null;
+  }
+
+  async upsertStrava(c: StravaConn): Promise<void> {
+    await this.init();
+    await this.pool.query(
+      `INSERT INTO strava_connections (user_id, athlete_id, access_token, refresh_token, expires_at, scope, connected_at)
+       VALUES ($1,$2,$3,$4,$5,$6, now())
+       ON CONFLICT (user_id) DO UPDATE SET
+         athlete_id = EXCLUDED.athlete_id,
+         access_token = EXCLUDED.access_token,
+         refresh_token = EXCLUDED.refresh_token,
+         expires_at = EXCLUDED.expires_at,
+         scope = EXCLUDED.scope`,
+      [c.userId, c.athleteId, c.accessToken, c.refreshToken, c.expiresAt, c.scope ?? null],
+    );
+  }
+
+  async updateStravaTokens(userId: string, t: { accessToken: string; refreshToken: string; expiresAt: number }): Promise<void> {
+    await this.init();
+    await this.pool.query(
+      "UPDATE strava_connections SET access_token = $1, refresh_token = $2, expires_at = $3 WHERE user_id = $4",
+      [t.accessToken, t.refreshToken, t.expiresAt, userId],
+    );
+  }
+
+  async deleteStrava(userId: string): Promise<void> {
+    await this.init();
+    await this.pool.query("DELETE FROM strava_connections WHERE user_id = $1", [userId]);
+  }
+
+  async touchStravaSync(userId: string): Promise<void> {
+    await this.init();
+    await this.pool.query("UPDATE strava_connections SET last_sync_at = now() WHERE user_id = $1", [userId]);
   }
 
   async getUserByUsername(username: string): Promise<UserRow | null> {
@@ -112,6 +203,7 @@ class PgStore implements Store {
 class MemoryStore implements Store {
   private users = new Map<string, UserRow>(); // keyed by id
   private byName = new Map<string, string>(); // lower -> id
+  private strava = new Map<string, StravaConn>(); // keyed by userId
 
   async init(): Promise<void> {}
   async getUserByUsername(username: string): Promise<UserRow | null> {
@@ -134,6 +226,27 @@ class MemoryStore implements Store {
   async setData(userId: string, data: AppState): Promise<void> {
     const u = this.users.get(userId);
     if (u) u.data = data;
+  }
+  async getStravaByUser(userId: string): Promise<StravaConn | null> {
+    return this.strava.get(userId) ?? null;
+  }
+  async getStravaByAthlete(athleteId: number): Promise<StravaConn | null> {
+    for (const c of this.strava.values()) if (c.athleteId === athleteId) return c;
+    return null;
+  }
+  async upsertStrava(conn: StravaConn): Promise<void> {
+    this.strava.set(conn.userId, { ...conn });
+  }
+  async updateStravaTokens(userId: string, t: { accessToken: string; refreshToken: string; expiresAt: number }): Promise<void> {
+    const c = this.strava.get(userId);
+    if (c) Object.assign(c, t);
+  }
+  async deleteStrava(userId: string): Promise<void> {
+    this.strava.delete(userId);
+  }
+  async touchStravaSync(userId: string): Promise<void> {
+    const c = this.strava.get(userId);
+    if (c) c.lastSyncAtISO = new Date().toISOString();
   }
 }
 

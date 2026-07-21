@@ -8,6 +8,7 @@ import { fmtFullDate, daysBetween } from "@/lib/dates";
 import { raceDistances } from "@/lib/planEngine";
 import { InstallHint } from "./InstallHint";
 import { EditSettings } from "./EditSettings";
+import { Connections } from "./Connections";
 import { Wordmark } from "../Wordmark";
 
 export function ProfileTab() {
@@ -79,6 +80,8 @@ export function ProfileTab() {
         <ActionRow onClick={() => actions.ease(7)} label="Not feeling 100% — ease this week" />
         <ActionRow onClick={() => actions.rebuild()} label="Rebuild plan around today" />
       </Section>
+
+      <Connections />
 
       <InstallHint />
 
