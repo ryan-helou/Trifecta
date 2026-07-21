@@ -227,3 +227,60 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-rise { animation: rise .5s ease both; }
+
+/* ---------- forge auth hero ---------- */
+/* molten heat rising from the forge floor at the bottom of the screen */
+.forge-floor {
+  position: absolute;
+  left: 50%;
+  bottom: -12%;
+  transform: translateX(-50%);
+  width: 150%;
+  height: 62%;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 100% at 50% 100%, rgba(255, 61, 46, 0.30), transparent 70%),
+    radial-gradient(85% 100% at 50% 100%, rgba(255, 106, 44, 0.20), transparent 74%);
+  filter: blur(6px);
+  animation: forge-ignite 900ms ease-out both;
+}
+@keyframes forge-ignite {
+  from { opacity: 0; transform: translate(-50%, 14%); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* the auth card's forged top edge */
+.forge-card { box-shadow: 0 -18px 60px -30px rgba(255, 90, 31, 0.35); }
+.forge-edge {
+  position: absolute;
+  left: 1.25rem;
+  right: 1.25rem;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
+}
+
+/* the hammer strike that ignites the payoff word */
+@keyframes forge-strike {
+  0%, 100% { filter: brightness(1); }
+  35% { filter: brightness(1.9) drop-shadow(0 0 18px rgba(255, 138, 76, 0.55)); }
+}
+.forge-strike { animation: forge-strike 900ms ease-out 550ms 1 both; }
+
+/* respect reduced-motion: kill ambient + entrance animation everywhere */
+@media (prefers-reduced-motion: reduce) {
+  .forge-strike,
+  .forge-floor,
+  .animate-rise,
+  .animate-fade-up,
+  .animate-pop,
+  .glow-breathe,
+  .core-pulse,
+  .spin-slow,
+  .spin-rev,
+  .spin-fast,
+  .shimmer {
+    animation: none !important;
+  }
+}
