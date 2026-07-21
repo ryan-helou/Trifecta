@@ -2,14 +2,15 @@
 
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
-import { WorkoutCard } from "./WorkoutCard";
+import { SwipeableWorkout } from "./SwipeableWorkout";
+import { ProgressRing } from "./motion";
 import { PhaseBar, RaceCountdown, weekOfDate, workoutsOn } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
 import { fmtFullDate as fullDate } from "@/lib/dates";
 
 export function TodayTab() {
   const { plan, username, offline } = useApp();
-  const { today, openWorkout, openCoach, goTab } = useUI();
+  const { today, openCoach, goTab } = useUI();
   if (!plan) return null;
 
   const todays = workoutsOn(plan, today);
@@ -44,6 +45,22 @@ export function TodayTab() {
 
       {plan.notice && <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm text-muted">{plan.notice}</div>}
 
+      {plan.coachSummary && (
+        <div className="animate-fade-up card-glass rounded-2xl p-4" style={{ animationDelay: "90ms" }}>
+          <div className="mb-1.5 flex items-center gap-2">
+            <span aria-hidden className="h-[7px] w-[7px] rounded-full bg-accent" style={{ boxShadow: "0 0 8px var(--accent)" }} />
+            <span className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-accent-soft">Why this plan</span>
+          </div>
+          <p className="text-sm leading-relaxed text-foreground/90">{plan.coachSummary}</p>
+          {plan.phaseNotes?.[wk.phase] && (
+            <p className="mt-2.5 border-t border-line/60 pt-2.5 text-sm leading-relaxed text-muted">
+              <span className="font-semibold capitalize text-accent-soft">{wk.phase} block · </span>
+              {plan.phaseNotes[wk.phase]}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="animate-fade-up" style={{ animationDelay: "120ms" }}>
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="font-display text-[1.06rem] font-bold">Today</h2>
@@ -58,7 +75,7 @@ export function TodayTab() {
         ) : (
           <div className="space-y-2.5">
             {todays.map((w) => (
-              <WorkoutCard key={w.id} workout={w} onOpen={() => openWorkout(w.id)} />
+              <SwipeableWorkout key={w.id} workout={w} />
             ))}
           </div>
         )}
@@ -75,23 +92,13 @@ export function TodayTab() {
             <div className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-accent-soft">{wk.phase} phase</div>
             <div className="mt-0.5 font-display text-[1.05rem] font-bold">{wk.label.replace(" · Recovery", "")}</div>
           </div>
-          <ProgressRing pct={pct} label={`${prog.done}/${prog.total}`} />
+          <ProgressRing value={pct / 100} size={48} stroke={5}>
+            <span className="font-display text-[0.72rem] font-bold tabular-nums">{prog.done}/{prog.total}</span>
+          </ProgressRing>
         </div>
         <PhaseBar plan={plan} current={wk.index} />
         <div className="mt-3 text-sm leading-snug text-muted">{wk.focus}</div>
       </button>
-    </div>
-  );
-}
-
-function ProgressRing({ pct, label }: { pct: number; label: string }) {
-  return (
-    <div
-      className="relative grid h-12 w-12 flex-shrink-0 place-items-center rounded-full"
-      style={{ background: `conic-gradient(var(--accent) ${pct}%, var(--surface-3) 0)` }}
-    >
-      <div className="absolute inset-[3px] rounded-full bg-surface" />
-      <span className="relative font-display text-[0.72rem] font-bold tabular-nums">{label}</span>
     </div>
   );
 }

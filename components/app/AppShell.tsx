@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useApp } from "../AppProvider";
 import { UICtx, UIActions, TabKey, CoachMsg } from "./ui";
 import { BottomNav } from "./BottomNav";
+import { TabDeck } from "./TabDeck";
+import { ToastProvider } from "./Toast";
 import { TodayTab } from "./TodayTab";
 import { PlanTab } from "./PlanTab";
 import { ProgressTab } from "./ProgressTab";
@@ -82,34 +84,38 @@ export function AppShell() {
         actions,
       }}
     >
-      <div className="flex min-h-full flex-1 flex-col">
-        <div className="mx-auto w-full max-w-md flex-1">
-          {missed.length >= 3 && !dismissRealign && (
-            <div className="mx-4 mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-3.5 safe-t">
-              <div className="text-sm font-semibold">You&apos;ve missed {missed.length} sessions</div>
-              <div className="mt-0.5 text-sm text-muted">Fallen behind? Rebuild your plan around today so you still land on race day.</div>
-              <div className="mt-2.5 flex gap-2">
-                <button
-                  onClick={() => { actions.rebuild(); setDismissRealign(true); }}
-                  className="btn btn-primary flex-1 py-2.5 text-sm"
-                >
-                  Rebuild my plan
-                </button>
-                <button onClick={() => setDismissRealign(true)} className="btn btn-ghost px-4 py-2.5 text-sm">
-                  I&apos;m okay
-                </button>
+      <ToastProvider>
+        <div className="flex min-h-full flex-1 flex-col">
+          <div className="mx-auto w-full max-w-md flex-1">
+            {missed.length >= 3 && !dismissRealign && (
+              <div className="mx-4 mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-3.5 safe-t">
+                <div className="text-sm font-semibold">You&apos;ve missed {missed.length} sessions</div>
+                <div className="mt-0.5 text-sm text-muted">Fallen behind? Rebuild your plan around today so you still land on race day.</div>
+                <div className="mt-2.5 flex gap-2">
+                  <button
+                    onClick={() => { actions.rebuild(); setDismissRealign(true); }}
+                    className="btn btn-primary flex-1 py-2.5 text-sm"
+                  >
+                    Rebuild my plan
+                  </button>
+                  <button onClick={() => setDismissRealign(true)} className="btn btn-ghost px-4 py-2.5 text-sm">
+                    I&apos;m okay
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {tab === "today" && <TodayTab />}
-          {tab === "plan" && <PlanTab />}
-          {tab === "progress" && <ProgressTab />}
-          {tab === "profile" && <ProfileTab />}
+            <TabDeck tab={tab} onChange={setTab}>
+              {tab === "today" && <TodayTab />}
+              {tab === "plan" && <PlanTab />}
+              {tab === "progress" && <ProgressTab />}
+              {tab === "profile" && <ProfileTab />}
+            </TabDeck>
+          </div>
+
+          <BottomNav tab={tab} onChange={setTab} />
         </div>
-
-        <BottomNav tab={tab} onChange={setTab} />
-      </div>
+      </ToastProvider>
 
       {detail && <WorkoutDetail workout={detail} plan={plan} />}
       {coach.open && (

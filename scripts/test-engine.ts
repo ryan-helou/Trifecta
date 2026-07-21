@@ -45,6 +45,9 @@ const scenarios: { name: string; p: Profile }[] = [
   { name: "Injury: niggle shoulder (swim)", p: mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), perSport: { swim: 3, bike: 2, run: 2 }, injuries: [{ id: "i3", area: "right shoulder", disciplines: ["swim"], severity: "niggle" }] }) },
   { name: "Blackout: week 3 off", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, blackouts: [{ startISO: raceInWeeks(3), endISO: raceInWeeks(4), label: "Holiday" }] }) },
   { name: "Focus: swim limiter", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), workoutsPerWeek: 8, focusDiscipline: "swim" }) },
+  // ---- equipment scenarios ----
+  { name: "No pool (dryland swim)", p: mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), perSport: { swim: 3, bike: 2, run: 2 }, equipment: { pool: false, trainer: true, gym: true } }) },
+  { name: "No gym (home strength, PPL)", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, strength: { enabled: true, daysPerWeek: 3, split: "push-pull-legs" }, equipment: { pool: true, trainer: true, gym: false } }) },
 ];
 
 let problems = 0;
@@ -103,6 +106,18 @@ for (const { name, p } of scenarios) {
     for (const w of Object.values(plan.workouts)) {
       if (w.type === "race_prep") continue;
       if (w.date >= b.startISO && w.date <= b.endISO) { console.log(`  !! session ${w.id} on blackout day ${w.date}`); problems++; }
+    }
+  }
+  // equipment: no pool ⇒ swims are dry-land only; no gym ⇒ strength is home/core
+  if (p.equipment?.pool === false) {
+    for (const w of Object.values(plan.workouts)) {
+      if (w.type === "race_prep") continue;
+      if (w.discipline === "swim" && !/dryland/i.test(w.title)) { console.log(`  !! no-pool but water swim "${w.title}"`); problems++; }
+    }
+  }
+  if (p.equipment?.gym === false && p.strength?.enabled) {
+    for (const w of Object.values(plan.workouts)) {
+      if (w.discipline === "strength" && !/home|core/i.test(w.title)) { console.log(`  !! no-gym but gym strength "${w.title}"`); problems++; }
     }
   }
   console.log(`  phases: ${JSON.stringify(phaseCounts)}  totalWorkouts=${totalWk}`);

@@ -730,16 +730,30 @@ export function strengthCore(ctx: BuildCtx, min = 25): Draft {
   );
 }
 
+// No-gym fallback: full-body strength you can do at home with just bodyweight + a band.
+export function strengthHome(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Home Strength (Bodyweight)",
+    "No gym needed — bodyweight and a band keep you durable and powerful right at home.",
+    "squat ×15 · reverse lunge ×12/side · push-up ×12 · single-leg glute bridge ×12/side · superman ×12 · plank 45s · side plank 30s/side",
+    min,
+  );
+}
+
 // Dispatch to the right session for the athlete's chosen split + which strength
-// day of the week this is. Recovery weeks fall back to core/mobility.
+// day of the week this is. Recovery weeks fall back to core/mobility; no gym
+// falls back to the bodyweight home circuit.
 export function strengthFor(
   ctx: BuildCtx,
   split: StrengthSplit,
   index: number,
   recover: boolean,
+  home = false,
 ): Draft {
   const min = recover ? 25 : 35;
   if (recover || split === "core") return strengthCore(ctx, min);
+  if (home) return strengthHome(ctx, min);
   switch (split) {
     case "upper-lower":
       return index % 2 === 0 ? strengthLower(ctx, min) : strengthUpper(ctx, min);
@@ -751,4 +765,33 @@ export function strengthFor(
     default:
       return strength(ctx, min);
   }
+}
+
+// No-pool fallback: land-based swim-specific strength so the swim engine keeps
+// firing without water. Credited to swim; time-based so it carries no fake distance.
+export function swimDryland(ctx: BuildCtx, min = 30): Draft {
+  const rounds = min >= 30 ? 3 : 2;
+  return finish(ctx, {
+    discipline: "swim",
+    type: "technique",
+    title: "Dryland Swim Strength",
+    purpose: "No pool? Keep your swim engine firing on land — cords, scapular strength and catch mechanics carry straight back into the water.",
+    primaryZone: 2,
+    segments: [
+      seg({ kind: "warmup", discipline: "strength", zone: 2, durationSec: M(6), description: "6 min shoulder prep — band dislocates, scap push-ups, T-Y-W raises" }),
+      seg({
+        kind: "main",
+        discipline: "strength",
+        zone: 3,
+        repeat: rounds,
+        description: `${rounds} rounds: swim-cord catch-pull ×20 · band tricep press ×15 · scap pull-up hold 20s · prone Y-raise ×12 · dead bug ×10/side`,
+        cue: "Mimic the catch — high elbow, press the water back, not down.",
+        children: [
+          seg({ kind: "main", discipline: "strength", zone: 3, durationSec: M(5), description: "circuit round" }),
+          seg({ kind: "rest", discipline: "strength", durationSec: M(1), description: "60s rest" }),
+        ],
+      }),
+      seg({ kind: "cooldown", discipline: "strength", zone: 1, durationSec: M(4), description: "4 min stretch — lats, pecs, thoracic" }),
+    ],
+  });
 }

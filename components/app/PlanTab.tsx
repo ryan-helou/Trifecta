@@ -3,16 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
-import { WorkoutCard } from "./WorkoutCard";
+import { SwipeableWorkout } from "./SwipeableWorkout";
 import { PhaseBar, weekOfDate } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
 import { addDays, weekdayShort, fmtDayMonth } from "@/lib/dates";
 import { fmtDuration } from "@/lib/format";
+import { haptic } from "@/lib/haptics";
 import { Plan, Week } from "@/lib/types";
 
 export function PlanTab() {
   const { plan } = useApp();
-  const { today, openWorkout } = useUI();
+  const { today } = useUI();
   const cur = plan ? weekOfDate(plan, today).index : 0;
   const [sel, setSel] = useState(cur);
   const pillRow = useRef<HTMLDivElement>(null);
@@ -35,7 +36,7 @@ export function PlanTab() {
       </div>
 
       {/* week pills */}
-      <div ref={pillRow} className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
+      <div ref={pillRow} data-no-tabswipe className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
         {plan.weeks.map((w) => {
           const on = w.index === sel;
           const isCur = w.index === cur;
@@ -43,7 +44,7 @@ export function PlanTab() {
             <button
               key={w.index}
               data-w={w.index}
-              onClick={() => setSel(w.index)}
+              onClick={() => { haptic("select"); setSel(w.index); }}
               className={`flex-shrink-0 rounded-full px-3.5 py-2 font-display text-[0.82rem] font-semibold transition active:brightness-110 ${
                 on ? "accent-gradient text-[#1a0d06]" : "border border-line bg-surface-2 text-muted"
               } ${isCur && !on ? "ring-1 ring-accent/45" : ""}`}
@@ -58,7 +59,7 @@ export function PlanTab() {
       <div className="mt-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <button
-            onClick={() => setSel((s) => Math.max(0, s - 1))}
+            onClick={() => { haptic("select"); setSel((s) => Math.max(0, s - 1)); }}
             disabled={sel === 0}
             className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface-2 text-lg text-muted transition hover:text-foreground active:brightness-125 disabled:opacity-30"
           >
@@ -71,7 +72,7 @@ export function PlanTab() {
             </div>
           </div>
           <button
-            onClick={() => setSel((s) => Math.min(plan.weeks.length - 1, s + 1))}
+            onClick={() => { haptic("select"); setSel((s) => Math.min(plan.weeks.length - 1, s + 1)); }}
             disabled={sel === plan.weeks.length - 1}
             className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface-2 text-lg text-muted transition hover:text-foreground active:brightness-125 disabled:opacity-30"
           >
@@ -119,7 +120,7 @@ export function PlanTab() {
               ) : (
                 <div className="space-y-2">
                   {items.map((w) => (
-                    <WorkoutCard key={w.id} workout={w} onOpen={() => openWorkout(w.id)} />
+                    <SwipeableWorkout key={w.id} workout={w} />
                   ))}
                 </div>
               )}

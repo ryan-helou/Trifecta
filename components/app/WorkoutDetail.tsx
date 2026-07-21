@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Discipline, Plan, Segment, Unit, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { targetView } from "@/lib/targets";
 import { fmtDistance, fmtDuration } from "@/lib/format";
 import { addDays, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
+import { Sheet } from "./Sheet";
+import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 
 function ZoneChip({ zone }: { zone?: Zone }) {
@@ -55,7 +57,6 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
   const { openWorkout, openCoach, actions, unit } = useUI();
   const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
   const [note, setNote] = useState("");
-  const panelRef = useRef<HTMLDivElement>(null);
   const meta = DISCIPLINE_META[workout.discipline];
   const isRace = workout.id === "w-race-day";
   const done = workout.status === "done";
@@ -75,34 +76,9 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
 
   const close = () => openWorkout(null);
 
-  // dialog a11y: focus on open + Escape to close
-  useEffect(() => {
-    panelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end" onClick={close}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={workout.title}
-        tabIndex={-1}
-        className="animate-pop relative max-h-[92vh] overflow-y-auto rounded-t-3xl border-t border-line bg-background pb-8 outline-none safe-b"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* grab handle */}
-        <div className="sticky top-0 z-10 flex justify-center bg-background/90 pt-3 pb-1 backdrop-blur">
-          <div className="h-1.5 w-10 rounded-full bg-line" />
-          <button onClick={close} className="absolute right-4 top-3 text-muted hover:text-foreground">✕</button>
-        </div>
-
-        <div className="px-5">
+    <Sheet onClose={close} label={workout.title}>
+      <div className="px-5 pb-8 pt-1">
           {/* header */}
           <div className="mb-3 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl" style={{ background: `color-mix(in oklab, var(${meta.colorVar}) 18%, transparent)` }}>
@@ -177,7 +153,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           {!isRace ? (
             <div className="space-y-2">
               <button
-                onClick={() => actions.toggleDone(workout.id)}
+                onClick={() => { haptic(done ? "light" : "success"); actions.toggleDone(workout.id); }}
                 className={`btn w-full py-3.5 text-base ${done ? "btn-ghost" : "btn-primary"}`}
               >
                 {done ? "✓ Completed — undo" : "Mark complete"}
@@ -187,7 +163,10 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                 <button onClick={() => setMode(mode === "swap" ? null : "swap")} className="btn btn-ghost py-2.5 text-sm">Swap sport</button>
                 <button onClick={() => setMode(mode === "log" ? null : "log")} className="btn btn-ghost py-2.5 text-sm">Did something else</button>
                 <button
-                  onClick={() => (workout.status === "skipped" ? actions.unskip(workout.id) : actions.skip(workout.id))}
+                  onClick={() => {
+                    if (workout.status === "skipped") { haptic("light"); actions.unskip(workout.id); }
+                    else { haptic("warning"); actions.skip(workout.id); }
+                  }}
                   className="btn btn-ghost py-2.5 text-sm"
                   style={{ color: workout.status === "skipped" ? undefined : "var(--danger)" }}
                 >
@@ -199,13 +178,15 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
               </button>
             </div>
           ) : (
-            <button onClick={() => actions.toggleDone(workout.id)} className={`btn w-full py-3.5 text-base ${done ? "btn-ghost" : "btn-primary"}`}>
+            <button
+              onClick={() => { haptic(done ? "light" : "success"); actions.toggleDone(workout.id); }}
+              className={`btn w-full py-3.5 text-base ${done ? "btn-ghost" : "btn-primary"}`}
+            >
               {done ? "🏆 You did it! (undo)" : "I finished the race 🏁"}
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 

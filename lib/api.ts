@@ -71,11 +71,11 @@ export async function apiIntake(text: string) {
   return data as { enabled?: boolean; injuries?: ParsedInjury[] };
 }
 
-/** Ask the cheap AI for a short "why this plan" note. */
+/** Ask the cheap AI for a short "why this plan" note plus per-phase coaching notes. */
 export async function apiPlanSummary(context: string) {
   const { data } = await jsonFetch("/api/plan-summary", {
     method: "POST",
     body: JSON.stringify({ context }),
   });
-  return data as { enabled?: boolean; text?: string };
+  return data as { enabled?: boolean; text?: string; phases?: Record<string, string> };
 }

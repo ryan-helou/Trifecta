@@ -100,7 +100,10 @@ export function raceDistances(p: Profile): { swim: number; bike: number; run: nu
   if (p.raceType === "custom" && p.custom) {
     return { swim: p.custom.swimM, bike: p.custom.bikeM, run: p.custom.runM, name: p.custom.name || "Custom Race" };
   }
-  return RACE_DISTANCES[categoryOf(p)];
+  const base = RACE_DISTANCES[categoryOf(p)];
+  // A real event from the catalog surfaces its own name (e.g. "IRONMAN 70.3
+  // Mont-Tremblant") on race day; distances stay canonical for the category.
+  return { ...base, name: p.raceName?.trim() || base.name };
 }
 
 // ---- weekly load curve --------------------------------------------------
@@ -281,6 +284,19 @@ function weekSportCounts(
     }
   }
 
+  // equipment: no pool ⇒ keep at most one dry-land swim, push the rest to bike/run
+  if (p.equipment?.pool === false && adj.swim > 1) {
+    let move = adj.swim - 1;
+    adj.swim = 1;
+    for (const d of ["bike", "run"] as Sport[]) {
+      while (move > 0 && adj[d] < 8) {
+        adj[d]++;
+        move--;
+      }
+      if (move <= 0) break;
+    }
+  }
+
   let c: SportCounts = { ...adj, strength: base.strength };
   if (isRecovery) {
     c = {
@@ -358,7 +374,10 @@ function pickWeekSlots(
     : [longRun, runQualityRole(), easyRun(0, 1.0), easyRun(3, 0.9, 50), easyRun(6, 0.8, 45), easyRun(1, 0.7, 40)];
 
   // ---- SWIM ---------------------------------------------------------------
-  const swimList: Role[] = mods.swim.avoid
+  const noPool = p.equipment?.pool === false;
+  const swimList: Role[] = noPool
+    ? [swim(2, () => W.swimDryland(ctx), 1.0), swim(4, () => W.swimDryland(ctx), 0.9)]
+    : mods.swim.avoid
     ? [easySwim(2, 0.9), easySwim(4, 0.8), easySwim(5, 0.7), easySwim(0, 0.6)]
     : [swim(2, keySwimBuild, 1.0), swim(4, swim2Build, 1.0), easySwim(4, 0.9), easySwim(2, 0.8), easySwim(5, 0.7), easySwim(0, 0.6)];
 
@@ -431,6 +450,7 @@ function pickWeekSlots(
   // ---- strength (split-aware) ---------------------------------------------
   function buildStrengthRoles(count: number): Role[] {
     const split = p.strength?.split ?? "full";
+    const home = p.equipment?.gym === false; // no gym ⇒ bodyweight home circuit
     const prefDays = [0, 4, 2, 3]; // Mon, Fri, Wed, Thu
     const min = recover ? 25 : 35;
     const roles: Role[] = [];
@@ -439,7 +459,7 @@ function pickWeekSlots(
       roles.push({
         prefDay: prefDays[i % prefDays.length],
         discipline: "strength", hard: false, scalable: false, weight: 0.7, minMin: min, maxMin: min,
-        build: () => W.strengthFor(ctx, split, idx, recover),
+        build: () => W.strengthFor(ctx, split, idx, recover, home),
       });
     }
     return roles;

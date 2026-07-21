@@ -5,6 +5,8 @@ import { useApp } from "../AppProvider";
 import { LoadingAnimation } from "../LoadingAnimation";
 import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit } from "@/lib/types";
 import { generatePlan } from "@/lib/planEngine";
+import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
+import { CatalogRace } from "@/lib/raceCatalog";
 import { planSummaryContext } from "@/lib/adapt";
 import { apiIntake, apiPlanSummary, ParsedInjury } from "@/lib/api";
 import { RUN_PR_OPTIONS, SWIM_PR_OPTIONS, prLabel } from "@/lib/paces";
@@ -14,6 +16,10 @@ import { todayISO, addDays, fmtFullDate } from "@/lib/dates";
 interface Draft {
   raceType?: RaceType;
   custom: { swimM: number; bikeM: number; runM: number; name: string };
+  // set when a real event was picked from the catalog (see RaceStep)
+  raceName?: string;
+  raceLocation?: string;
+  raceId?: string;
   raceDateISO?: string;
   level?: Level;
   perSport: { swim: number; bike: number; run: number };
@@ -65,7 +71,7 @@ export function Onboarding() {
     custom: { swimM: 1500, bikeM: 40000, runM: 10000, name: "My Race" },
     perSport: { swim: 2, bike: 2, run: 2 },
     strength: { enabled: false, daysPerWeek: 2, split: "full" },
-    equipment: { pool: true, trainer: false, gym: false },
+    equipment: { pool: true, trainer: true, gym: true },
     blackouts: [],
     injuries: [],
   });
@@ -84,6 +90,9 @@ export function Onboarding() {
       username,
       raceType: draft.raceType,
       custom: draft.raceType === "custom" ? draft.custom : undefined,
+      raceName: draft.raceType === "custom" ? undefined : draft.raceName,
+      raceLocation: draft.raceType === "custom" ? undefined : draft.raceLocation,
+      raceId: draft.raceType === "custom" ? undefined : draft.raceId,
       raceDateISO: draft.raceDateISO,
       level: draft.level,
       workoutsPerWeek: wpw,
@@ -139,10 +148,12 @@ export function Onboarding() {
         onDone={() => {
           const plan = generatePlan(finalProfile);
           startPlan(finalProfile, plan);
-          // fire-and-forget: attach a cheap AI "why this plan" note if enabled
+          // fire-and-forget: attach cheap AI "why this plan" + per-phase notes if enabled
           apiPlanSummary(planSummaryContext(plan))
             .then((r) => {
-              if (r.enabled && r.text) applyPlan({ ...plan, coachSummary: r.text });
+              if (r.enabled && (r.text || (r.phases && Object.keys(r.phases).length))) {
+                applyPlan({ ...plan, coachSummary: r.text || plan.coachSummary, phaseNotes: r.phases });
+              }
             })
             .catch(() => {});
         }}
@@ -273,23 +284,58 @@ type StepProps = { draft: Draft; set: React.Dispatch<React.SetStateAction<Draft>
 // ---------------- steps ----------------
 
 function RaceStep({ draft, set }: StepProps) {
+  const [mode, setMode] = useState<"distance" | "event">(draft.raceId ? "event" : "distance");
   const races: { key: RaceType; name: string; d: string }[] = [
     { key: "olympic", name: "Olympic", d: "1.5 km swim · 40 km bike · 10 km run" },
     { key: "half", name: "Ironman 70.3", d: "1.9 km swim · 90 km bike · 21.1 km run" },
     { key: "full", name: "Full Ironman", d: "3.8 km swim · 180 km bike · 42.2 km run" },
     { key: "custom", name: "Custom distance", d: "Set your own swim / bike / run" },
   ];
+
+  // pick a bare distance → drop any real-event identity
+  const pickDistance = (key: RaceType) =>
+    set((d) => ({ ...d, raceType: key, raceId: undefined, raceName: undefined, raceLocation: undefined }));
+
+  // pick a real event → set its category + pre-fill the date
+  const pickEvent = (r: CatalogRace) =>
+    set((d) => ({
+      ...d,
+      raceType: r.distance,
+      raceDateISO: r.dateISO,
+      raceId: r.id,
+      raceName: r.name,
+      raceLocation: r.location,
+    }));
+
   return (
     <div>
       <Head title="What are you training for?" sub="Pick your race — this shapes the whole plan." />
-      <div className="flex flex-col gap-2.5">
-        {races.map((r) => (
-          <Card key={r.key} active={draft.raceType === r.key} onClick={() => set((d) => ({ ...d, raceType: r.key }))}>
-            <div className="font-display text-lg font-semibold">{r.name}</div>
-            <div className="text-sm text-muted">{r.d}</div>
-          </Card>
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        {(["distance", "event"] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className={`rounded-full py-2.5 text-center font-display text-sm font-semibold transition ${
+              mode === m ? "accent-gradient text-[#1a0d06]" : "border border-line bg-surface-2 text-muted"
+            }`}
+          >
+            {m === "distance" ? "By distance" : "Real race"}
+          </button>
         ))}
       </div>
+
+      {mode === "distance" ? (
+        <div className="flex flex-col gap-2.5">
+          {races.map((r) => (
+            <Card key={r.key} active={draft.raceType === r.key && !draft.raceId} onClick={() => pickDistance(r.key)}>
+              <div className="font-display text-lg font-semibold">{r.name}</div>
+              <div className="text-sm text-muted">{r.d}</div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <RaceCatalogPicker selectedId={draft.raceId} onPick={pickEvent} />
+      )}
     </div>
   );
 }
@@ -337,6 +383,12 @@ function DateStep({ draft, set }: StepProps) {
         value={draft.raceDateISO ?? ""}
         onChange={(e) => set((d) => ({ ...d, raceDateISO: e.target.value }))}
       />
+      {draft.raceName && (
+        <p className="mt-3 text-sm text-muted">
+          Pre-filled from <span className="font-semibold text-foreground">{draft.raceName}</span> — confirm it against the
+          official race page, then adjust if needed.
+        </p>
+      )}
       {draft.raceDateISO && (
         <p className="mt-3 text-sm text-muted">
           Racing on <span className="font-semibold text-foreground">{fmtFullDate(draft.raceDateISO)}</span>.
@@ -765,19 +817,21 @@ function InjuriesStep({ draft, set }: StepProps) {
 
 function ReviewStep({ draft, total }: { draft: Draft; total: number }) {
   const race =
-    draft.raceType === "custom"
+    draft.raceName ??
+    (draft.raceType === "custom"
       ? draft.custom.name
       : draft.raceType === "olympic"
       ? "Olympic"
       : draft.raceType === "half"
       ? "Ironman 70.3"
-      : "Full Ironman";
+      : "Full Ironman");
   const rows: [string, string][] = [
     ["Race", race],
     ["Date", draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
     ["Level", draft.level ?? "—"],
     ["Weekly sessions", `${total} · 🏊 ${draft.perSport.swim} · 🚴 ${draft.perSport.bike} · 🏃 ${draft.perSport.run}`],
   ];
+  if (draft.raceLocation) rows.push(["Location", draft.raceLocation]);
   if (draft.strength.enabled) rows.push(["Strength", `${draft.strength.daysPerWeek}×/wk · ${draft.strength.split.replace("-", " / ")}`]);
   if (draft.focusDiscipline) rows.push(["Focus", draft.focusDiscipline]);
   if (draft.runPR) rows.push(["Run PR", draft.runPR.label]);
