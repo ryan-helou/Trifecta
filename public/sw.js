@@ -1,7 +1,10 @@
 // AmaTri service worker — makes the app installable and usable offline.
-const CACHE = "amatri-v1";
+// The cache name carries a per-build id (stamped by scripts/stamp-sw.mjs at
+// build time) so the browser sees this file change on every deploy and swaps in
+// the new worker — that's what lets the installed app actually update.
+const CACHE = "amatri-__BUILD_ID__";
 
-self.addEventListener("install", (event) => {
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
