@@ -54,3 +54,28 @@ export async function apiCoach(context: string, question: string) {
   });
   return data as { enabled?: boolean; text?: string };
 }
+
+export interface ParsedInjury {
+  area: string;
+  disciplines: string[];
+  severity: string;
+  note?: string;
+}
+
+/** Ask the cheap AI to turn free-text injury notes into structured constraints. */
+export async function apiIntake(text: string) {
+  const { data } = await jsonFetch("/api/intake", {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+  return data as { enabled?: boolean; injuries?: ParsedInjury[] };
+}
+
+/** Ask the cheap AI for a short "why this plan" note. */
+export async function apiPlanSummary(context: string) {
+  const { data } = await jsonFetch("/api/plan-summary", {
+    method: "POST",
+    body: JSON.stringify({ context }),
+  });
+  return data as { enabled?: boolean; text?: string };
+}

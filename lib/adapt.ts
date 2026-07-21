@@ -263,16 +263,35 @@ export function complianceOf(w: Workout): ComplianceColor {
   }
 }
 
+const DOW = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+function raceLabel(plan: Plan): string {
+  const p = plan.profile;
+  return p.raceType === "custom"
+    ? p.custom?.name || "custom race"
+    : p.raceType === "olympic"
+    ? "Olympic-distance triathlon"
+    : p.raceType === "half"
+    ? "Ironman 70.3"
+    : "full Ironman";
+}
+
 export function summarizeForCoach(plan: Plan, todayISO: string): string {
-  const dist = plan.profile.raceType;
+  const p = plan.profile;
   const wk = plan.weeks.find((week) => {
     const s = fromISO(week.startDate).getTime();
     return fromISO(todayISO).getTime() >= s && fromISO(todayISO).getTime() < s + 7 * 86400000;
   });
   const today = Object.values(plan.workouts).filter((w) => w.date === todayISO);
   const lines: string[] = [];
-  lines.push(`Race: ${plan.profile.raceType} on ${plan.raceDateISO}. Level: ${plan.profile.level}.`);
+  lines.push(`Race: ${raceLabel(plan)} on ${plan.raceDateISO}. Level: ${p.level}.`);
   if (wk) lines.push(`Current week: ${wk.label} (${wk.phase} phase), target ${wk.targetHours}h. Focus: ${wk.focus}`);
+  if (p.injuries?.length) {
+    lines.push(
+      `Working around: ${p.injuries.map((i) => `${i.area} (${i.severity}, ${i.disciplines.join("/")})`).join("; ")}.`,
+    );
+  }
+  if (p.strength?.enabled) lines.push(`Strength: ${p.strength.daysPerWeek}×/week, ${p.strength.split} split.`);
   if (today.length) {
     lines.push(
       `Today's sessions: ${today
@@ -282,5 +301,45 @@ export function summarizeForCoach(plan: Plan, todayISO: string): string {
   } else {
     lines.push("Today is a rest day.");
   }
+  return lines.join("\n");
+}
+
+/** A compact description of the athlete + finished plan for the "why this plan" note. */
+export function planSummaryContext(plan: Plan): string {
+  const p = plan.profile;
+  const lines: string[] = [];
+  lines.push(`Race: ${raceLabel(plan)} on ${plan.raceDateISO}. Level: ${p.level}.`);
+  lines.push(
+    `Plan length: ${plan.totalWeeks} weeks${
+      plan.compressed ? " (compressed — race is soon)" : plan.delayedStart ? " (starts later — race is far out)" : ""
+    }.`,
+  );
+  const byPhase: Record<string, number> = {};
+  for (const w of plan.weeks) byPhase[w.phase] = (byPhase[w.phase] ?? 0) + 1;
+  lines.push(
+    `Phase weeks — base ${byPhase.base ?? 0}, build ${byPhase.build ?? 0}, peak ${byPhase.peak ?? 0}, taper ${byPhase.taper ?? 0}.`,
+  );
+  const peak = plan.weeks.reduce((m, w) => Math.max(m, w.targetHours), 0);
+  lines.push(`Peak training week ~${peak}h.`);
+  if (p.perSport) lines.push(`Weekly sessions: swim ${p.perSport.swim}, bike ${p.perSport.bike}, run ${p.perSport.run}.`);
+  else lines.push(`About ${p.workoutsPerWeek} sessions a week.`);
+  if (p.focusDiscipline) lines.push(`Prioritising their ${p.focusDiscipline}.`);
+  if (p.strength?.enabled) lines.push(`Strength: ${p.strength.daysPerWeek}×/week, ${p.strength.split} split.`);
+  else lines.push("No strength training.");
+  if (p.restDayPreference != null) lines.push(`Preferred rest day: ${DOW[p.restDayPreference]}.`);
+  if (p.weeklyHoursCap) lines.push(`Weekly hours capped at ${p.weeklyHoursCap}.`);
+  if (p.injuries?.length) {
+    lines.push(
+      `Injuries to work around: ${p.injuries
+        .map((i) => `${i.area} (${i.severity}, affects ${i.disciplines.join("/")})`)
+        .join("; ")}.`,
+    );
+  }
+  if (p.blackouts?.length) {
+    lines.push(
+      `Days off: ${p.blackouts.map((b) => `${b.startISO}→${b.endISO}${b.label ? ` (${b.label})` : ""}`).join("; ")}.`,
+    );
+  }
+  if (p.intakeNotes) lines.push(`Athlete's own note: ${p.intakeNotes}`);
   return lines.join("\n");
 }

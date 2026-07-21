@@ -108,6 +108,47 @@ export interface SwimPR {
   label: string;
 }
 
+// ---- deep personalization ----
+
+// per-sport sessions/week the athlete wants (overrides the implicit sport mix)
+export interface SportFreq {
+  swim: number;
+  bike: number;
+  run: number;
+}
+
+export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "core";
+
+export interface StrengthPref {
+  enabled: boolean;
+  daysPerWeek: number; // 0–4 gym sessions a week
+  split: StrengthSplit;
+}
+
+export type InjurySeverity = "niggle" | "moderate" | "severe";
+
+// A niggle/injury to train around. `disciplines` are the sports it aggravates.
+export interface Injury {
+  id: string;
+  area: string; // e.g. "left knee", "right shoulder"
+  disciplines: Discipline[]; // swim | bike | run it affects
+  severity: InjurySeverity;
+  note?: string;
+}
+
+// A stretch of days the athlete can't train (vacation, work, life).
+export interface DateRange {
+  startISO: string; // yyyy-mm-dd
+  endISO: string; // yyyy-mm-dd (inclusive)
+  label?: string;
+}
+
+export interface EquipmentAccess {
+  pool?: boolean;
+  trainer?: boolean; // indoor bike trainer
+  gym?: boolean;
+}
+
 export interface Profile {
   username: string;
   raceType: RaceType;
@@ -127,6 +168,13 @@ export interface Profile {
   restDayPreference?: number; // 0=Mon … 6=Sun, a day they'd like off
   focusDiscipline?: Discipline; // a limiter they want to bias toward
   unitPreference?: Unit; // km vs mi for distance/pace display (default metric)
+  // ---- deep personalization (all optional; the engine honours them) ----
+  perSport?: SportFreq; // explicit swim/bike/run sessions per week
+  strength?: StrengthPref; // resistance training preference
+  injuries?: Injury[]; // niggles to train around
+  blackouts?: DateRange[]; // days off (vacation, work travel)
+  equipment?: EquipmentAccess; // what the athlete can actually access
+  intakeNotes?: string; // free-text "anything else" the athlete told us
   createdAtISO: string;
 }
 
@@ -168,6 +216,8 @@ export interface Plan {
   /** true when race is further out than the max plan; training starts later */
   delayedStart: boolean;
   notice?: string;
+  /** optional AI-written "why this plan" note (cheap Haiku call; degrades away) */
+  coachSummary?: string;
 }
 
 // what we persist per user
