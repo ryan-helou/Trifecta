@@ -229,28 +229,66 @@ body {
 .animate-rise { animation: rise .5s ease both; }
 
 /* ---------- forge auth hero ---------- */
-/* molten heat rising from the forge floor at the bottom of the screen */
+/* the crucible glow — heat rising from the forge floor, licking up behind the
+   payoff word so the headline sits inside the fire */
 .forge-floor {
   position: absolute;
   left: 50%;
-  bottom: -12%;
+  bottom: -14%;
   transform: translateX(-50%);
-  width: 150%;
-  height: 62%;
+  width: 160%;
+  height: 74%;
   pointer-events: none;
   background:
-    radial-gradient(58% 100% at 50% 100%, rgba(255, 61, 46, 0.30), transparent 70%),
-    radial-gradient(85% 100% at 50% 100%, rgba(255, 106, 44, 0.20), transparent 74%);
-  filter: blur(6px);
-  animation: forge-ignite 900ms ease-out both;
+    radial-gradient(40% 76% at 50% 100%, rgba(255, 244, 214, 0.11), transparent 60%),
+    radial-gradient(55% 100% at 50% 100%, rgba(255, 61, 46, 0.34), transparent 68%),
+    radial-gradient(92% 100% at 50% 100%, rgba(255, 106, 44, 0.22), transparent 76%);
+  filter: blur(7px);
+  animation: forge-ignite 1000ms ease-out both;
 }
 @keyframes forge-ignite {
   from { opacity: 0; transform: translate(-50%, 14%); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* the auth card's forged top edge */
-.forge-card { box-shadow: 0 -18px 60px -30px rgba(255, 90, 31, 0.35); }
+/* fine forge grain — tactile texture over the atmosphere, kills gradient
+   banding. Sits above the glow/embers but below the content (crisp text). */
+.noise-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* forged-metal headline: cool steel word heated to a molten payoff */
+.heat-steel {
+  background: linear-gradient(178deg, #c2ccdb 0%, #f3f7fc 44%, #e79a63 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.heat-molten {
+  background: linear-gradient(180deg, #ffb277 0%, #ff6a2c 52%, #ff2f1c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* the payoff radiates heat — a slow breathing glow */
+.heat-payoff { animation: heat-breathe 3.8s ease-in-out infinite; will-change: filter; }
+@keyframes heat-breathe {
+  0%, 100% { filter: drop-shadow(0 3px 20px rgba(255, 74, 30, 0.22)); }
+  50% { filter: drop-shadow(0 3px 30px rgba(255, 96, 40, 0.42)); }
+}
+
+/* the auth card — forged top edge + glassy inner highlight, molten under-glow */
+.forge-card {
+  box-shadow:
+    0 -18px 60px -30px rgba(255, 90, 31, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
 .forge-edge {
   position: absolute;
   left: 1.25rem;
@@ -261,7 +299,7 @@ body {
   opacity: 0.7;
 }
 
-/* the hammer strike that ignites the payoff word */
+/* the hammer strike that ignites the payoff word on load */
 @keyframes forge-strike {
   0%, 100% { filter: brightness(1); }
   35% { filter: brightness(1.9) drop-shadow(0 0 18px rgba(255, 138, 76, 0.55)); }
@@ -272,6 +310,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .forge-strike,
   .forge-floor,
+  .heat-payoff,
   .animate-rise,
   .animate-fade-up,
   .animate-pop,
