@@ -219,11 +219,21 @@ export async function applyActivityToUser(store: Store, userId: string, a: Strav
   }
 
   const done = setStatus(plan, match.workoutId, "done");
+  const acts = actualsFromActivity(a);
+  const target = done.workouts[match.workoutId];
   const withActuals = {
     ...done,
     workouts: {
       ...done.workouts,
-      [match.workoutId]: { ...done.workouts[match.workoutId], actuals: actualsFromActivity(a) },
+      [match.workoutId]: {
+        ...target,
+        actuals: acts,
+        // Also populate the flat fields the credit/stats/UI read (creditedSeconds,
+        // Progress, WorkoutDetail) — otherwise a device-synced session counts only
+        // its planned estimate and the real duration/distance from Strava are lost.
+        actualDurationSec: acts.durationSec ?? target.actualDurationSec,
+        actualDistanceM: acts.distanceM ?? target.actualDistanceM,
+      },
     },
   };
   await store.setData(userId, { ...data, plan: withActuals, updatedAtISO: new Date().toISOString() });
