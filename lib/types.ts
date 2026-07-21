@@ -97,8 +97,8 @@ export interface Profile {
   custom?: { swimM: number; bikeM: number; runM: number; name?: string };
   raceDateISO: string; // yyyy-mm-dd
   level: Level;
-  // available training days per week (3–7)
-  daysPerWeek: number;
+  // total workouts per week the athlete wants (1–21; the high end stacks doubles)
+  workoutsPerWeek: number;
   // optional performance references (drive the paces)
   runPR?: RunPR;
   swimPR?: SwimPR;

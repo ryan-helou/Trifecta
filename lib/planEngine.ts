@@ -130,12 +130,27 @@ interface Slot {
   build: (min: number) => Draft;
 }
 
+// The athlete picks a TOTAL number of workouts per week. 1 = a single key
+// session; the high end stacks multiple sessions on a day ("doubles"/"triples").
+export const MIN_WORKOUTS = 1;
+export const MAX_WORKOUTS = 21;
+
+export function clampWorkouts(n: number | undefined): number {
+  const v = Math.round(Number(n) || 6);
+  return Math.max(MIN_WORKOUTS, Math.min(MAX_WORKOUTS, v));
+}
+
 function trainingDays(p: Profile): Set<number> {
-  const D = Math.max(3, Math.min(7, p.daysPerWeek || 6));
+  // The days that carry a session in a "normal" (≤7) week — used by race week
+  // to decide where to place light openers.
+  const N = Math.min(clampWorkouts(p.workoutsPerWeek), 7);
   let pri = [5, 6, 1, 3, 2, 4, 0]; // Sat, Sun, Tue, Thu, Wed, Fri, Mon
   if (p.restDayPreference != null) pri = pri.filter((d) => d !== p.restDayPreference);
-  return new Set(pri.slice(0, D));
+  return new Set(pri.slice(0, N));
 }
+
+// A session before it has been assigned to a day.
+type Role = Omit<Slot, "day"> & { prefDay: number };
 
 function pickWeekSlots(
   ctx: BuildCtx,
@@ -145,161 +160,95 @@ function pickWeekSlots(
   weekIndex: number,
   isRecovery: boolean,
 ): Slot[] {
-  const days = trainingDays(p);
-  const slots: Slot[] = [];
+  const recover = isRecovery;
   const even = weekIndex % 2 === 0;
   const runCap = LONG_RUN_CAP[cat];
   const rideCap = LONG_RIDE_CAP[cat];
-  const has = (d: number) => days.has(d);
+  const runOff = phase === "peak" ? (cat === "olympic" ? 20 : 30) : cat === "olympic" ? 12 : 18;
 
-  const recover = isRecovery;
+  // How many workouts this week — the athlete's choice, eased on light weeks.
+  let N = clampWorkouts(p.workoutsPerWeek);
+  if (isRecovery) N = Math.max(1, Math.round(N * 0.75));
+  if (phase === "taper") N = Math.min(N, 8);
 
-  // ---- weekend long sessions ----
-  const satTrained = has(5);
-  const sunTrained = has(6);
+  // ---- phase-aware session builders (same periodization rules as before) ----
+  const longAnchor: Role =
+    phase === "build" || phase === "peak"
+      ? { discipline: "brick", hard: !recover, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap + runOff, prefDay: 5,
+          build: (min) => W.brick(ctx, Math.max(30, min - runOff), runOff, phase === "peak") }
+      : { discipline: "bike", hard: false, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap, prefDay: 5,
+          build: (min) => W.bikeLong(ctx, min, phase !== "base" && !recover) };
 
-  // Long ride / brick — Saturday (fallback Sunday)
-  const bigDay = satTrained ? 5 : sunTrained ? 6 : [...days][0];
-  if (satTrained || sunTrained) {
-    if (phase === "build" || phase === "peak") {
-      const runOff = phase === "peak" ? (cat === "olympic" ? 20 : 30) : cat === "olympic" ? 12 : 18;
-      slots.push({
-        day: bigDay,
-        discipline: "brick",
-        hard: !recover,
-        scalable: true,
-        weight: 3.0,
-        minMin: 45,
-        maxMin: rideCap + runOff,
-        build: (min) => W.brick(ctx, Math.max(30, min - runOff), runOff, phase === "peak"),
-      });
-    } else {
-      slots.push({
-        day: bigDay,
-        discipline: "bike",
-        hard: false,
-        scalable: true,
-        weight: 3.0,
-        minMin: 45,
-        maxMin: rideCap,
-        build: (min) => W.bikeLong(ctx, min, phase !== "base" && !recover),
-      });
-    }
-  }
+  const longRun: Role = { discipline: "run", hard: false, scalable: true, weight: 2.2, minMin: 30, maxMin: runCap, prefDay: 6,
+    build: (min) => W.runLong(ctx, min, phase === "peak" && !recover) };
 
-  // Long run — the weekend day not taken by the long ride/brick
-  const longRunDay = [6, 5].find((d) => has(d) && d !== bigDay) ?? null;
-  if (longRunDay != null && has(longRunDay)) {
-    slots.push({
-      day: longRunDay,
-      discipline: "run",
-      hard: false,
-      scalable: true,
-      weight: 2.2,
-      minMin: 30,
-      maxMin: runCap,
-      build: (min) => W.runLong(ctx, min, phase === "peak" && !recover),
-    });
-  }
+  const swim1: Role = swim(2, () =>
+    phase === "base" || recover ? W.swimTechnique(ctx)
+    : phase === "peak" ? W.swimOpenWater(ctx)
+    : phase === "taper" ? W.swimRecovery(ctx, 1000)
+    : W.swimThreshold(ctx), 1.0);
 
-  // ---- midweek quality: run (Tue) ----
-  if (has(1)) {
-    if (phase === "base" || recover) {
-      slots.push(quality(1, "run", false, (min) => W.runEasy(ctx, min), 1.2, 25, 70, true));
-    } else if (phase === "taper") {
-      slots.push(quality(1, "run", true, () => W.runThreshold(ctx, 45), 1.1, 30, 50));
-    } else {
-      slots.push(
-        even
-          ? quality(1, "run", true, () => W.runThreshold(ctx), 1.3, 45, 65)
-          : quality(1, "run", true, () => W.runVO2(ctx), 1.3, 45, 60),
-      );
-    }
-  }
+  const bikeQuality: Role =
+    phase === "base" || recover
+      ? quality(3, "bike", false, (min) => W.bikeEndurance(ctx, min), 1.4, 40, 90, true)
+      : phase === "taper"
+      ? quality(3, "bike", true, () => W.bikeSweetSpot(ctx, 55), 1.3, 40, 60)
+      : quality(3, "bike", true, even ? () => W.bikeThreshold(ctx) : () => W.bikeSweetSpot(ctx), 1.5, 55, 85);
 
-  // ---- midweek quality: bike (Thu) ----
-  if (has(3)) {
-    if (phase === "base" || recover) {
-      slots.push(quality(3, "bike", false, (min) => W.bikeEndurance(ctx, min), 1.4, 40, 90, true));
-    } else if (phase === "taper") {
-      slots.push(quality(3, "bike", true, () => W.bikeSweetSpot(ctx, 55), 1.3, 40, 60));
-    } else {
-      slots.push(
-        even
-          ? quality(3, "bike", true, () => W.bikeThreshold(ctx), 1.5, 55, 80)
-          : quality(3, "bike", true, () => W.bikeSweetSpot(ctx), 1.5, 55, 85),
-      );
-    }
-  }
+  const runQuality: Role =
+    phase === "base" || recover
+      ? quality(1, "run", false, (min) => W.runEasy(ctx, min), 1.2, 25, 70, true)
+      : phase === "taper"
+      ? quality(1, "run", true, () => W.runThreshold(ctx, 45), 1.1, 30, 50)
+      : quality(1, "run", true, even ? () => W.runThreshold(ctx) : () => W.runVO2(ctx), 1.3, 45, 65);
 
-  // ---- swims: Wed + Fri (a triathlon plan must always swim) ----
-  const swimDays = [2, 4].filter(has);
-  // borrow a free trained day if we're short
-  if (swimDays.length < 2) {
-    for (const d of [0, 4, 2, 1]) {
-      if (has(d) && !swimDays.includes(d) && !slots.some((s) => s.day === d)) {
-        swimDays.push(d);
-        if (swimDays.length >= 2) break;
-      }
-    }
-  }
-  // still none (3–4 day athletes): double a swim onto the lightest quality day
-  if (swimDays.length === 0 && days.size > 0) {
-    const dayLoad = new Map<number, number>();
-    for (const d of days) dayLoad.set(d, 0);
-    for (const s of slots) dayLoad.set(s.day, (dayLoad.get(s.day) ?? 0) + s.weight);
-    const lightest = [...dayLoad.entries()].sort((a, b) => a[1] - b[1])[0][0];
-    swimDays.push(lightest);
-  }
-  swimDays.forEach((d, i) => {
-    if (phase === "base" || recover) {
-      slots.push(swimSlot(d, i === 0 ? () => W.swimTechnique(ctx) : (min) => W.swimEndurance(ctx, distFor(min))));
-    } else if (phase === "peak") {
-      slots.push(swimSlot(d, i === 0 ? () => W.swimOpenWater(ctx) : () => W.swimThreshold(ctx)));
-    } else if (phase === "taper") {
-      slots.push(swimSlot(d, i === 0 ? () => W.swimRecovery(ctx, 1000) : () => W.swimThreshold(ctx)));
-    } else {
-      slots.push(swimSlot(d, i === 0 ? () => W.swimThreshold(ctx) : (min) => W.swimEndurance(ctx, distFor(min))));
-    }
+  const swim2: Role = swim(4, () =>
+    phase === "peak" || phase === "taper" ? W.swimThreshold(ctx) : W.swimEndurance(ctx, 1200), 1.0);
+
+  // easy / aerobic "volume" sessions used to fill higher workout counts
+  const easyRun = (prefDay: number, w = 1.0, maxMin = 60): Role => ({
+    discipline: "run", hard: false, scalable: true, weight: w, minMin: 20, maxMin, prefDay,
+    build: (min) => (recover || phase === "taper" ? W.runRecovery(ctx, Math.min(35, min)) : W.runEasy(ctx, min)),
   });
+  const easyBike = (prefDay: number, w = 1.1, maxMin = 70): Role => ({
+    discipline: "bike", hard: false, scalable: true, weight: w, minMin: 30, maxMin, prefDay,
+    build: (min) => (recover || phase === "taper" ? W.bikeRecovery(ctx, Math.min(45, min)) : W.bikeEndurance(ctx, min)),
+  });
+  const strengthRole = (prefDay: number, w = 0.8, min = 30): Role => ({
+    discipline: "strength", hard: false, scalable: false, weight: w, minMin: min, maxMin: min, prefDay,
+    build: () => W.strength(ctx, recover ? Math.min(25, min) : min),
+  });
+  const easySwim = (prefDay: number, w = 0.8): Role =>
+    swim(prefDay, () => (recover || phase === "taper" ? W.swimRecovery(ctx, 900) : W.swimTechnique(ctx)), w);
 
-  // ---- easy / recovery filler on remaining trained days ----
-  const used = new Set(slots.map((s) => s.day));
-  const free = [...days].filter((d) => !used.has(d)).sort((a, b) => a - b);
-  for (const d of free) {
-    // fill with an easy run or recovery depending on load
-    if (!slots.some((s) => s.day === d && s.discipline === "run")) {
-      slots.push({
-        day: d,
-        discipline: "run",
-        hard: false,
-        scalable: true,
-        weight: 1.0,
-        minMin: 20,
-        maxMin: 60,
-        build: (min) => (recover || phase === "taper" ? W.runRecovery(ctx, Math.min(35, min)) : W.runEasy(ctx, min)),
-      });
-    }
-  }
+  // Priority-ordered catalogue (most valuable first), long enough for 21.
+  // Sessions 1–7 give one-per-day; 8+ stack as doubles/triples, and the tail is
+  // all easy aerobic volume — you add frequency with easy work, not more intensity.
+  const catalogue: Role[] = [
+    longAnchor,               //  1  long ride / brick (Sat)
+    longRun,                  //  2  long run (Sun)
+    swim1,                    //  3  key swim (Wed)
+    bikeQuality,              //  4  bike quality (Thu)
+    runQuality,               //  5  run quality (Tue)
+    swim2,                    //  6  second swim (Fri)
+    easyRun(0, 1.0),          //  7  easy aerobic run (Mon)
+    strengthRole(0),          //  8  strength
+    easyBike(2, 1.2),         //  9  easy aerobic spin
+    easySwim(4, 0.9),         // 10  technique / recovery swim
+    easyRun(3, 0.9, 50),      // 11
+    easyBike(1, 1.0, 60),     // 12
+    strengthRole(4, 0.7, 25), // 13  core / mobility
+    easySwim(2, 0.8),         // 14
+    easyRun(6, 0.8, 45),      // 15
+    easyBike(0, 0.8, 55),     // 16
+    easySwim(5, 0.7),         // 17
+    strengthRole(3, 0.5, 20), // 18  mobility
+    easyRun(1, 0.7, 40),      // 19
+    easyBike(4, 0.7, 50),     // 20
+    easySwim(0, 0.6),         // 21
+  ];
 
-  // ---- strength: double up on the lightest trained day (skip taper/recovery peak) ----
-  const wantStrength = p.daysPerWeek >= 5 && phase !== "taper";
-  if (wantStrength) {
-    // find an easy day to attach strength (prefer Mon or a swim/easy day)
-    const candidate = [0, 4, 2].find((d) => has(d)) ?? [...days][0];
-    slots.push({
-      day: candidate,
-      discipline: "strength",
-      hard: false,
-      scalable: false,
-      weight: 0.8,
-      minMin: 25,
-      maxMin: 40,
-      build: () => W.strength(ctx, recover ? 25 : 30),
-    });
-  }
-
-  return slots;
+  return assignDays(catalogue.slice(0, N), p.restDayPreference);
 
   function quality(
     day: number,
@@ -310,15 +259,52 @@ function pickWeekSlots(
     minMin: number,
     maxMin: number,
     scalable = false,
-  ): Slot {
-    return { day, discipline: disc, hard, scalable, weight, minMin, maxMin, build };
+  ): Role {
+    return { prefDay: day, discipline: disc, hard, scalable, weight, minMin, maxMin, build };
   }
-  function swimSlot(day: number, build: (min: number) => Draft): Slot {
-    return { day, discipline: "swim", hard: false, scalable: false, weight: 1.0, minMin: 30, maxMin: 60, build };
+  function swim(prefDay: number, build: (min: number) => Draft, weight: number): Role {
+    return { prefDay, discipline: "swim", hard: false, scalable: false, weight, minMin: 30, maxMin: 60, build };
   }
-  function distFor(min: number): number {
-    // convert scaled minutes → a swim main-set distance (~1.5 m/s)
-    return Math.max(600, Math.round((min * 60 * 1.3) / 100) * 100);
+}
+
+// Spread the chosen sessions across the 7 days: fill empty days first, then
+// stack (up to 3/day), never two hard sessions on one day, keep sports apart,
+// stay near each session's preferred day, and honour a rest day when count allows.
+function assignDays(roles: Role[], restDay?: number): Slot[] {
+  const day: { hard: boolean; disc: Discipline }[][] = Array.from({ length: 7 }, () => []);
+  const out: Slot[] = [];
+  for (const r of roles) {
+    let best = 0;
+    let bestScore = -Infinity;
+    for (let d = 0; d < 7; d++) {
+      const s = score(d, r);
+      if (s > bestScore) { bestScore = s; best = d; }
+    }
+    day[best].push({ hard: r.hard, disc: r.discipline });
+    out.push({
+      day: best,
+      discipline: r.discipline,
+      hard: r.hard,
+      scalable: r.scalable,
+      weight: r.weight,
+      minMin: r.minMin,
+      maxMin: r.maxMin,
+      build: r.build,
+    });
+  }
+  return out;
+
+  function score(d: number, r: Role): number {
+    const cur = day[d];
+    if (cur.length >= 3) return -1e6; // a day holds at most three sessions
+    let s = -cur.length * 25; // spread across days before doubling up
+    if (restDay != null && d === restDay) s -= 1000; // keep the rest day clear unless every other day is full
+    if (r.hard && cur.some((x) => x.hard)) s -= 400; // never two hard sessions a day
+    if (cur.some((x) => x.disc === r.discipline)) s -= 30; // avoid same-sport doubles
+    const dist = Math.min(Math.abs(d - r.prefDay), 7 - Math.abs(d - r.prefDay));
+    s -= dist * 6; // stay near the preferred day (week wraps)
+    if (d === r.prefDay) s += cur.length === 0 ? 100 : 20;
+    return s;
   }
 }
 
@@ -495,13 +481,14 @@ function buildNormalWeek(
     built.set(s, s.build(min));
   }
 
-  // emit workouts, one per (day, discipline). Days may hold a double (e.g. strength).
-  const perDayCount: Record<number, number> = {};
+  // emit workouts. A day can hold up to three sessions, so ids are disambiguated.
+  const idSeq: Record<string, number> = {};
   for (const s of slots) {
     const draft = built.get(s)!;
     const day = s.day;
-    perDayCount[day] = (perDayCount[day] ?? 0) + 1;
-    const id = `w-${weekIndex}-${day}-${s.discipline}`;
+    const idBase = `w-${weekIndex}-${day}-${s.discipline}`;
+    const seq = (idSeq[idBase] = (idSeq[idBase] ?? 0) + 1);
+    const id = seq > 1 ? `${idBase}-${seq}` : idBase;
     const date = addDays(week.startDate, day);
     const wk: Workout = {
       id,
@@ -521,8 +508,10 @@ function buildNormalWeek(
     out[id] = wk;
     week.workoutIds.push(id);
   }
-  // sort workoutIds by day then discipline
-  week.workoutIds.sort((a, b) => out[a].dayIndex - out[b].dayIndex);
+  // sort by day, then longest session first within a day (the "main" one on top)
+  week.workoutIds.sort(
+    (a, b) => out[a].dayIndex - out[b].dayIndex || out[b].estDurationSec - out[a].estDurationSec,
+  );
 }
 
 function buildRaceWeek(

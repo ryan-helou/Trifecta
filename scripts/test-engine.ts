@@ -10,7 +10,7 @@ function mk(over: Partial<Profile>): Profile {
     raceType: "half",
     raceDateISO: race.toISOString().slice(0, 10),
     level: "intermediate",
-    daysPerWeek: 6,
+    workoutsPerWeek: 6,
     createdAtISO: new Date().toISOString(),
     ...over,
   };
@@ -23,13 +23,20 @@ function raceInWeeks(n: number): string {
 }
 
 const scenarios: { name: string; p: Profile }[] = [
-  { name: "70.3 intermediate 6d 20wk", p: mk({ raceType: "half", raceDateISO: raceInWeeks(20), daysPerWeek: 6, runPR: { distanceM: 21097, timeSec: 5700, label: "HM" }, swimPR: { distanceM: 400, timeSec: 400, label: "400" }, ftp: 230 }) },
-  { name: "Ironman beginner 5d 28wk", p: mk({ raceType: "full", level: "beginner", raceDateISO: raceInWeeks(28), daysPerWeek: 5 }) },
-  { name: "Olympic advanced 7d 12wk", p: mk({ raceType: "olympic", level: "advanced", raceDateISO: raceInWeeks(12), daysPerWeek: 7 }) },
-  { name: "Olympic beginner 3d 10wk", p: mk({ raceType: "olympic", level: "beginner", raceDateISO: raceInWeeks(10), daysPerWeek: 3 }) },
-  { name: "70.3 compressed 6wk", p: mk({ raceType: "half", raceDateISO: raceInWeeks(6), daysPerWeek: 6 }) },
-  { name: "Ironman delayed 40wk", p: mk({ raceType: "full", raceDateISO: raceInWeeks(40), daysPerWeek: 6 }) },
-  { name: "Custom 4d", p: mk({ raceType: "custom", custom: { swimM: 1000, bikeM: 60000, runM: 15000, name: "Local Tri" }, raceDateISO: raceInWeeks(16), daysPerWeek: 4 }) },
+  { name: "70.3 intermediate 6w 20wk", p: mk({ raceType: "half", raceDateISO: raceInWeeks(20), workoutsPerWeek: 6, runPR: { distanceM: 21097, timeSec: 5700, label: "HM" }, swimPR: { distanceM: 400, timeSec: 400, label: "400" }, ftp: 230 }) },
+  { name: "Ironman beginner 5w 28wk", p: mk({ raceType: "full", level: "beginner", raceDateISO: raceInWeeks(28), workoutsPerWeek: 5 }) },
+  { name: "Olympic advanced 7w 12wk", p: mk({ raceType: "olympic", level: "advanced", raceDateISO: raceInWeeks(12), workoutsPerWeek: 7 }) },
+  { name: "Olympic beginner 3w 10wk", p: mk({ raceType: "olympic", level: "beginner", raceDateISO: raceInWeeks(10), workoutsPerWeek: 3 }) },
+  { name: "70.3 compressed 6wk", p: mk({ raceType: "half", raceDateISO: raceInWeeks(6), workoutsPerWeek: 6 }) },
+  { name: "Ironman delayed 40wk", p: mk({ raceType: "full", raceDateISO: raceInWeeks(40), workoutsPerWeek: 6 }) },
+  { name: "Custom 4w", p: mk({ raceType: "custom", custom: { swimM: 1000, bikeM: 60000, runM: 15000, name: "Local Tri" }, raceDateISO: raceInWeeks(16), workoutsPerWeek: 4 }) },
+  // range extremes for the new 1–21 workouts/week model
+  { name: "Minimal 1/wk", p: mk({ raceType: "olympic", raceDateISO: raceInWeeks(16), workoutsPerWeek: 1 }) },
+  { name: "Light 2/wk", p: mk({ raceType: "olympic", raceDateISO: raceInWeeks(16), workoutsPerWeek: 2 }) },
+  { name: "High 10/wk", p: mk({ raceType: "full", raceDateISO: raceInWeeks(24), workoutsPerWeek: 10 }) },
+  { name: "Doubles 14/wk", p: mk({ raceType: "full", level: "advanced", raceDateISO: raceInWeeks(24), workoutsPerWeek: 14 }) },
+  { name: "Max 21/wk", p: mk({ raceType: "full", level: "elite", raceDateISO: raceInWeeks(28), workoutsPerWeek: 21 }) },
+  { name: "Rest-day pref 8/wk (Mon off)", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), workoutsPerWeek: 8, restDayPreference: 0 }) },
 ];
 
 let problems = 0;
@@ -53,6 +60,23 @@ for (const { name, p } of scenarios) {
       if (!w.segments || w.segments.length === 0) { console.log(`  !! no segments ${id}`); problems++; }
       wkHours += (w.estDurationSec || 0) / 3600;
       days.add(w.dayIndex);
+    }
+    // structural checks for the workouts/week model
+    const perDay = new Map<number, number>();
+    const hardPerDay = new Map<number, number>();
+    const restPref = p.restDayPreference;
+    for (const id of wk.workoutIds) {
+      const w = plan.workouts[id];
+      if (!w) continue;
+      perDay.set(w.dayIndex, (perDay.get(w.dayIndex) ?? 0) + 1);
+      if ((w.primaryZone ?? 0) >= 4) hardPerDay.set(w.dayIndex, (hardPerDay.get(w.dayIndex) ?? 0) + 1);
+    }
+    for (const [d, c] of perDay) if (c > 3) { console.log(`  !! ${wk.label}: ${c} sessions on day ${d} (>3)`); problems++; }
+    for (const [d, c] of hardPerDay) if (c > 1) { console.log(`  !! ${wk.label}: ${c} hard (Z4+) on day ${d}`); problems++; }
+    if (new Set(wk.workoutIds).size !== wk.workoutIds.length) { console.log(`  !! ${wk.label}: duplicate workout ids`); problems++; }
+    // rest-day preference honoured whenever the other 6 days can hold the load (≤18)
+    if (restPref != null && !wk.isRaceWeek && wk.workoutIds.length <= 18 && perDay.get(restPref)) {
+      console.log(`  !! ${wk.label}: session on preferred rest day ${restPref}`); problems++;
     }
   }
   console.log(`  phases: ${JSON.stringify(phaseCounts)}  totalWorkouts=${totalWk}`);

@@ -22,7 +22,7 @@ export function ProfileTab() {
     ["Race", dist.name],
     ["Date", fmtFullDate(profile.raceDateISO)],
     ["Level", profile.level],
-    ["Days / week", String(profile.daysPerWeek)],
+    ["Workouts / week", String(profile.workoutsPerWeek)],
   ];
 
   return (
