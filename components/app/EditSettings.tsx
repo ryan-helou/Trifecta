@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthPref, StrengthSplit } from "@/lib/types";
-import { generatePlan } from "@/lib/planEngine";
+import { generatePlan, defaultSportSplit } from "@/lib/planEngine";
 import { rebuildFromToday } from "@/lib/adapt";
 import { apiIntake, ParsedInjury } from "@/lib/api";
 import { prLabel, RUN_PR_OPTIONS, SWIM_PR_OPTIONS, BIKE_PR_OPTIONS } from "@/lib/paces";
@@ -19,9 +19,17 @@ function parseTime(str: string): number | null {
   const s = str.trim();
   if (!s) return null;
   const parts = s.split(":").map((x) => Number(x));
-  if (parts.some((x) => isNaN(x))) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.some((x) => isNaN(x) || x < 0)) return null; // reject blanks and negatives
+  if (parts.length === 3) {
+    const [h, m, sec] = parts;
+    if (m >= 60 || sec >= 60) return null; // a real clock: minutes/seconds < 60
+    return h * 3600 + m * 60 + sec;
+  }
+  if (parts.length === 2) {
+    const [m, sec] = parts;
+    if (sec >= 60) return null; // reject "2:90"
+    return m * 60 + sec;
+  }
   if (parts.length === 1) return parts[0] * 60;
   return null;
 }
@@ -74,7 +82,9 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [raceLocation, setRaceLocation] = useState<string | undefined>(profile.raceLocation);
   const [showCatalog, setShowCatalog] = useState(false);
   const [level, setLevel] = useState<Level>(profile.level);
-  const [perSport, setPerSport] = useState(profile.perSport ?? { swim: 2, bike: 2, run: 2 });
+  // Seed from the engine's derived split when the athlete has no explicit per-sport
+  // counts — otherwise opening + saving silently rewrites their weekly volume to 2/2/2.
+  const [perSport, setPerSport] = useState(profile.perSport ?? defaultSportSplit(profile));
   const [strength, setStrength] = useState<StrengthPref>(profile.strength ?? { enabled: false, daysPerWeek: 2, split: "full" });
   const [restDay, setRestDay] = useState<number | undefined>(profile.restDayPreference);
   const [ftp, setFtp] = useState(profile.ftp);
@@ -509,7 +519,7 @@ function NumIn({ label, value, onChange }: { label: string; value?: number; onCh
         inputMode="numeric"
         value={value ?? ""}
         placeholder="—"
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+        onChange={(e) => { const n = Number(e.target.value); onChange(e.target.value !== "" && n > 0 ? n : undefined); }}
       />
     </label>
   );

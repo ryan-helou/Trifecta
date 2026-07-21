@@ -1,17 +1,19 @@
 "use client";
 
 import { Phase, Plan, Week, Workout } from "@/lib/types";
-import { daysBetween, fromISO } from "@/lib/dates";
+import { daysBetween, fromISO, mondayOf } from "@/lib/dates";
 import { fmtClock, fmtDistance } from "@/lib/format";
 import { raceDistances, estimateRaceSeconds, categoryOf } from "@/lib/planEngine";
 import { CountUp, useMounted } from "./motion";
 
 export function weekOfDate(plan: Plan, iso: string): Week {
+  // Match by calendar Monday, not start + 7*86400000 ms — a fixed millisecond week
+  // overshoots the next Monday's local midnight by an hour across spring-forward,
+  // which would return the previous week for that Monday.
+  const wm = mondayOf(iso);
+  const hit = plan.weeks.find((w) => w.startDate === wm);
+  if (hit) return hit;
   const t = fromISO(iso).getTime();
-  for (const w of plan.weeks) {
-    const s = fromISO(w.startDate).getTime();
-    if (t >= s && t < s + 7 * 86400000) return w;
-  }
   return t < fromISO(plan.weeks[0].startDate).getTime() ? plan.weeks[0] : plan.weeks[plan.weeks.length - 1];
 }
 
@@ -39,10 +41,11 @@ export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
   const totalDays = Math.max(1, daysBetween(plan.startDateISO, plan.raceDateISO));
   const elapsed = Math.max(0, Math.min(totalDays, daysBetween(plan.startDateISO, today)));
   const progress = elapsed / totalDays;
+  const unit = plan.profile.unitPreference ?? "metric";
   const legs = [
-    { label: "Swim", v: fmtDistance(dist.swim), c: "var(--swim)", align: "text-left" },
-    { label: "Bike", v: fmtDistance(dist.bike), c: "var(--bike)", align: "text-center" },
-    { label: "Run", v: fmtDistance(dist.run), c: "var(--run)", align: "text-right" },
+    { label: "Swim", v: fmtDistance(dist.swim, unit), c: "var(--swim)", align: "text-left" },
+    { label: "Bike", v: fmtDistance(dist.bike, unit), c: "var(--bike)", align: "text-center" },
+    { label: "Run", v: fmtDistance(dist.run, unit), c: "var(--run)", align: "text-right" },
   ];
 
   return (

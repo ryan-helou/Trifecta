@@ -29,9 +29,13 @@ export function InstallHint() {
       e.preventDefault();
       setDeferred(e as BIPEvent);
     };
+    const onInstalled = () => setInstalled(true);
     window.addEventListener("beforeinstallprompt", onBIP);
-    window.addEventListener("appinstalled", () => setInstalled(true));
-    return () => window.removeEventListener("beforeinstallprompt", onBIP);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBIP);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
   }, []);
 
   if (installed) return null;

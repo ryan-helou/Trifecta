@@ -68,9 +68,17 @@ function parseTime(str: string): number | null {
   const s = str.trim();
   if (!s) return null;
   const parts = s.split(":").map((x) => Number(x));
-  if (parts.some((x) => isNaN(x))) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.some((x) => isNaN(x) || x < 0)) return null; // reject blanks and negatives
+  if (parts.length === 3) {
+    const [h, m, sec] = parts;
+    if (m >= 60 || sec >= 60) return null; // a real clock: minutes/seconds < 60
+    return h * 3600 + m * 60 + sec;
+  }
+  if (parts.length === 2) {
+    const [m, sec] = parts;
+    if (sec >= 60) return null; // reject "2:90"
+    return m * 60 + sec;
+  }
   if (parts.length === 1) return parts[0] * 60; // bare minutes
   return null;
 }
@@ -373,7 +381,7 @@ function NumField({ label, value, unit, onChange }: { label: string; value: numb
     <label className="flex flex-col gap-1.5">
       <span className="eyebrow text-[0.72rem]">{label}</span>
       <div className="flex items-center gap-2">
-        <input className="input" type="number" inputMode="decimal" value={value} onChange={(e) => onChange(Number(e.target.value))} />
+        <input className="input" type="number" inputMode="decimal" value={value || ""} onChange={(e) => onChange(Number(e.target.value))} />
         <span className="text-sm text-muted">{unit}</span>
       </div>
     </label>
@@ -846,7 +854,7 @@ function NumFieldOpt({ label, value, unit, onChange }: { label: string; value?: 
           inputMode="numeric"
           value={value ?? ""}
           placeholder="—"
-          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+          onChange={(e) => { const n = Number(e.target.value); onChange(e.target.value !== "" && n > 0 ? n : undefined); }}
         />
         <span className="text-xs text-muted">{unit}</span>
       </div>
@@ -963,7 +971,7 @@ function ReviewStep({ draft, total }: { draft: Draft; total: number }) {
     const splitLabel =
       draft.strength.split === "custom"
         ? draft.strength.customSplit?.trim() || "Custom"
-        : draft.strength.split.replace("-", " / ");
+        : draft.strength.split.replace(/-/g, " / ");
     rows.push(["Strength", `${draft.strength.daysPerWeek}×/wk · ${splitLabel}`]);
   }
   if (draft.focusDiscipline) rows.push(["Focus", draft.focusDiscipline]);

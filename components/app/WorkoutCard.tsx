@@ -5,8 +5,10 @@ import { DISCIPLINE_META } from "@/lib/zones";
 import { DisciplineIcon, Icon } from "./icons";
 import { complianceOf } from "@/lib/adapt";
 import { fmtDuration, fmtDistance } from "@/lib/format";
+import { useUI } from "./ui";
 
 export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; onOpen: () => void; compact?: boolean }) {
+  const { unit } = useUI();
   const meta = DISCIPLINE_META[workout.discipline];
   const comp = complianceOf(workout);
   const done = workout.status !== "planned";
@@ -43,7 +45,7 @@ export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; on
           {workout.estDistanceM ? (
             <>
               <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
-              <span className="tabular-nums">{fmtDistance(workout.estDistanceM)}</span>
+              <span className="tabular-nums">{fmtDistance(workout.estDistanceM, unit)}</span>
             </>
           ) : (
             !compact && <span>{meta.label}</span>
