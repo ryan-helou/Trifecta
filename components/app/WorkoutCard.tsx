@@ -8,50 +8,62 @@ import { fmtDuration, fmtDistance } from "@/lib/format";
 export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; onOpen: () => void; compact?: boolean }) {
   const meta = DISCIPLINE_META[workout.discipline];
   const comp = complianceOf(workout);
+  const done = workout.status !== "planned";
   const dimmed = workout.status === "skipped";
-  const isRace = workout.id === "w-race-day";
+  const isRace = /race day/i.test(workout.title);
+  const dc = isRace ? "var(--accent)" : `var(${meta.colorVar})`;
+  const zc = `var(--z${workout.primaryZone})`;
 
   return (
     <button
       onClick={onOpen}
-      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-line bg-surface p-3 text-left transition hover:bg-surface-2 ${
+      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-[20px] border border-line py-3 pl-3.5 pr-3 text-left transition hover:border-line-soft hover:brightness-110 ${
         dimmed ? "opacity-55" : ""
-      } ${isRace ? "ring-1 ring-accent" : ""}`}
+      } ${isRace ? "ring-1 ring-accent/70" : ""}`}
+      style={{ background: "linear-gradient(100deg, color-mix(in oklab, var(--surface) 92%, transparent), var(--surface))" }}
     >
-      <div className="absolute inset-y-0 left-0 w-1.5" style={{ background: `var(${meta.colorVar})` }} />
-      <div
-        className="ml-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-xl"
-        style={{ background: `color-mix(in oklab, var(${meta.colorVar}) 18%, transparent)` }}
+      <span aria-hidden className="absolute inset-y-0 left-0 w-[3px]" style={{ background: dc }} />
+      <span
+        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[13px] text-xl"
+        style={{
+          background: `color-mix(in oklab, ${dc} 16%, transparent)`,
+          boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${dc} 30%, transparent)`,
+        }}
       >
         {meta.icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className={`truncate font-semibold ${isRace ? "text-gradient" : ""}`}>{workout.title}</span>
-        </div>
-        <div className="mt-0.5 flex items-center gap-2 text-sm text-muted">
-          <span className="tnum">{workout.estDurationSec > 0 ? fmtDuration(workout.estDurationSec) : "—"}</span>
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate font-display text-[0.98rem] font-semibold leading-tight ${isRace ? "text-gradient" : ""}`}>
+          {workout.title}
+        </span>
+        <span className="mt-1 flex items-center gap-1.5 font-mono text-[0.72rem] text-muted">
+          <span className="tabular-nums">{workout.estDurationSec > 0 ? fmtDuration(workout.estDurationSec) : "—"}</span>
           {workout.estDistanceM ? (
             <>
-              <span className="opacity-40">·</span>
-              <span className="tnum">{fmtDistance(workout.estDistanceM)}</span>
+              <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
+              <span className="tabular-nums">{fmtDistance(workout.estDistanceM)}</span>
             </>
-          ) : null}
-          {!compact && (
-            <>
-              <span className="opacity-40">·</span>
-              <span className="capitalize">{meta.label}</span>
-            </>
+          ) : (
+            !compact && <span className="uppercase tracking-wide">{meta.label}</span>
           )}
-        </div>
-      </div>
-      {workout.status !== "planned" && (
-        <span className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: `color-mix(in oklab, ${comp.color} 18%, transparent)`, color: comp.color }}>
+        </span>
+      </span>
+
+      {done ? (
+        <span
+          className="flex-shrink-0 rounded-full px-2 py-0.5 font-mono text-[0.66rem] font-bold uppercase"
+          style={{ background: `color-mix(in oklab, ${comp.color} 18%, transparent)`, color: comp.color }}
+        >
           {comp.label}
         </span>
-      )}
-      {workout.status === "planned" && !isRace && (
-        <span className="mr-1 flex h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: `var(--z${workout.primaryZone})` }} />
+      ) : (
+        <span
+          className="flex-shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[0.66rem] font-bold"
+          style={{ background: zc, color: "#0b0e14" }}
+        >
+          Z{workout.primaryZone}
+        </span>
       )}
     </button>
   );
