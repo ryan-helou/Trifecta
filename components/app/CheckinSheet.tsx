@@ -21,16 +21,28 @@ const PRAISE = [
   "Consistency looks good on you.",
 ];
 
-// h:mm:ss / mm:ss / bare minutes → seconds
+const M_PER_MILE = 1609.34;
+
+// h:mm:ss / mm:ss / bare minutes / colon-less digits (mmss) → seconds
 function parseClock(str: string): number | null {
   const s = str.trim();
   if (!s) return null;
-  const parts = s.split(":").map((x) => Number(x));
-  if (parts.some((x) => isNaN(x))) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 1) return parts[0] * 60; // bare minutes
-  return null;
+  if (s.includes(":")) {
+    const parts = s.split(":").map((x) => Number(x));
+    if (parts.some((x) => isNaN(x) || x < 0)) return null;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 1) return parts[0] * 60;
+    return null;
+  }
+  // No colon (a phone's numeric keypad has none): 1–2 digits are minutes, 3+ digits
+  // are m…mss with the last two as seconds — so "4230" is 42:30, not 4230 minutes.
+  if (!/^\d+$/.test(s)) return null;
+  if (s.length <= 2) return Number(s) * 60;
+  const sec = Number(s.slice(-2));
+  const min = Number(s.slice(0, -2));
+  if (sec >= 60) return null;
+  return min * 60 + sec;
 }
 
 const EFFORTS: { label: string; rpe: number; zone: Zone }[] = [
@@ -61,13 +73,18 @@ export function CheckinSheet({
   const { actions, unit } = useUI();
   const meta = DISCIPLINE_META[workout.discipline];
   const isSwim = workout.discipline === "swim";
+  // Distance field speaks one consistent unit: raw metres for swim, else the
+  // athlete's display unit (km or mi). Label, placeholder, and parse all agree.
+  const distUnit = isSwim ? "m" : unit === "imperial" ? "mi" : "km";
+  const toMeters = (v: number) => (isSwim ? v : unit === "imperial" ? v * M_PER_MILE : v * 1000);
+  const fromMeters = (m: number) => (isSwim ? m : unit === "imperial" ? m / M_PER_MILE : m / 1000);
 
   const [rpe, setRpe] = useState<number | undefined>(workout.rpe);
   const [feel, setFeel] = useState<Feel | undefined>(workout.feel);
   const [showActuals, setShowActuals] = useState(!!(workout.actualDurationSec || workout.actualDistanceM));
   const [timeStr, setTimeStr] = useState(workout.actualDurationSec ? fmtClock(workout.actualDurationSec) : "");
   const [distStr, setDistStr] = useState(
-    workout.actualDistanceM ? String(isSwim ? workout.actualDistanceM : workout.actualDistanceM / 1000) : "",
+    workout.actualDistanceM ? String(isSwim ? workout.actualDistanceM : +fromMeters(workout.actualDistanceM).toFixed(2)) : "",
   );
 
   // frozen at open — the session is already marked done, so streak/records reflect it
@@ -84,7 +101,7 @@ export function CheckinSheet({
     const actualDurationSec = parseClock(timeStr) ?? undefined;
     const distNum = parseFloat(distStr);
     const actualDistanceM =
-      distStr.trim() && !isNaN(distNum) ? Math.round(isSwim ? distNum : distNum * 1000) : undefined;
+      distStr.trim() && !isNaN(distNum) && distNum >= 0 ? Math.round(toMeters(distNum)) : undefined;
     actions.logCheckin(workout.id, {
       rpe,
       feel,
@@ -205,11 +222,11 @@ export function CheckinSheet({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[0.7rem] text-muted">Distance ({isSwim ? "m" : "km"})</span>
+                <span className="text-[0.7rem] text-muted">Distance ({distUnit})</span>
                 <input
                   className="input"
                   inputMode="decimal"
-                  placeholder={workout.estDistanceM ? fmtDistance(workout.estDistanceM, unit).replace(/[^\d.]/g, "") : "—"}
+                  placeholder={workout.estDistanceM ? (isSwim ? String(workout.estDistanceM) : fmtDistance(workout.estDistanceM, unit).replace(/[^\d.]/g, "")) : "—"}
                   value={distStr}
                   onChange={(e) => setDistStr(e.target.value)}
                 />

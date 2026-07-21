@@ -54,7 +54,10 @@ export function ServiceWorker() {
         .catch(() => {});
     };
 
-    window.addEventListener("load", onLoad);
+    // If the page already finished loading before this effect ran (fast/cached
+    // paint), the "load" event won't fire again — register right away instead.
+    if (document.readyState === "complete") onLoad();
+    else window.addEventListener("load", onLoad);
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {

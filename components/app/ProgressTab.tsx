@@ -5,6 +5,7 @@ import { useUI } from "./ui";
 import { CountUp, useMounted } from "./motion";
 import { weekOfDate } from "./widgets";
 import { computeStreak, trainingStats } from "@/lib/stats";
+import { creditedDiscipline, creditedSeconds } from "@/lib/adapt";
 import { fmtDuration } from "@/lib/format";
 import { DISCIPLINE_META } from "@/lib/zones";
 import { Discipline } from "@/lib/types";
@@ -21,11 +22,15 @@ export function ProgressTab() {
   const stats = trainingStats(plan);
   const bankedHrs = stats.bankedSec / 3600;
 
-  // discipline breakdown of completed time
+  // discipline breakdown of completed time — credit swapped ("did something else")
+  // sessions to what the athlete actually did, matching the banked-hours totals.
   const byDisc: Record<string, number> = {};
   for (const w of Object.values(plan.workouts)) {
     if (w.discipline === "rest") continue;
-    if (w.status === "done" || w.status === "swapped") byDisc[w.discipline] = (byDisc[w.discipline] ?? 0) + (w.actualDurationSec ?? w.estDurationSec ?? 0);
+    if (w.status === "done" || w.status === "swapped") {
+      const disc = creditedDiscipline(w);
+      byDisc[disc] = (byDisc[disc] ?? 0) + creditedSeconds(w);
+    }
   }
   const discOrder: Discipline[] = ["swim", "bike", "run", "brick", "strength"];
   const disciplines = discOrder.filter((d) => byDisc[d]);
@@ -46,7 +51,7 @@ export function ProgressTab() {
       <div className="grid grid-cols-3 gap-2.5">
         <Stat label="Streak" value={streak.current} suffix={streak.current === 1 ? " day" : " days"} molten flame />
         <Stat label="Sessions" value={stats.bankedCount} accent="var(--z2)" />
-        <Stat label="Hours" value={Math.round(bankedHrs * 10) / 10} accent="var(--z3)" />
+        <Stat label="Hours" value={Math.round(bankedHrs * 10) / 10} accent="var(--z3)" format={(n) => (Math.round(n * 10) / 10).toString()} />
       </div>
 
       {/* fitness trend — the "are you getting fitter?" story */}
@@ -196,7 +201,7 @@ function FitnessChart({ values, current, mounted }: { values: number[]; current:
   );
 }
 
-function Stat({ label, value, suffix, molten, accent, flame }: { label: string; value: number; suffix?: string; molten?: boolean; accent?: string; flame?: boolean }) {
+function Stat({ label, value, suffix, molten, accent, flame, format }: { label: string; value: number; suffix?: string; molten?: boolean; accent?: string; flame?: boolean; format?: (n: number) => string }) {
   return (
     <div className="card p-3 text-center">
       <div className="eyebrow text-[0.66rem]">{label}</div>
@@ -205,7 +210,7 @@ function Stat({ label, value, suffix, molten, accent, flame }: { label: string; 
         style={{ color: molten ? "var(--accent)" : accent }}
       >
         {flame && value > 0 && <span className="mr-1 inline-block align-middle text-accent"><Icon name="flame" size={18} /></span>}
-        <CountUp value={value} />
+        <CountUp value={value} format={format} />
         {suffix && <span className="text-[0.9rem] font-semibold text-muted">{suffix}</span>}
       </div>
     </div>

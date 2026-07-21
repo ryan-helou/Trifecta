@@ -220,6 +220,14 @@ function effectiveWorkouts(p: Profile): number {
   return Math.min(MAX_WORKOUTS, c.swim + c.bike + c.run + c.strength);
 }
 
+/** The swim/bike/run split the engine would use for this profile. Used to seed the
+ *  settings editor when the athlete has no explicit per-sport counts yet, so opening
+ *  and saving a workoutsPerWeek-only profile doesn't silently rewrite it to 2/2/2. */
+export function defaultSportSplit(p: Profile): { swim: number; bike: number; run: number } {
+  const c = baseSportCounts(p);
+  return { swim: c.swim, bike: c.bike, run: c.run };
+}
+
 // ---- injuries → per-sport intensity/volume modifiers --------------------
 
 type InjuryMod = { capZone: Zone; volMult: number; avoid: boolean };
@@ -310,7 +318,9 @@ function weekSportCounts(
     c.strength = Math.min(c.strength, 1);
     c = capTotal(c, 8);
   }
-  return c;
+  // Never emit more sessions than the scheduler can place (7 days × 3/day).
+  // Otherwise assignDays runs out of slots and stacks a 4th session onto Monday.
+  return capTotal(c, MAX_WORKOUTS);
 }
 
 function trainingDays(p: Profile): Set<number> {

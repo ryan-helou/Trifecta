@@ -1,5 +1,5 @@
 import { Discipline, Plan, Week, Workout } from "./types";
-import { addDays, dayIndexOf, fromISO } from "./dates";
+import { addDays, dayIndexOf, fromISO, mondayOf } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
 import { generatePlan } from "./planEngine";
@@ -25,12 +25,12 @@ export function reindexWeeks(plan: Plan): void {
   for (const wk of plan.weeks) wk.workoutIds = [];
   const weeksSorted = [...plan.weeks].sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
   for (const w of Object.values(plan.workouts)) {
-    const wk = weeksSorted.find((week) => {
-      const start = fromISO(week.startDate).getTime();
-      const end = start + 7 * 86400000;
-      const t = fromISO(w.date).getTime();
-      return t >= start && t < end;
-    });
+    // A workout belongs to the week whose Monday matches its own Monday. Comparing
+    // by calendar Monday (not start + 7*86400000 ms) is exact across DST — a fixed
+    // millisecond week overshoots the next Monday's local midnight by an hour after
+    // spring-forward, mis-bucketing that Monday into the previous week.
+    const wm = mondayOf(w.date);
+    const wk = weeksSorted.find((week) => week.startDate === wm);
     if (wk) {
       w.weekIndex = wk.index;
       w.dayIndex = dayIndexOf(w.date);
@@ -95,10 +95,13 @@ export function logCheckin(
     ...w,
     // completing a swapped ("did something else") session keeps that status; otherwise it's done
     status: w.status === "swapped" ? "swapped" : "done",
-    rpe: entry.rpe ?? w.rpe,
-    feel: entry.feel ?? w.feel,
-    actualDurationSec: entry.actualDurationSec ?? w.actualDurationSec,
-    actualDistanceM: entry.actualDistanceM ?? w.actualDistanceM,
+    // A key present in `entry` (even with an undefined value) is an explicit set,
+    // so clearing a field in the check-in sheet actually removes it; an absent key
+    // leaves the stored value untouched. (`?? w.x` used to make cleared fields sticky.)
+    rpe: "rpe" in entry ? entry.rpe : w.rpe,
+    feel: "feel" in entry ? entry.feel : w.feel,
+    actualDurationSec: "actualDurationSec" in entry ? entry.actualDurationSec : w.actualDurationSec,
+    actualDistanceM: "actualDistanceM" in entry ? entry.actualDistanceM : w.actualDistanceM,
   };
   return p;
 }

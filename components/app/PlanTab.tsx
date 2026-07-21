@@ -100,7 +100,7 @@ export function PlanTab() {
       <div className="mt-5 space-y-5">
         {Array.from({ length: 7 }).map((_, day) => {
           const iso = addDays(week.startDate, day);
-          const items = week.workoutIds.map((id) => plan.workouts[id]).filter((w) => w.dayIndex === day);
+          const items = week.workoutIds.map((id) => plan.workouts[id]).filter((w) => w && w.dayIndex === day);
           const isToday = iso === today;
           return (
             <div key={day}>

@@ -6,7 +6,7 @@ import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 import { targetView } from "@/lib/targets";
 import { fmtDistance, fmtDuration } from "@/lib/format";
-import { addDays, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
+import { addDays, dayIndexOf, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
@@ -243,7 +243,7 @@ function MovePanel({ onPick, onCancel }: { onPick: (iso: string) => void; onCanc
       <div className="no-scrollbar flex gap-2 overflow-x-auto">
         {days.map((iso) => (
           <button key={iso} onClick={() => onPick(iso)} className="flex flex-col items-center rounded-xl border border-line bg-surface px-3 py-2 text-center hover:bg-surface-3">
-            <span className="text-xs text-muted">{weekdayShort((new Date(iso).getDay() + 6) % 7)}</span>
+            <span className="text-xs text-muted">{weekdayShort(dayIndexOf(iso))}</span>
             <span className="tnum text-sm font-semibold">{fmtDayMonth(iso)}</span>
           </button>
         ))}
