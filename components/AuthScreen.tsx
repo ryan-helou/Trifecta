@@ -29,6 +29,7 @@ export function AuthScreen() {
       <div className="forge-floor" aria-hidden />
       <EmberField />
       <div className="noise-overlay" aria-hidden />
+      <div className="forge-vignette" aria-hidden />
 
       <div className="no-scrollbar safe-t safe-b relative z-10 mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col overflow-y-auto px-6">
         {/* brand lockup */}
@@ -40,16 +41,16 @@ export function AuthScreen() {
         </div>
 
         {/* hero — the thesis */}
-        <div className="flex flex-1 shrink-0 flex-col justify-center py-7">
+        <div className="shrink-0 pt-11">
           <div
             className="animate-fade-up flex items-center gap-2.5 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.32em]"
             style={{ animationDelay: "260ms" }}
           >
-            <span className="text-swim">Swim</span>
+            <span className="text-swim lit-swim">Swim</span>
             <span className="text-line">/</span>
-            <span className="text-bike">Bike</span>
+            <span className="text-bike lit-bike">Bike</span>
             <span className="text-line">/</span>
-            <span className="text-run">Run</span>
+            <span className="text-run lit-run">Run</span>
           </div>
 
           <h1 className="animate-rise mt-4 font-display font-bold uppercase leading-[0.88] tracking-[-0.03em] text-[clamp(2.75rem,14vw,3.75rem)]" style={{ animationDelay: "180ms" }}>
@@ -65,6 +66,9 @@ export function AuthScreen() {
             An adaptive, day-by-day plan for Olympic, 70.3, and full Ironman — one that reshapes itself as you do.
           </p>
         </div>
+
+        {/* breathing room where the sparks rise toward the forge */}
+        <div className="min-h-10 flex-1" aria-hidden />
 
         {/* auth card — quiet, rising from the forge floor */}
         <div className="card-glass forge-card animate-rise relative shrink-0 p-4" style={{ animationDelay: "460ms" }}>
