@@ -10,6 +10,7 @@ import {
   terrainLabel,
 } from "@/lib/raceCatalog";
 import { fmtMonthYear, fmtShortDate, todayISO } from "@/lib/dates";
+import { Icon } from "./app/icons";
 
 const DIST_FILTERS: { key: "all" | RaceCategory; label: string }[] = [
   { key: "all", label: "All" },
@@ -100,7 +101,7 @@ export function RaceCatalogPicker({
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate font-display font-semibold">{r.name}</span>
-                        {champ && <span className="shrink-0 text-xs">🏆</span>}
+                        {champ && <span className="shrink-0 text-accent"><Icon name="trophy" size={14} /></span>}
                       </div>
                       <div className="truncate text-sm text-muted">
                         {r.location}, {r.country}

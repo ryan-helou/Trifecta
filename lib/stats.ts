@@ -124,7 +124,8 @@ export function trainingStats(plan: Plan): TrainingStats {
 }
 
 export interface Celebration {
-  emoji: string;
+  /** icon name (see components/app/icons) */
+  icon: string;
   title: string;
   sub: string;
 }
@@ -140,13 +141,13 @@ export function celebrationFor(plan: Plan, id: string, today: string): Celebrati
 
   // first brick is a real triathlon rite of passage
   if (w.discipline === "brick" && done.filter((x) => x.discipline === "brick").length === 1) {
-    return { emoji: "⚡", title: "First brick done!", sub: "You've unlocked your bike-to-run legs." };
+    return { icon: "brick", title: "First brick done!", sub: "You've unlocked your bike-to-run legs." };
   }
 
   // streak milestones
   const { current } = computeStreak(plan, today);
   if (STREAK_MILESTONES.includes(current)) {
-    return { emoji: "🔥", title: `${current}-day streak!`, sub: "Consistency is the whole game — keep it rolling." };
+    return { icon: "flame", title: `${current}-day streak!`, sub: "Consistency is the whole game — keep it rolling." };
   }
 
   // a new longest session in this sport (needs a bit of history so it's meaningful)
@@ -155,7 +156,7 @@ export function celebrationFor(plan: Plan, id: string, today: string): Celebrati
   const maxOther = Math.max(0, ...sameSport.filter((x) => x.id !== w.id).map(creditedSeconds));
   if (sameSport.length >= 3 && creditedSeconds(w) > maxOther && creditedSeconds(w) >= 3600) {
     return {
-      emoji: "🏅",
+      icon: "medal",
       title: `Longest ${DISCIPLINE_META[disc].label.toLowerCase()} yet`,
       sub: `${fmtDuration(creditedSeconds(w))} — a new personal best.`,
     };

@@ -4,6 +4,7 @@ import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { SwipeableWorkout } from "./SwipeableWorkout";
 import { ProgressRing } from "./motion";
+import { Icon } from "./icons";
 import { PhaseBar, RaceCountdown, weekOfDate, workoutsOn } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
 import { fmtFullDate as fullDate } from "@/lib/dates";
@@ -68,7 +69,7 @@ export function TodayTab() {
         </div>
         {todays.length === 0 ? (
           <div className="card flex flex-col items-center p-6 text-center">
-            <div className="text-3xl">🌙</div>
+            <div className="text-muted"><Icon name="rest" size={30} /></div>
             <div className="mt-2 font-display font-semibold">Rest day</div>
             <div className="mt-1 max-w-[15rem] text-sm text-muted">Recovery is where you get stronger. Sleep, hydrate, refuel.</div>
           </div>

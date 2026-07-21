@@ -2,13 +2,14 @@
 
 import { TabKey } from "./ui";
 import { haptic } from "@/lib/haptics";
+import { Icon, IconName } from "./icons";
 
-const TABS: { key: TabKey; label: string; icon: string }[] = [
-  { key: "today", label: "Today", icon: "☀️" },
-  { key: "plan", label: "Plan", icon: "🗓️" },
-  { key: "progress", label: "Progress", icon: "📈" },
-  { key: "friends", label: "Friends", icon: "👥" },
-  { key: "profile", label: "Profile", icon: "👤" },
+const TABS: { key: TabKey; label: string; icon: IconName }[] = [
+  { key: "today", label: "Today", icon: "today" },
+  { key: "plan", label: "Plan", icon: "plan" },
+  { key: "progress", label: "Progress", icon: "progress" },
+  { key: "friends", label: "Friends", icon: "friends" },
+  { key: "profile", label: "Profile", icon: "profile" },
 ];
 
 export function BottomNav({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey) => void }) {
@@ -40,9 +41,9 @@ export function BottomNav({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey
             >
               <span
                 key={active ? "on" : "off"}
-                className={`text-xl transition ${active ? "animate-nav-bounce" : "opacity-45 grayscale"}`}
+                className={`transition ${active ? "animate-nav-bounce text-accent" : "text-muted"}`}
               >
-                {t.icon}
+                <Icon name={t.icon} size={22} strokeWidth={active ? 1.9 : 1.6} />
               </span>
               <span className={`text-[11px] font-semibold transition-colors ${active ? "text-accent" : "text-muted"}`}>
                 {t.label}

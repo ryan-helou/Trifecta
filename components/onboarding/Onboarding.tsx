@@ -10,6 +10,7 @@ import { CatalogRace } from "@/lib/raceCatalog";
 import { planSummaryContext } from "@/lib/adapt";
 import { apiIntake, apiPlanSummary, ParsedInjury } from "@/lib/api";
 import { RUN_PR_OPTIONS, SWIM_PR_OPTIONS, BIKE_PR_OPTIONS, prLabel } from "@/lib/paces";
+import { Icon, IconName } from "../app/icons";
 import { fmtClock } from "@/lib/format";
 import { todayISO, addDays, fmtFullDate } from "@/lib/dates";
 
@@ -270,7 +271,7 @@ function Stepper({
   onChange,
 }: {
   label: string;
-  icon?: string;
+  icon?: IconName;
   value: number;
   min?: number;
   max?: number;
@@ -280,7 +281,7 @@ function Stepper({
   return (
     <div className="flex items-center justify-between rounded-2xl border border-line bg-surface-2 px-4 py-3">
       <div className="flex items-center gap-2.5">
-        {icon && <span className="text-xl">{icon}</span>}
+        {icon && <span className="text-muted"><Icon name={icon} size={20} /></span>}
         <span className="font-display font-semibold">{label}</span>
       </div>
       <div className="flex items-center gap-3">
@@ -454,15 +455,15 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
   const auto = !!draft.autoFrequency;
   const ps = resolvePerSport(draft);
   const setSport = (k: keyof Draft["perSport"], v: number) => set((d) => ({ ...d, perSport: { ...d.perSport, [k]: v } }));
-  const foci: { key: Discipline; label: string; icon: string }[] = [
-    { key: "swim", label: "Swim", icon: "🏊" },
-    { key: "bike", label: "Bike", icon: "🚴" },
-    { key: "run", label: "Run", icon: "🏃" },
+  const foci: { key: Discipline; label: string; icon: IconName }[] = [
+    { key: "swim", label: "Swim", icon: "swim" },
+    { key: "bike", label: "Bike", icon: "bike" },
+    { key: "run", label: "Run", icon: "run" },
   ];
-  const autoSports: { key: keyof Draft["perSport"]; label: string; icon: string }[] = [
-    { key: "swim", label: "Swim", icon: "🏊" },
-    { key: "bike", label: "Bike", icon: "🚴" },
-    { key: "run", label: "Run", icon: "🏃" },
+  const autoSports: { key: keyof Draft["perSport"]; label: string; icon: IconName }[] = [
+    { key: "swim", label: "Swim", icon: "swim" },
+    { key: "bike", label: "Bike", icon: "bike" },
+    { key: "run", label: "Run", icon: "run" },
   ];
   return (
     <div>
@@ -493,7 +494,7 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
           <div className="grid grid-cols-3 gap-2.5">
             {autoSports.map((s) => (
               <div key={s.key} className="rounded-2xl border border-line bg-surface-3 py-3 text-center">
-                <div className="text-2xl">{s.icon}</div>
+                <div className="flex justify-center"><Icon name={s.icon} size={24} /></div>
                 <div className="mt-1 font-display text-xl font-bold tabular-nums">{ps[s.key]}</div>
                 <div className="text-xs text-muted">{s.label}/wk</div>
               </div>
@@ -502,9 +503,9 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          <Stepper label="Swim" icon="🏊" value={ps.swim} onChange={(n) => setSport("swim", n)} />
-          <Stepper label="Bike" icon="🚴" value={ps.bike} onChange={(n) => setSport("bike", n)} />
-          <Stepper label="Run" icon="🏃" value={ps.run} onChange={(n) => setSport("run", n)} />
+          <Stepper label="Swim" icon="swim" value={ps.swim} onChange={(n) => setSport("swim", n)} />
+          <Stepper label="Bike" icon="bike" value={ps.bike} onChange={(n) => setSport("bike", n)} />
+          <Stepper label="Run" icon="run" value={ps.run} onChange={(n) => setSport("run", n)} />
         </div>
       )}
       <p className="mt-3 text-center text-sm text-muted">
@@ -522,7 +523,7 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
                 draft.focusDiscipline === f.key ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2"
               }`}
             >
-              <div className="text-2xl">{f.icon}</div>
+              <div className="flex justify-center"><Icon name={f.icon} size={24} /></div>
               <div className="mt-1 text-sm font-semibold">{f.label}</div>
             </button>
           ))}
@@ -570,7 +571,7 @@ function StrengthStep({ draft, set }: StepProps) {
         <div className="mt-6 space-y-5 animate-fade-up">
           <div>
             <div className="mb-2 eyebrow text-[0.72rem]">Days a week</div>
-            <Stepper label="Strength days" icon="🏋️" value={s.daysPerWeek} min={1} max={4} onChange={(n) => upd({ daysPerWeek: n })} />
+            <Stepper label="Strength days" icon="strength" value={s.daysPerWeek} min={1} max={4} onChange={(n) => upd({ daysPerWeek: n })} />
           </div>
           <div>
             <div className="mb-2 eyebrow text-[0.72rem]">Which split?</div>
@@ -612,10 +613,10 @@ function ScheduleStep({ draft, set }: StepProps) {
     set((d) => ({ ...d, blackouts: d.blackouts.map((b, j) => (j === i ? { ...b, ...patch } : b)) }));
   const rmBlackout = (i: number) => set((d) => ({ ...d, blackouts: d.blackouts.filter((_, j) => j !== i) }));
 
-  const equip: { key: keyof Draft["equipment"]; label: string; icon: string }[] = [
-    { key: "pool", label: "Pool", icon: "🏊" },
-    { key: "trainer", label: "Indoor trainer", icon: "🚴" },
-    { key: "gym", label: "Gym", icon: "🏋️" },
+  const equip: { key: keyof Draft["equipment"]; label: string; icon: IconName }[] = [
+    { key: "pool", label: "Pool", icon: "swim" },
+    { key: "trainer", label: "Indoor trainer", icon: "bike" },
+    { key: "gym", label: "Gym", icon: "strength" },
   ];
 
   return (
@@ -648,7 +649,7 @@ function ScheduleStep({ draft, set }: StepProps) {
                 eq[e.key] ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2"
               }`}
             >
-              <div className="text-xl">{e.icon}</div>
+              <div className="flex justify-center"><Icon name={e.icon} size={22} /></div>
               <div className="mt-1 text-xs font-semibold">{e.label}</div>
             </button>
           ))}
@@ -727,7 +728,7 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
       <Head title="Your personal bests" sub="Optional, but the sharper your pace targets. Tap a preset or type any distance. Skip any you don't know." />
 
       <div className="mb-5 rounded-2xl border border-line bg-surface-2 p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-semibold">🏃 Run PR</div>
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Icon name="run" size={15} className="text-run" />Run PR</div>
         <div className="flex flex-wrap gap-2">
           {RUN_PR_OPTIONS.map((o) => (
             <button
@@ -760,7 +761,7 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
       </div>
 
       <div className="mb-5 rounded-2xl border border-line bg-surface-2 p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-semibold">🏊 Swim PR</div>
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Icon name="swim" size={15} className="text-swim" />Swim PR</div>
         <div className="flex flex-wrap gap-2">
           {SWIM_PR_OPTIONS.map((o) => (
             <button
@@ -793,7 +794,7 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
       </div>
 
       <div className="mb-5 rounded-2xl border border-line bg-surface-2 p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-semibold">🚴 Bike PR</div>
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Icon name="bike" size={15} className="text-bike" />Bike PR</div>
         <div className="flex flex-wrap gap-2">
           {BIKE_PR_OPTIONS.map((o) => (
             <button
@@ -826,8 +827,8 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <NumFieldOpt label="🚴 Bike FTP" unit="W" value={draft.ftp} onChange={(n) => set((d) => ({ ...d, ftp: n }))} />
-        <NumFieldOpt label="❤️ Max HR" unit="bpm" value={draft.maxHR} onChange={(n) => set((d) => ({ ...d, maxHR: n }))} />
+        <NumFieldOpt label="Bike FTP" unit="W" value={draft.ftp} onChange={(n) => set((d) => ({ ...d, ftp: n }))} />
+        <NumFieldOpt label="Max HR" unit="bpm" value={draft.maxHR} onChange={(n) => set((d) => ({ ...d, maxHR: n }))} />
       </div>
       <p className="mt-2 text-xs text-muted">Your FTP still powers bike pacing — the PR is a benchmark we track your fitness against.</p>
     </div>
@@ -954,7 +955,7 @@ function ReviewStep({ draft, total }: { draft: Draft; total: number }) {
     ["Level", draft.level ?? "—"],
     [
       "Weekly sessions",
-      `${total} · 🏊 ${ps.swim} · 🚴 ${ps.bike} · 🏃 ${ps.run}${draft.autoFrequency ? " · auto" : ""}`,
+      `${total} · Swim ${ps.swim} · Bike ${ps.bike} · Run ${ps.run}${draft.autoFrequency ? " · auto" : ""}`,
     ],
   ];
   if (draft.raceLocation) rows.push(["Location", draft.raceLocation]);

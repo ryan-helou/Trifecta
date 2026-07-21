@@ -10,6 +10,7 @@ import { addDays, weekdayShort, fmtDayMonth } from "@/lib/dates";
 import { fmtDuration } from "@/lib/format";
 import { haptic } from "@/lib/haptics";
 import { Plan, Week } from "@/lib/types";
+import { Icon } from "./icons";
 
 export function PlanTab() {
   const { plan } = useApp();
@@ -49,7 +50,7 @@ export function PlanTab() {
                 on ? "bg-accent text-[#17130a]" : "border border-line bg-surface-2 text-muted"
               } ${isCur && !on ? "ring-1 ring-accent/45" : ""}`}
             >
-              {w.isRaceWeek ? "🏁 Race" : w.label.replace(" · Recovery", "*")}
+              {w.isRaceWeek ? (<span className="inline-flex items-center gap-1"><Icon name="flag" size={14} />Race</span>) : w.label.replace(" · Recovery", "*")}
             </button>
           );
         })}
