@@ -87,6 +87,18 @@ export function fmtFullDate(iso: string): string {
   return `${WD_LONG[dow]}, ${MO[d.getMonth()]} ${d.getDate()}`;
 }
 
+/** Compact date with year, e.g. "Jun 27, 2027" — used for the race catalog. */
+export function fmtShortDate(iso: string): string {
+  const d = fromISO(iso);
+  return `${MO[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+/** Month + year, e.g. "Jun 2027" — used to group the race catalog. */
+export function fmtMonthYear(iso: string): string {
+  const d = fromISO(iso);
+  return `${MO[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 /** dayIndex 0=Mon of an ISO date */
 export function dayIndexOf(iso: string): number {
   return (fromISO(iso).getDay() + 6) % 7;

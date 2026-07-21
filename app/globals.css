@@ -1,35 +1,43 @@
 @import "tailwindcss";
 
 /*
-  AMATRI design system
-  Dark-first, athletic. "Molten iron" accent, discipline-coded colors,
-  5-zone intensity scale. Tokens are exposed to Tailwind via @theme inline
-  so `bg-surface`, `text-swim`, `border-line`, etc. all work as utilities.
+  AMATRI design system — "The Longest Day"
+  An Ironman is one enormous day: a dark-water start, a lit-up finish. The whole
+  identity is the passage of that race day — a pre-dawn indigo canvas, a SUNRISE
+  accent (warm coral→gold against cool navy), and the three disciplines cast as
+  phases of light: swim = the cold blue dawn, bike = the high gold sun, run = the
+  burning dusk. Dark-first, athletic. Tokens are exposed to Tailwind via
+  @theme inline so `bg-surface`, `text-swim`, `text-sun`, `border-line`, etc. work
+  as utilities.
 */
 
 :root {
-  --background: #0b0e14;
-  --surface: #131a24;
-  --surface-2: #1a2330;
-  --surface-3: #232f3e;
-  --line: #2a3646;
-  --line-soft: #202b39;
+  --background: #0a0f1e; /* deep pre-dawn / finish-night indigo */
+  --surface: #121b33;
+  --surface-2: #1a2645;
+  --surface-3: #26355a;
+  --line: #2b3b60; /* cool horizon haze */
+  --line-soft: #213052;
 
-  --text: #e9eef6;
-  --text-muted: #93a3b5;
+  --text: #eaf0ff; /* first-light cool white */
+  --text-muted: #8e9dc2; /* dusty dawn blue */
   --text-faint: #61708200;
 
-  /* molten iron accent */
-  --accent: #ff6a2c;
-  --accent-2: #ff3d2e;
-  --accent-soft: #ff8a4c;
+  /* sunrise accent — gold → coral → sunset (the sun across the day) */
+  --accent: #ff8557; /* dawn coral */
+  --accent-2: #ff5c57; /* sunset red-coral */
+  --accent-soft: #ffb454; /* horizon gold */
 
-  /* disciplines */
-  --swim: #26c6da;
-  --bike: #ffb020;
-  --run: #ff5a5f;
-  --strength: #a855f7;
-  --rest: #64748b;
+  /* the two poles of a dawn: the risen sun and the cold water it lights */
+  --sun: #ffc24d;
+  --tide: #47b6e8;
+
+  /* disciplines as phases of the day */
+  --swim: #45c4e8; /* dawn water */
+  --bike: #ffc24d; /* high sun */
+  --run: #ff6a4d; /* dusk */
+  --strength: #9b7bf0; /* night */
+  --rest: #6b7a99; /* twilight */
 
   /* intensity zones Z1..Z5 (field-standard blue→green→amber→orange→red) */
   --z1: #5ab0e8; /* recovery */
@@ -38,9 +46,9 @@
   --z4: #f09242; /* threshold */
   --z5: #e85555; /* VO2 / anaerobic */
 
-  --success: #34c759;
-  --warning: #ffb020;
-  --danger: #ff375f;
+  --success: #3fcb7c;
+  --warning: #ffb454;
+  --danger: #ff5c57;
 }
 
 @theme inline {
@@ -57,6 +65,8 @@
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
   --color-accent-soft: var(--accent-soft);
+  --color-sun: var(--sun);
+  --color-tide: var(--tide);
 
   --color-swim: var(--swim);
   --color-bike: var(--bike);
@@ -96,16 +106,16 @@ body {
   background: var(--background);
   color: var(--text);
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-  /* subtle molten glow at the top, fades to base */
+  /* first light on the horizon — warm dawn glow up top, a cool wash of water low-left */
   background-image:
-    radial-gradient(120% 60% at 50% -10%, rgba(255, 106, 44, 0.10), transparent 60%),
-    radial-gradient(90% 50% at 100% 0%, rgba(38, 198, 218, 0.05), transparent 55%);
+    radial-gradient(130% 60% at 50% -8%, rgba(255, 133, 87, 0.12), transparent 58%),
+    radial-gradient(90% 50% at 6% 2%, rgba(71, 182, 232, 0.07), transparent 55%);
   background-attachment: fixed;
   overscroll-behavior-y: none;
 }
 
 ::selection {
-  background: rgba(255, 106, 44, 0.3);
+  background: rgba(255, 133, 87, 0.3);
 }
 
 /* thin, dark scrollbars */
@@ -228,45 +238,57 @@ body {
 }
 .animate-rise { animation: rise .5s ease both; }
 
-/* ---------- forge auth hero ---------- */
-/* the crucible glow — heat rising from the forge floor, licking up behind the
-   payoff word so the headline sits inside the fire */
+/* ---------- dawn auth hero: "the longest day" ---------- */
+/* Class names are kept from the previous forge identity so every consumer keeps
+   working untouched; the styles are re-imagined as first light on the horizon. */
+
+/* first light on the horizon — a warm dawn glow rising behind the hero, the
+   quiet minute before the cannon */
 .forge-floor {
   position: absolute;
   left: 50%;
-  bottom: -14%;
+  bottom: -8%;
   transform: translateX(-50%);
-  width: 160%;
-  height: 74%;
+  width: 170%;
+  height: 68%;
   pointer-events: none;
   background:
-    radial-gradient(40% 76% at 50% 100%, rgba(255, 244, 214, 0.11), transparent 60%),
-    radial-gradient(55% 100% at 50% 100%, rgba(255, 61, 46, 0.34), transparent 68%),
-    radial-gradient(92% 100% at 50% 100%, rgba(255, 106, 44, 0.22), transparent 76%);
-  filter: blur(7px);
-  animation: forge-ignite 1000ms ease-out both;
+    radial-gradient(42% 70% at 50% 100%, rgba(255, 244, 220, 0.12), transparent 60%),
+    radial-gradient(58% 100% at 50% 100%, rgba(255, 133, 87, 0.30), transparent 70%),
+    radial-gradient(96% 100% at 50% 100%, rgba(71, 182, 232, 0.10), transparent 78%);
+  filter: blur(8px);
+  animation: forge-ignite 1100ms ease-out both;
 }
 @keyframes forge-ignite {
-  from { opacity: 0; transform: translate(-50%, 14%); }
+  from { opacity: 0; transform: translate(-50%, 12%); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* cinematic edge falloff — pulls focus to the center, adds photographic depth */
+/* cool edge falloff — photographic depth, pulls focus toward the light */
 .forge-vignette {
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background: radial-gradient(122% 88% at 50% 40%, transparent 55%, rgba(2, 4, 8, 0.55) 100%);
+  background: radial-gradient(122% 90% at 50% 42%, transparent 55%, rgba(3, 5, 12, 0.6) 100%);
 }
 
-/* discipline labels read as lit metal — each glows in its own colour */
-.lit-swim { text-shadow: 0 0 14px rgba(38, 198, 218, 0.45); }
-.lit-bike { text-shadow: 0 0 14px rgba(255, 176, 32, 0.40); }
-.lit-run  { text-shadow: 0 0 14px rgba(255, 90, 95, 0.45); }
+/* the horizon — the flat line of open water at first light */
+.horizon-line {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--tide), transparent);
+  opacity: .5;
+  pointer-events: none;
+}
 
-/* fine forge grain — tactile texture over the atmosphere, kills gradient
-   banding. Sits above the glow/embers but below the content (crisp text). */
+/* discipline labels glow like light catching water — each in its own colour */
+.lit-swim { text-shadow: 0 0 14px rgba(69, 196, 232, 0.45); }
+.lit-bike { text-shadow: 0 0 14px rgba(255, 194, 77, 0.42); }
+.lit-run  { text-shadow: 0 0 14px rgba(255, 106, 77, 0.45); }
+
+/* fine grain — tactile texture over the atmosphere, kills gradient banding.
+   Sits above the glow/motes but below the content (crisp text). */
 .noise-overlay {
   position: absolute;
   inset: 0;
@@ -277,31 +299,32 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* forged-metal headline: cool steel word heated to a molten payoff */
+/* the headline: cool pre-dawn light warming toward the horizon */
 .heat-steel {
-  background: linear-gradient(178deg, #c2ccdb 0%, #f3f7fc 44%, #e79a63 100%);
+  background: linear-gradient(178deg, #cdd7f2 0%, #eef3ff 46%, #ffb98e 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
+/* the payoff catches the sunrise — gold to coral to dusk */
 .heat-molten {
-  background: linear-gradient(180deg, #ffb277 0%, #ff6a2c 52%, #ff2f1c 100%);
+  background: linear-gradient(180deg, #ffd08a 0%, var(--accent) 52%, var(--accent-2) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-/* the payoff radiates heat — a slow breathing glow */
-.heat-payoff { animation: heat-breathe 3.8s ease-in-out infinite; will-change: filter; }
+/* the payoff radiates first light — a slow breathing glow */
+.heat-payoff { animation: heat-breathe 4.2s ease-in-out infinite; will-change: filter; }
 @keyframes heat-breathe {
-  0%, 100% { filter: drop-shadow(0 3px 20px rgba(255, 74, 30, 0.22)); }
-  50% { filter: drop-shadow(0 3px 30px rgba(255, 96, 40, 0.42)); }
+  0%, 100% { filter: drop-shadow(0 3px 22px rgba(255, 133, 87, 0.22)); }
+  50% { filter: drop-shadow(0 3px 34px rgba(255, 160, 100, 0.42)); }
 }
 
-/* the auth card — forged top edge + glassy inner highlight, molten under-glow */
+/* the auth card — dawn top edge + glassy inner highlight, warm under-glow */
 .forge-card {
   box-shadow:
-    0 -18px 60px -30px rgba(255, 90, 31, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 -18px 60px -32px rgba(255, 133, 87, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .forge-edge {
   position: absolute;
@@ -313,12 +336,60 @@ body {
   opacity: 0.7;
 }
 
-/* the hammer strike that ignites the payoff word on load */
+/* the sun breaking over the payoff word on load */
 @keyframes forge-strike {
   0%, 100% { filter: brightness(1); }
-  35% { filter: brightness(1.9) drop-shadow(0 0 18px rgba(255, 138, 76, 0.55)); }
+  40% { filter: brightness(1.7) drop-shadow(0 0 20px rgba(255, 180, 110, 0.6)); }
 }
-.forge-strike { animation: forge-strike 900ms ease-out 550ms 1 both; }
+.forge-strike { animation: forge-strike 1000ms ease-out 500ms 1 both; }
+
+/* ---------- interaction layer: sheets, toasts, tabs, gestures ---------- */
+
+/* let the browser keep vertical scroll while we own horizontal swipe */
+.pan-y { touch-action: pan-y; }
+
+/* bottom-sheet entrance — slides up from the floor with a slight overshoot */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.animate-sheet-up { animation: sheet-up .34s cubic-bezier(.22,.8,.28,1) both; }
+
+/* backdrop fade paired with the sheet */
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-backdrop-in { animation: backdrop-in .28s ease both; }
+
+/* undo / status toast rising above the nav */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-toast-in { animation: toast-in .32s cubic-bezier(.22,.8,.28,1) both; }
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(14px) scale(.98); }
+}
+.animate-toast-out { animation: toast-out .24s ease both; }
+
+/* nav icon nudge when a tab becomes active */
+@keyframes nav-bounce {
+  0% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-3px) scale(1.14); }
+  100% { transform: translateY(0) scale(1); }
+}
+.animate-nav-bounce { animation: nav-bounce .38s cubic-bezier(.3,1.3,.5,1) both; }
+
+/* the sliding molten pill behind the active nav tab */
+.nav-indicator {
+  transition: transform .34s cubic-bezier(.22,.9,.3,1);
+  will-change: transform;
+}
+
+/* swipe-reveal action tray sitting behind a card */
+.swipe-action-face { transition: opacity .12s ease; }
 
 /* respect reduced-motion: kill ambient + entrance animation everywhere */
 @media (prefers-reduced-motion: reduce) {
@@ -328,6 +399,11 @@ body {
   .animate-rise,
   .animate-fade-up,
   .animate-pop,
+  .animate-sheet-up,
+  .animate-backdrop-in,
+  .animate-toast-in,
+  .animate-toast-out,
+  .animate-nav-bounce,
   .glow-breathe,
   .core-pulse,
   .spin-slow,
@@ -336,4 +412,5 @@ body {
   .shimmer {
     animation: none !important;
   }
+  .nav-indicator { transition: none !important; }
 }

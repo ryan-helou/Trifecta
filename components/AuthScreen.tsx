@@ -43,32 +43,37 @@ export function AuthScreen() {
         {/* hero — the thesis */}
         <div className="shrink-0 pt-11">
           <div
-            className="animate-fade-up flex items-center gap-2.5 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.32em]"
+            className="animate-fade-up flex items-center gap-2 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.24em]"
             style={{ animationDelay: "260ms" }}
           >
+            <span className="text-foreground">2.4</span>
             <span className="text-swim lit-swim">Swim</span>
-            <span className="text-line">/</span>
+            <span className="text-line-soft">·</span>
+            <span className="text-foreground">112</span>
             <span className="text-bike lit-bike">Bike</span>
-            <span className="text-line">/</span>
+            <span className="text-line-soft">·</span>
+            <span className="text-foreground">26.2</span>
             <span className="text-run lit-run">Run</span>
           </div>
 
-          <h1 className="animate-rise mt-4 font-display font-bold uppercase leading-[0.88] tracking-[-0.03em] text-[clamp(2.75rem,14vw,3.75rem)]" style={{ animationDelay: "180ms" }}>
-            <span className="heat-steel">Forge</span>
-            <span className="ml-2.5 align-baseline text-[0.34em] font-semibold normal-case tracking-[0.12em] text-muted">the</span>
+          <h1 className="animate-rise mt-4 font-display font-bold uppercase leading-[0.86] tracking-[-0.01em] text-[clamp(2.7rem,13.5vw,3.9rem)]" style={{ animationDelay: "180ms" }}>
+            <span className="heat-steel">First light</span>
             <br />
+            <span className="heat-steel">to </span>
             <span className="heat-payoff inline-block">
-              <span className="heat-molten forge-strike">finish.</span>
+              <span className="heat-molten forge-strike">finish line.</span>
             </span>
           </h1>
 
-          <p className="animate-fade-up mt-5 max-w-[19rem] text-[0.95rem] leading-relaxed text-muted" style={{ animationDelay: "360ms" }}>
-            An adaptive, day-by-day plan for Olympic, 70.3, and full Ironman — one that reshapes itself as you do.
+          <p className="animate-fade-up mt-5 max-w-[20rem] text-[0.95rem] leading-relaxed text-muted" style={{ animationDelay: "360ms" }}>
+            An Ironman is one enormous day — a dark-water start, a lit-up finish. Train every mile of it with a plan that adapts as you do.
           </p>
         </div>
 
-        {/* breathing room where the sparks rise toward the forge */}
-        <div className="min-h-10 flex-1" aria-hidden />
+        {/* breathing room — the horizon where sky meets water, sun rising below */}
+        <div className="relative min-h-10 flex-1" aria-hidden>
+          <div className="horizon-line" style={{ left: 0, right: 0, top: "60%" }} />
+        </div>
 
         {/* auth card — quiet, rising from the forge floor */}
         <div className="card-glass forge-card animate-rise relative shrink-0 p-4" style={{ animationDelay: "460ms" }}>

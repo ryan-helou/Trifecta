@@ -1,12 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Space_Grotesk, Manrope, Geist_Mono } from "next/font/google";
+import { Big_Shoulders, Manrope, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ServiceWorker } from "@/components/ServiceWorker";
 
-const display = Space_Grotesk({
+// Big Shoulders — a tall, athletic, monumental face for endurance-race lettering.
+// Carries the "longest day" identity in headlines, the wordmark, and big numbers.
+const display = Big_Shoulders({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["500", "600", "700", "800"],
 });
 
 const body = Manrope({
@@ -22,9 +24,9 @@ const mono = Geist_Mono({
 
 export const metadata: Metadata = {
   applicationName: "AmaTri",
-  title: "AmaTri — Triathlon Coach",
+  title: "AmaTri — First light to finish line",
   description:
-    "Your personal, adaptive triathlon training plan. Day-by-day workouts for Olympic, 70.3, and full Ironman — built around your race, your level, and your PRs.",
+    "Train for the longest day. An adaptive, day-by-day triathlon plan for Olympic, 70.3, and the full Ironman 140.6 — built around your race, your level, and your PRs.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -42,7 +44,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b0e14",
+  themeColor: "#0a0f1e",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

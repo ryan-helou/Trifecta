@@ -328,6 +328,13 @@ export function planSummaryContext(plan: Plan): string {
   else lines.push("No strength training.");
   if (p.restDayPreference != null) lines.push(`Preferred rest day: ${DOW[p.restDayPreference]}.`);
   if (p.weeklyHoursCap) lines.push(`Weekly hours capped at ${p.weeklyHoursCap}.`);
+  if (p.equipment) {
+    const lack: string[] = [];
+    if (p.equipment.pool === false) lack.push("no pool (swim is dry-land only)");
+    if (p.equipment.gym === false) lack.push("no gym (strength is bodyweight at home)");
+    if (p.equipment.trainer === false) lack.push("no indoor trainer");
+    if (lack.length) lines.push(`Equipment limits: ${lack.join("; ")}.`);
+  }
   if (p.injuries?.length) {
     lines.push(
       `Injuries to work around: ${p.injuries

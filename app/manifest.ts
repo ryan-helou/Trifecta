@@ -2,16 +2,16 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "AmaTri — Triathlon Coach",
+    name: "AmaTri — First light to finish line",
     short_name: "AmaTri",
     description:
-      "Your personal, adaptive triathlon training plan — day-by-day swim, bike, and run workouts for Olympic, 70.3, and full Ironman.",
+      "Train for the longest day — an adaptive, day-by-day plan of swim, bike, and run workouts for Olympic, 70.3, and the full Ironman 140.6.",
     start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#0b0e14",
-    theme_color: "#0b0e14",
+    background_color: "#0a0f1e",
+    theme_color: "#0a0f1e",
     categories: ["health", "fitness", "sports"],
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

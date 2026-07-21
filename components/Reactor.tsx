@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * The AmaTri reactor — an original arc-reactor style mark. When `progress`
- * (0–100) is supplied, the outer ring fills and the core glows brighter as it
- * "charges", used on the plan-generation loading screen.
+ * The AmaTri sun — a radiant emblem for "the longest day". The bright core is the
+ * risen sun; the orbital rings trace its path across the sky. When `progress`
+ * (0–100) is supplied the outer ring fills and the core brightens as the day
+ * "breaks", used on the plan-generation loading screen.
  */
 export function Reactor({
   size = 180,
@@ -28,7 +29,7 @@ export function Reactor({
         style={{
           position: "absolute",
           inset: "-20%",
-          background: "radial-gradient(circle, rgba(255,106,44,0.45), transparent 60%)",
+          background: "radial-gradient(circle, rgba(255,160,95,0.5), transparent 60%)",
           filter: "blur(10px)",
           opacity: glow,
         }}

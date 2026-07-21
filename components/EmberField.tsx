@@ -3,9 +3,10 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Ambient forge embers — a lightweight canvas of molten sparks drifting up from
- * the forge floor. Additive blending makes overlapping embers glow. Fully
- * disabled under `prefers-reduced-motion`. Purely decorative (aria-hidden).
+ * Ambient dawn light-motes — a lightweight canvas of soft flecks drifting up in
+ * the first sun, like dust catching the light over open water. Additive blending
+ * makes overlapping motes glow. Fully disabled under `prefers-reduced-motion`.
+ * Purely decorative (aria-hidden).
  */
 export function EmberField({ density = 18 }: { density?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -20,7 +21,8 @@ export function EmberField({ density = 18 }: { density?: number }) {
     if (reduce) return; // no ambient motion for reduced-motion users
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const colors = ["#ff8a4c", "#ff6a2c", "#ff3d2e", "#ffb020"];
+    // first-light tones — warm gold/peach flecks with an occasional cool water mote
+    const colors = ["#ffe6c4", "#ffd39a", "#fff4e2", "#bcd7f5"];
     let w = 0;
     let h = 0;
     let raf = 0;

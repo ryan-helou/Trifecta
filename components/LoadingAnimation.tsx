@@ -30,7 +30,7 @@ export function LoadingAnimation({
     `Balancing your ${profile.workoutsPerWeek} workouts around long sessions…`,
     "Applying the 80/20 intensity rule…",
     "Placing your bricks and threshold work…",
-    "Forging your plan…",
+    "Charting your longest day…",
   ];
 
   useEffect(() => {

@@ -2,6 +2,7 @@
 
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
+import { CountUp, useMounted } from "./motion";
 import { weekOfDate } from "./widgets";
 import { daysBetween } from "@/lib/dates";
 import { fmtDuration } from "@/lib/format";
@@ -11,6 +12,7 @@ import { Discipline } from "@/lib/types";
 export function ProgressTab() {
   const { plan } = useApp();
   const { today } = useUI();
+  const mounted = useMounted();
   if (!plan) return null;
 
   const all = Object.values(plan.workouts).filter((w) => w.discipline !== "rest");
@@ -46,9 +48,9 @@ export function ProgressTab() {
       </div>
 
       <div className="grid grid-cols-3 gap-2.5">
-        <Stat label="Through" value={`${pct}%`} molten />
-        <Stat label="Banked" value={String(done.length)} accent={`var(--z2)`} />
-        <Stat label="Skipped" value={String(skipped.length)} accent={skipped.length ? "var(--run)" : undefined} />
+        <Stat label="Through" value={pct} suffix="%" molten />
+        <Stat label="Banked" value={done.length} accent={`var(--z2)`} />
+        <Stat label="Skipped" value={skipped.length} accent={skipped.length ? "var(--run)" : undefined} />
       </div>
 
       {/* weekly volume trend */}
@@ -64,7 +66,14 @@ export function ProgressTab() {
             const isCur = i === curWeek;
             return (
               <div key={i} className="relative flex flex-1 items-end self-stretch" title={`${w.label}: ${w.targetHours}h target`}>
-                <div className="w-full overflow-hidden rounded-[3px] bg-surface-3" style={{ height: `${th}%` }}>
+                <div
+                  className="w-full overflow-hidden rounded-[3px] bg-surface-3"
+                  style={{
+                    height: mounted ? `${th}%` : "0%",
+                    transition: "height .6s cubic-bezier(.22,.8,.28,1)",
+                    transitionDelay: `${Math.min(i, 20) * 16}ms`,
+                  }}
+                >
                   <div
                     className="w-full rounded-[3px]"
                     style={{
@@ -98,7 +107,14 @@ export function ProgressTab() {
                   {DISCIPLINE_META[d].label}
                 </span>
                 <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-                  <div className="h-full rounded-full" style={{ width: `${(byDisc[d] / maxDisc) * 100}%`, background: `var(${DISCIPLINE_META[d].colorVar})` }} />
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: mounted ? `${(byDisc[d] / maxDisc) * 100}%` : "0%",
+                      transition: "width .7s cubic-bezier(.22,.8,.28,1)",
+                      background: `var(${DISCIPLINE_META[d].colorVar})`,
+                    }}
+                  />
                 </div>
                 <span className="w-14 text-right font-mono text-[0.72rem] tabular-nums text-muted">{fmtDuration(byDisc[d])}</span>
               </div>
@@ -114,7 +130,7 @@ export function ProgressTab() {
   );
 }
 
-function Stat({ label, value, molten, accent }: { label: string; value: string; molten?: boolean; accent?: string }) {
+function Stat({ label, value, suffix, molten, accent }: { label: string; value: number; suffix?: string; molten?: boolean; accent?: string }) {
   return (
     <div className="card p-3 text-center">
       <div className="font-mono text-[0.58rem] font-bold uppercase tracking-[0.14em] text-muted">{label}</div>
@@ -122,7 +138,7 @@ function Stat({ label, value, molten, accent }: { label: string; value: string; 
         className={`mt-1 font-display text-[1.7rem] font-bold leading-none tabular-nums ${molten ? "heat-molten" : ""}`}
         style={!molten && accent ? { color: accent } : undefined}
       >
-        {value}
+        <CountUp value={value} />{suffix}
       </div>
     </div>
   );

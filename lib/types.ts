@@ -154,6 +154,11 @@ export interface Profile {
   raceType: RaceType;
   // for custom races (all in meters):
   custom?: { swimM: number; bikeM: number; runM: number; name?: string };
+  // set when the athlete picked a real event from the race catalog (see lib/raceCatalog.ts).
+  // Purely for identity/display — the engine still trains off raceType + raceDateISO.
+  raceName?: string; // e.g. "IRONMAN 70.3 Mont-Tremblant"
+  raceLocation?: string; // e.g. "Mont-Tremblant, QC, Canada"
+  raceId?: string; // catalog id, so the picker can re-highlight the selection
   raceDateISO: string; // yyyy-mm-dd
   level: Level;
   // total workouts per week the athlete wants (1–21; the high end stacks doubles)
@@ -218,6 +223,8 @@ export interface Plan {
   notice?: string;
   /** optional AI-written "why this plan" note (cheap Haiku call; degrades away) */
   coachSummary?: string;
+  /** optional AI-written per-phase coaching notes (same cheap call; degrades away) */
+  phaseNotes?: Partial<Record<Phase, string>>;
 }
 
 // what we persist per user
