@@ -28,6 +28,7 @@ export function AuthScreen() {
       {/* forge atmosphere */}
       <div className="forge-floor" aria-hidden />
       <EmberField />
+      <div className="noise-overlay" aria-hidden />
 
       <div className="no-scrollbar safe-t safe-b relative z-10 mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col overflow-y-auto px-6">
         {/* brand lockup */}
@@ -51,10 +52,13 @@ export function AuthScreen() {
             <span className="text-run">Run</span>
           </div>
 
-          <h1 className="animate-rise mt-4 font-display font-bold uppercase leading-[0.9] tracking-[-0.03em] text-[clamp(2.75rem,14vw,3.75rem)]" style={{ animationDelay: "180ms" }}>
-            Forge <span className="text-foreground/45">the</span>
+          <h1 className="animate-rise mt-4 font-display font-bold uppercase leading-[0.88] tracking-[-0.03em] text-[clamp(2.75rem,14vw,3.75rem)]" style={{ animationDelay: "180ms" }}>
+            <span className="heat-steel">Forge</span>
+            <span className="ml-2.5 align-baseline text-[0.34em] font-semibold normal-case tracking-[0.12em] text-muted">the</span>
             <br />
-            <span className="text-gradient forge-strike">finish.</span>
+            <span className="heat-payoff inline-block">
+              <span className="heat-molten forge-strike">finish.</span>
+            </span>
           </h1>
 
           <p className="animate-fade-up mt-5 max-w-[19rem] text-[0.95rem] leading-relaxed text-muted" style={{ animationDelay: "360ms" }}>

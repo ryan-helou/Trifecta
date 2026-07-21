@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
  * the forge floor. Additive blending makes overlapping embers glow. Fully
  * disabled under `prefers-reduced-motion`. Purely decorative (aria-hidden).
  */
-export function EmberField({ density = 16 }: { density?: number }) {
+export function EmberField({ density = 18 }: { density?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -27,21 +27,27 @@ export function EmberField({ density = 16 }: { density?: number }) {
 
     type Ember = {
       x: number; y: number; vx: number; vy: number;
-      r: number; life: number; max: number; c: string; flick: number;
+      r: number; life: number; max: number; c: string; flick: number; spark: boolean;
     };
     const embers: Ember[] = [];
 
-    const spawn = (fromBottom: boolean): Ember => ({
-      x: Math.random() * w,
-      y: fromBottom ? h + Math.random() * 40 : Math.random() * h,
-      vx: (Math.random() - 0.5) * 0.25,
-      vy: -(0.22 + Math.random() * 0.5),
-      r: 0.7 + Math.random() * 1.7,
-      life: 0,
-      max: 260 + Math.random() * 300,
-      c: colors[(Math.random() * colors.length) | 0],
-      flick: Math.random() * Math.PI * 2,
-    });
+    const spawn = (fromBottom: boolean): Ember => {
+      const spark = Math.random() < 0.18; // a few hotter, faster sparks
+      // center-weighted x — embers rise from the forge core, not the edges
+      const cx = 0.5 + (Math.random() + Math.random() - 1) * 0.42;
+      return {
+        x: Math.min(1, Math.max(0, cx)) * w,
+        y: fromBottom ? h + Math.random() * 40 : Math.random() * h,
+        vx: (Math.random() - 0.5) * (spark ? 0.2 : 0.28),
+        vy: -((spark ? 0.6 : 0.22) + Math.random() * (spark ? 0.7 : 0.5)),
+        r: spark ? 0.5 + Math.random() * 0.9 : 0.9 + Math.random() * 1.7,
+        life: 0,
+        max: spark ? 150 + Math.random() * 130 : 260 + Math.random() * 300,
+        c: spark ? "#ffd9a0" : colors[(Math.random() * colors.length) | 0],
+        flick: Math.random() * Math.PI * 2,
+        spark,
+      };
+    };
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -72,12 +78,14 @@ export function EmberField({ density = 16 }: { density?: number }) {
 
         const t = e.life / e.max;
         const fade = t < 0.15 ? t / 0.15 : t > 0.7 ? Math.max(0, (1 - t) / 0.3) : 1;
-        const a = Math.max(0, fade * (0.45 + Math.sin(e.flick) * 0.22));
+        const base = e.spark ? 0.7 : 0.45;
+        const swing = e.spark ? 0.3 : 0.22;
+        const a = Math.max(0, fade * (base + Math.sin(e.flick) * swing));
 
         ctx.globalAlpha = a;
         ctx.fillStyle = e.c;
         ctx.shadowColor = e.c;
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = e.spark ? 10 : 8;
         ctx.beginPath();
         ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
         ctx.fill();
