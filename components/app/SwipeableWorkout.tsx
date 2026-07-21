@@ -3,6 +3,7 @@
 import { Workout } from "@/lib/types";
 import { WorkoutCard } from "./WorkoutCard";
 import { Swipeable, SwipeAction } from "./Swipeable";
+import { Icon } from "./icons";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
 
@@ -40,9 +41,9 @@ export function SwipeableWorkout({ workout, compact }: { workout: Workout; compa
 
   const right: SwipeAction | undefined = isRace
     ? undefined
-    : { label: done ? "Undo" : "Done", icon: "✓", color: "var(--success)", run: complete };
+    : { label: done ? "Undo" : "Done", icon: <Icon name="check" size={18} />, color: "var(--success)", run: complete };
   const left: SwipeAction | undefined =
-    isRace || skipped ? undefined : { label: "Skip", icon: "⏭", color: "var(--danger)", run: skip };
+    isRace || skipped ? undefined : { label: "Skip", icon: <Icon name="skip" size={18} />, color: "var(--danger)", run: skip };
 
   return (
     <Swipeable right={right} left={left}>

@@ -13,6 +13,7 @@ import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
+import { Icon, IconName } from "./icons";
 
 function parseTime(str: string): number | null {
   const s = str.trim();
@@ -32,10 +33,10 @@ const RACES: { key: RaceType; name: string }[] = [
   { key: "custom", name: "Custom" },
 ];
 const LEVELS: Level[] = ["beginner", "intermediate", "advanced", "elite"];
-const FOCI: { key: Discipline; label: string; icon: string }[] = [
-  { key: "swim", label: "Swim", icon: "🏊" },
-  { key: "bike", label: "Bike", icon: "🚴" },
-  { key: "run", label: "Run", icon: "🏃" },
+const FOCI: { key: Discipline; label: string; icon: IconName }[] = [
+  { key: "swim", label: "Swim", icon: "swim" },
+  { key: "bike", label: "Bike", icon: "bike" },
+  { key: "run", label: "Run", icon: "run" },
 ];
 const SPLITS: { key: StrengthSplit; name: string }[] = [
   { key: "full", name: "Full body" },
@@ -237,7 +238,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               </div>
             ) : (
               <button onClick={() => setShowCatalog((s) => !s)} className="chip mt-3">
-                {showCatalog ? "Hide races" : "🔎 Choose a real race"}
+                {showCatalog ? "Hide races" : (<span className="inline-flex items-center gap-1.5"><Icon name="search" size={14} />Choose a real race</span>)}
               </button>
             )}
             {showCatalog && !raceName && (
@@ -290,9 +291,9 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
           {/* per-sport frequency */}
           <Field label={`Sessions per week · ${total}`}>
             <div className="space-y-2">
-              <StepRow label="Swim" icon="🏊" value={perSport.swim} onChange={(n) => setSport("swim", n)} />
-              <StepRow label="Bike" icon="🚴" value={perSport.bike} onChange={(n) => setSport("bike", n)} />
-              <StepRow label="Run" icon="🏃" value={perSport.run} onChange={(n) => setSport("run", n)} />
+              <StepRow label="Swim" icon="swim" value={perSport.swim} onChange={(n) => setSport("swim", n)} />
+              <StepRow label="Bike" icon="bike" value={perSport.bike} onChange={(n) => setSport("bike", n)} />
+              <StepRow label="Run" icon="run" value={perSport.run} onChange={(n) => setSport("run", n)} />
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="eyebrow mr-1 self-center text-[0.66rem]">Rest day</span>
@@ -310,7 +311,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
             </div>
             {strength.enabled && (
               <div className="mt-3 space-y-3">
-                <StepRow label="Days / week" icon="🏋️" value={strength.daysPerWeek} min={1} max={4} onChange={(n) => setStrength((s) => ({ ...s, daysPerWeek: n }))} />
+                <StepRow label="Days / week" icon="strength" value={strength.daysPerWeek} min={1} max={4} onChange={(n) => setStrength((s) => ({ ...s, daysPerWeek: n }))} />
                 <div className="grid grid-cols-2 gap-2">
                   {SPLITS.map((sp) => (
                     <Pill key={sp.key} on={strength.split === sp.key} onClick={() => setStrength((s) => ({ ...s, split: sp.key }))}>{sp.name}</Pill>
@@ -361,7 +362,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
           <Field label="Personal records">
             <div className="space-y-3">
               <div className="rounded-2xl border border-line bg-surface-2 p-3.5">
-                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span>🏃 Run PR</span></div>
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span className="inline-flex items-center gap-1.5"><Icon name="run" size={15} className="text-run" />Run PR</span></div>
                 <div className="mb-2 flex flex-wrap gap-2">
                   {RUN_PR_OPTIONS.map((o) => (
                     <button key={o.label} onClick={() => setRunDistKm(String(o.distanceM / 1000))} className={`chip ${Math.round(parseFloat(runDistKm) * 1000) === o.distanceM ? "border-accent bg-accent/10" : ""}`}>{o.label}</button>
@@ -373,7 +374,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 </div>
               </div>
               <div className="rounded-2xl border border-line bg-surface-2 p-3.5">
-                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span>🏊 Swim PR</span></div>
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span className="inline-flex items-center gap-1.5"><Icon name="swim" size={15} className="text-swim" />Swim PR</span></div>
                 <div className="mb-2 flex flex-wrap gap-2">
                   {SWIM_PR_OPTIONS.map((o) => (
                     <button key={o.label} onClick={() => setSwimDistM(String(o.distanceM))} className={`chip ${Math.round(parseFloat(swimDistM)) === o.distanceM ? "border-accent bg-accent/10" : ""}`}>{o.label}</button>
@@ -385,7 +386,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 </div>
               </div>
               <div className="rounded-2xl border border-line bg-surface-2 p-3.5">
-                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span>🚴 Bike PR</span></div>
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span className="inline-flex items-center gap-1.5"><Icon name="bike" size={15} className="text-bike" />Bike PR</span></div>
                 <div className="mb-2 flex flex-wrap gap-2">
                   {BIKE_PR_OPTIONS.map((o) => (
                     <button key={o.label} onClick={() => setBikeDistKm(String(o.distanceM / 1000))} className={`chip ${Math.round(parseFloat(bikeDistKm) * 1000) === o.distanceM ? "border-accent bg-accent/10" : ""}`}>{o.label}</button>
@@ -397,8 +398,8 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <NumIn label="🚴 Bike FTP (W)" value={ftp} onChange={setFtp} />
-                <NumIn label="❤️ Max HR (bpm)" value={maxHR} onChange={setMaxHR} />
+                <NumIn label="Bike FTP (W)" value={ftp} onChange={setFtp} />
+                <NumIn label="Max HR (bpm)" value={maxHR} onChange={setMaxHR} />
               </div>
             </div>
           </Field>
@@ -410,8 +411,8 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               <div className="flex gap-2">
                 {FOCI.map((f) => (
                   <button key={f.key} onClick={() => setFocus(focus === f.key ? undefined : f.key)} className={`flex-1 rounded-2xl border py-2.5 text-center transition ${focus === f.key ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2"}`}>
-                    <div className="text-xl">{f.icon}</div>
-                    <div className="mt-0.5 text-xs font-semibold">{f.label}</div>
+                    <div className="flex justify-center"><Icon name={f.icon} size={22} /></div>
+                    <div className="mt-1 text-xs font-semibold">{f.label}</div>
                   </button>
                 ))}
               </div>
@@ -454,7 +455,7 @@ function StepRow({
   onChange,
 }: {
   label: string;
-  icon?: string;
+  icon?: IconName;
   value: number;
   min?: number;
   max?: number;
@@ -464,7 +465,7 @@ function StepRow({
   return (
     <div className="flex items-center justify-between rounded-2xl border border-line bg-surface-2 px-4 py-2.5">
       <div className="flex items-center gap-2.5">
-        {icon && <span className="text-lg">{icon}</span>}
+        {icon && <span className="text-muted"><Icon name={icon} size={18} /></span>}
         <span className="font-display text-sm font-semibold">{label}</span>
       </div>
       <div className="flex items-center gap-3">

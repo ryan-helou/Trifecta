@@ -202,10 +202,17 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
   const fresh = generatePlan(plan.profile);
   const cutoff = fromISO(todayISO).getTime();
 
-  // keep old workouts strictly before today (with their statuses)
+  // keep old workouts strictly before today (with their statuses). Their ids
+  // (w-<week>-<day>-<disc>) reuse the same week indices the fresh plan will emit,
+  // so we namespace them with a "kept-" prefix — otherwise a fresh future session
+  // with the same relative index/day/discipline overwrites a completed past one,
+  // silently wiping training history (banked hours, streaks, PRs) on every rebuild.
   const kept: Record<string, Workout> = {};
   for (const w of Object.values(plan.workouts)) {
-    if (fromISO(w.date).getTime() < cutoff) kept[w.id] = w;
+    if (fromISO(w.date).getTime() < cutoff) {
+      const id = `kept-${w.id}`;
+      kept[id] = { ...w, id };
+    }
   }
   // add fresh workouts from today onward
   for (const w of Object.values(fresh.workouts)) {

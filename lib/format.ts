@@ -10,9 +10,11 @@ export function pad(n: number): string {
 
 /** seconds → "1h 20m", "45 min", "8 min" */
 export function fmtDuration(totalSec: number): string {
-  const s = Math.round(totalSec);
-  const h = Math.floor(s / 3600);
-  const m = Math.round((s % 3600) / 60);
+  // Round to whole minutes first, then split — otherwise a value like 7170s
+  // rounds the minutes to 60 and prints "1h 60m" instead of "2h".
+  const totalMin = Math.round(totalSec / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
   if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
   return `${m} min`;
 }
@@ -43,15 +45,17 @@ export function fmtDistance(m: number, unit: Unit = "metric"): string {
 /** sec/km → "4:37/km" (metric) or "7:26/mi" (imperial) */
 export function fmtPace(secPerKm: number, unit: Unit = "metric"): string {
   const per = unit === "imperial" ? secPerKm * (M_PER_MILE / 1000) : secPerKm;
-  const m = Math.floor(per / 60);
-  const s = Math.round(per % 60);
+  let m = Math.floor(per / 60);
+  let s = Math.round(per % 60);
+  if (s === 60) { m += 1; s = 0; } // carry when seconds round up, so we never print "4:60"
   return `${m}:${pad(s)}/${unit === "imperial" ? "mi" : "km"}`;
 }
 
 /** sec/100m → "1:31/100m" (unit-agnostic; swim stays metric) */
 export function fmtPace100(secPer100: number): string {
-  const m = Math.floor(secPer100 / 60);
-  const s = Math.round(secPer100 % 60);
+  let m = Math.floor(secPer100 / 60);
+  let s = Math.round(secPer100 % 60);
+  if (s === 60) { m += 1; s = 0; } // carry when seconds round up, so we never print "1:60"
   return `${m}:${pad(s)}/100m`;
 }
 

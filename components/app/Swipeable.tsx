@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { haptic } from "@/lib/haptics";
 
 export interface SwipeAction {
   label: string;
-  icon: string;
+  icon: ReactNode;
   /** css color for the reveal tray + icon */
   color: string;
   run: () => void;

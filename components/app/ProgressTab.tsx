@@ -8,6 +8,7 @@ import { computeStreak, trainingStats } from "@/lib/stats";
 import { fmtDuration } from "@/lib/format";
 import { DISCIPLINE_META } from "@/lib/zones";
 import { Discipline } from "@/lib/types";
+import { DisciplineIcon, Icon, IconName } from "./icons";
 
 export function ProgressTab() {
   const { plan } = useApp();
@@ -99,15 +100,15 @@ export function ProgressTab() {
       <div className="card animate-fade-up p-4" style={{ animationDelay: "120ms" }}>
         <div className="eyebrow mb-3 text-[0.72rem]">Your bests</div>
         <div className="divide-y divide-line">
-          <Record icon="🔥" label="Longest streak" value={`${streak.longest} ${streak.longest === 1 ? "day" : "days"}`} />
+          <Record icon="flame" label="Longest streak" value={`${streak.longest} ${streak.longest === 1 ? "day" : "days"}`} />
           <Record
-            icon={stats.longestSession ? DISCIPLINE_META[stats.longestSession.workout.discipline].icon : "🏅"}
+            icon={stats.longestSession ? (stats.longestSession.workout.discipline as IconName) : "medal"}
             label="Longest session"
             value={stats.longestSession ? fmtDuration(stats.longestSession.sec) : "—"}
             sub={stats.longestSession?.workout.title}
           />
-          <Record icon="📅" label="Biggest week" value={stats.biggestWeekHrs ? `${(Math.round(stats.biggestWeekHrs * 10) / 10)}h` : "—"} />
-          <Record icon="⏱️" label="Total banked" value={`${Math.round(bankedHrs * 10) / 10}h · ${stats.bankedCount} sessions`} />
+          <Record icon="calendar" label="Biggest week" value={stats.biggestWeekHrs ? `${(Math.round(stats.biggestWeekHrs * 10) / 10)}h` : "—"} />
+          <Record icon="stopwatch" label="Total banked" value={`${Math.round(bankedHrs * 10) / 10}h · ${stats.bankedCount} sessions`} />
         </div>
       </div>
 
@@ -120,7 +121,7 @@ export function ProgressTab() {
           <div className="space-y-3">
             {disciplines.map((d) => (
               <div key={d} className="flex items-center gap-3">
-                <span className="w-5 text-center text-base">{DISCIPLINE_META[d].icon}</span>
+                <span className="flex w-5 justify-center" style={{ color: `var(${DISCIPLINE_META[d].colorVar})` }}><DisciplineIcon discipline={d} size={18} /></span>
                 <span className="eyebrow w-11 text-[0.68rem]" style={{ color: `var(${DISCIPLINE_META[d].colorVar})` }}>
                   {DISCIPLINE_META[d].label}
                 </span>
@@ -177,7 +178,7 @@ function FitnessChart({ values, current, mounted }: { values: number[]; current:
           <stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={area} fill="url(#fit-fill)" style={{ opacity: mounted ? 1 : 0, transition: "opacity .8s ease" }} />
+      <polygon points={area} fill="url(#fit-fill)" style={{ opacity: mounted ? 1 : 0, transition: "opacity .7s ease .55s" }} />
       <polyline
         points={line}
         fill="none"
@@ -186,7 +187,10 @@ function FitnessChart({ values, current, mounted }: { values: number[]; current:
         strokeLinejoin="round"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
-        style={{ opacity: mounted ? 1 : 0, transition: "opacity .8s ease" }}
+        pathLength={100}
+        strokeDasharray={100}
+        strokeDashoffset={mounted ? 0 : 100}
+        style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(.4,.1,.2,1)" }}
       />
     </svg>
   );
@@ -200,7 +204,7 @@ function Stat({ label, value, suffix, molten, accent, flame }: { label: string; 
         className="mt-1 font-display text-[1.8rem] font-semibold leading-none tabular-nums"
         style={{ color: molten ? "var(--accent)" : accent }}
       >
-        {flame && value > 0 && <span className="mr-0.5 text-[1.1rem]">🔥</span>}
+        {flame && value > 0 && <span className="mr-1 inline-block align-middle text-accent"><Icon name="flame" size={18} /></span>}
         <CountUp value={value} />
         {suffix && <span className="text-[0.9rem] font-semibold text-muted">{suffix}</span>}
       </div>
@@ -208,10 +212,10 @@ function Stat({ label, value, suffix, molten, accent, flame }: { label: string; 
   );
 }
 
-function Record({ icon, label, value, sub }: { icon: string; label: string; value: string; sub?: string }) {
+function Record({ icon, label, value, sub }: { icon: IconName; label: string; value: string; sub?: string }) {
   return (
     <div className="flex items-center gap-3 py-2.5">
-      <span className="w-6 text-center text-lg">{icon}</span>
+      <span className="flex w-6 justify-center text-accent"><Icon name={icon} size={18} /></span>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold">{label}</div>
         {sub && <div className="truncate text-xs text-muted">{sub}</div>}

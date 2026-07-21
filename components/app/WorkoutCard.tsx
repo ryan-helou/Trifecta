@@ -2,6 +2,7 @@
 
 import { Workout } from "@/lib/types";
 import { DISCIPLINE_META } from "@/lib/zones";
+import { DisciplineIcon, Icon } from "./icons";
 import { complianceOf } from "@/lib/adapt";
 import { fmtDuration, fmtDistance } from "@/lib/format";
 
@@ -23,13 +24,14 @@ export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; on
     >
       <span aria-hidden className="absolute inset-y-0 left-0 w-[2px]" style={{ background: dc }} />
       <span
-        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[11px] text-xl"
+        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[11px]"
         style={{
           background: `color-mix(in oklab, ${dc} 14%, transparent)`,
           boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${dc} 26%, transparent)`,
+          color: dc,
         }}
       >
-        {meta.icon}
+        <DisciplineIcon discipline={workout.discipline} size={22} />
       </span>
 
       <span className="min-w-0 flex-1">
@@ -52,9 +54,11 @@ export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; on
       {done ? (
         <span className="flex flex-shrink-0 items-center gap-1.5">
           {workout.feel && (
-            <span aria-hidden className="text-sm leading-none">
-              {workout.feel === "great" ? "🙂" : workout.feel === "ok" ? "😐" : "😣"}
-            </span>
+            <Icon
+              name={workout.feel === "great" ? "smile" : workout.feel === "ok" ? "neutral" : "frown"}
+              size={15}
+              className="text-muted"
+            />
           )}
           <span
             className="eyebrow rounded-full px-2 py-0.5 text-[0.7rem]"

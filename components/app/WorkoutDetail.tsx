@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Discipline, Plan, Segment, Unit, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META, ZONES } from "@/lib/zones";
+import { DisciplineIcon, Icon, IconName } from "./icons";
 import { targetView } from "@/lib/targets";
 import { fmtDistance, fmtDuration } from "@/lib/format";
 import { addDays, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
@@ -53,10 +54,10 @@ function sectionOf(k: Segment["kind"]): "warmup" | "main" | "cooldown" {
 }
 const SECTION_LABEL = { warmup: "Warm-up", main: "Main set", cooldown: "Cool-down" };
 
-const FEEL_META: Record<NonNullable<Workout["feel"]>, { emoji: string; label: string }> = {
-  great: { emoji: "🙂", label: "Felt great" },
-  ok: { emoji: "😐", label: "Felt OK" },
-  rough: { emoji: "😣", label: "Felt rough" },
+const FEEL_META: Record<NonNullable<Workout["feel"]>, { icon: IconName; label: string }> = {
+  great: { icon: "smile", label: "Felt great" },
+  ok: { icon: "neutral", label: "Felt OK" },
+  rough: { icon: "frown", label: "Felt rough" },
 };
 
 export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
@@ -87,8 +88,8 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
       <div className="px-5 pb-8 pt-1">
           {/* header */}
           <div className="mb-3 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl" style={{ background: `color-mix(in oklab, var(${meta.colorVar}) 18%, transparent)` }}>
-              {meta.icon}
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: `color-mix(in oklab, var(${meta.colorVar}) 18%, transparent)`, color: `var(${meta.colorVar})` }}>
+              <DisciplineIcon discipline={workout.discipline} size={24} />
             </div>
             <div>
               <h2 className={`font-display text-xl font-semibold leading-tight ${isRace ? "text-accent" : ""}`}>{workout.title}</h2>
@@ -127,7 +128,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
               <div className="flex flex-wrap items-center gap-2">
                 {workout.feel && (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm">
-                    <span>{FEEL_META[workout.feel].emoji}</span>{FEEL_META[workout.feel].label}
+                    <Icon name={FEEL_META[workout.feel].icon} size={16} className="text-muted" />{FEEL_META[workout.feel].label}
                   </span>
                 )}
                 {workout.rpe != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">RPE {workout.rpe}</span>}
@@ -205,7 +206,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                 </button>
               </div>
               <button onClick={() => openCoach(`About my session "${workout.title}": `)} className="btn btn-ghost w-full py-2.5 text-sm">
-                💬 Ask the coach about this
+                <Icon name="chat" size={16} /> Ask the coach about this
               </button>
             </div>
           ) : (
@@ -213,7 +214,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
               onClick={() => { haptic(done ? "light" : "success"); actions.toggleDone(workout.id); }}
               className={`btn w-full py-3.5 text-base ${done ? "btn-ghost" : "btn-primary"}`}
             >
-              {done ? "🏆 You did it! (undo)" : "I finished the race 🏁"}
+              {done ? (<><Icon name="trophy" size={18} /> You did it! (undo)</>) : (<>I finished the race <Icon name="flag" size={18} /></>)}
             </button>
           )}
         </div>
@@ -267,8 +268,8 @@ function SwapPanel({ current, onPick, onCancel }: { current: Discipline; onPick:
             onClick={() => onPick(d)}
             className="flex flex-col items-center rounded-xl border border-line bg-surface py-2.5 disabled:opacity-30 hover:bg-surface-3"
           >
-            <span className="text-xl">{DISCIPLINE_META[d].icon}</span>
-            <span className="text-xs">{DISCIPLINE_META[d].label}</span>
+            <span style={{ color: `var(${DISCIPLINE_META[d].colorVar})` }}><DisciplineIcon discipline={d} size={22} /></span>
+            <span className="mt-1 text-xs">{DISCIPLINE_META[d].label}</span>
           </button>
         ))}
       </div>
