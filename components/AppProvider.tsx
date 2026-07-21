@@ -35,7 +35,7 @@ export const useApp = () => {
   return c;
 };
 
-const CACHE_KEY = "amagohtrain:cache";
+const CACHE_KEY = "amatri:cache";
 
 function readCache(): { username: string; profile: Profile | null; plan: Plan | null } | null {
   try {

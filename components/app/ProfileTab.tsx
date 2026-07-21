@@ -36,7 +36,7 @@ export function ProfileTab() {
         <div>
           <div className="font-display text-2xl font-bold capitalize tracking-tight">{username}</div>
           <div className="mt-0.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
-            <span className="capitalize">{profile.level}</span> · AMAGOH train athlete
+            <span className="capitalize">{profile.level}</span> · AmaTri athlete
           </div>
         </div>
       </div>

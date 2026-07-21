@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
-  AMAGOHTRAIN design system
+  AMATRI design system
   Dark-first, athletic. "Molten iron" accent, discipline-coded colors,
   5-zone intensity scale. Tokens are exposed to Tailwind via @theme inline
   so `bg-surface`, `text-swim`, `border-line`, etc. all work as utilities.

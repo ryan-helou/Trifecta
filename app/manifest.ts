@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "AMAGOH train — Triathlon Coach",
-    short_name: "AMAGOH train",
+    name: "AmaTri — Triathlon Coach",
+    short_name: "AmaTri",
     description:
       "Your personal, adaptive triathlon training plan — day-by-day swim, bike, and run workouts for Olympic, 70.3, and full Ironman.",
     start_url: "/",

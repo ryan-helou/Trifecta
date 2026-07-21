@@ -5,7 +5,7 @@ import path from "node:path";
 const OUT = path.join(process.cwd(), "public", "icons");
 await mkdir(OUT, { recursive: true });
 
-// The AmagohTrain reactor mark, rendered on the dark brand background.
+// The AmaTri reactor mark, rendered on the dark brand background.
 function svg(size, padded) {
   const pad = padded ? 0.16 : 0; // maskable safe zone
   const s = 512;

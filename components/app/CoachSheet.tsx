@@ -67,7 +67,7 @@ export function CoachSheet({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="AMAGOH coach chat"
+        aria-label="AmaTri coach chat"
         tabIndex={-1}
         className="animate-pop relative flex h-[80vh] flex-col rounded-t-3xl border-t border-line bg-background outline-none safe-b"
         onClick={(e) => e.stopPropagation()}

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The AmagohTrain reactor — an original arc-reactor style mark. When `progress`
+ * The AmaTri reactor — an original arc-reactor style mark. When `progress`
  * (0–100) is supplied, the outer ring fills and the core glows brighter as it
  * "charges", used on the plan-generation loading screen.
  */

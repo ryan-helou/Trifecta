@@ -1,7 +1,7 @@
-# AMAGOH train — Triathlon Training Coach 🔥
+# AmaTri — Triathlon Training Coach 🔥
 
 Your personal, adaptive triathlon training plan. Pick your race (Olympic, 70.3,
-full Ironman, or a custom distance), share your PRs, and AMAGOH train forges a full
+full Ironman, or a custom distance), share your PRs, and AmaTri forges a full
 **day-by-day** plan — swim, bike, run, brick, and strength — with a Runna-style
 calendar, per-session pace/power/HR targets, and a plan that adapts when life
 gets in the way.
@@ -54,7 +54,7 @@ npx tsx scripts/test-engine.ts    # sanity-check the plan engine
 ## Deploy to Railway
 
 1. Push this repo to GitHub, then in Railway: **New Project → Deploy from GitHub
-   repo** and pick `amagohtrain`. (Or `railway up` from the Railway CLI.)
+   repo** and pick `amatri`. (Or `railway up` from the Railway CLI.)
 2. **Add a database:** in the project, **New → Database → PostgreSQL**. Railway
    creates a `DATABASE_URL` variable.
 3. **Set variables** on the web service (Variables tab):
@@ -97,4 +97,4 @@ scripts/        icon generator, plan-engine test harness
 
 ---
 
-*AMAGOH train — your path to the finish line.*
+*AmaTri — your path to the finish line.*
