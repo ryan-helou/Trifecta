@@ -21,15 +21,15 @@ const mono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  applicationName: "AmagohTrain",
-  title: "AmagohTrain — Triathlon Coach",
+  applicationName: "AMAGOH train",
+  title: "AMAGOH train — Triathlon Coach",
   description:
     "Your personal, adaptive triathlon training plan. Day-by-day workouts for Olympic, 70.3, and full Ironman — built around your race, your level, and your PRs.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "AmagohTrain",
+    title: "AMAGOH train",
   },
   icons: {
     icon: [

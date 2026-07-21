@@ -5,12 +5,13 @@ import { Plan } from "@/lib/types";
 import { apiCoach } from "@/lib/api";
 import { summarizeForCoach } from "@/lib/adapt";
 import { Reactor } from "../Reactor";
+import { Wordmark } from "../Wordmark";
 
 interface Msg { role: "coach" | "you"; text: string }
 
 export function CoachSheet({ plan, today, prefill, onClose }: { plan: Plan; today: string; prefill?: string; onClose: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([
-    { role: "coach", text: "I'm your AmagohTrain coach. Ask me anything about today's session, pacing, fueling, or how you're feeling." },
+    { role: "coach", text: "I'm your AMAGOH train coach. Ask me anything about today's session, pacing, fueling, or how you're feeling." },
   ]);
   const [input, setInput] = useState(prefill ?? "");
   const [busy, setBusy] = useState(false);
@@ -42,7 +43,7 @@ export function CoachSheet({ plan, today, prefill, onClose }: { plan: Plan; toda
         <div className="flex items-center gap-2 border-b border-line px-5 py-3">
           <Reactor size={30} spinning={false} />
           <div className="flex-1">
-            <div className="font-display font-bold">AmagohTrain Coach</div>
+            <div className="font-display font-bold"><Wordmark /> Coach</div>
             <div className="text-xs text-muted">Powered by Claude · Haiku</div>
           </div>
           <button onClick={onClose} className="text-muted hover:text-foreground">✕</button>
