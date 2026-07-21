@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../AppProvider";
-import { UICtx, UIActions, TabKey } from "./ui";
+import { UICtx, UIActions, TabKey, CoachMsg } from "./ui";
 import { BottomNav } from "./BottomNav";
 import { TodayTab } from "./TodayTab";
 import { PlanTab } from "./PlanTab";
@@ -18,17 +18,40 @@ import {
   rebuildFromToday,
   setStatus,
   swapDiscipline,
+  unswapDiscipline,
 } from "@/lib/adapt";
 
+const COACH_GREETING: CoachMsg = {
+  role: "coach",
+  text: "I'm your AMAGOH train coach. Ask me anything about today's session, pacing, fueling, or how you're feeling.",
+};
+
 export function AppShell() {
-  const { plan, applyPlan } = useApp();
+  const { plan, profile, applyPlan } = useApp();
   const [tab, setTab] = useState<TabKey>("today");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [coach, setCoach] = useState<{ open: boolean; prefill?: string }>({ open: false });
+  const [coachMsgs, setCoachMsgs] = useState<CoachMsg[]>([COACH_GREETING]);
   const [dismissRealign, setDismissRealign] = useState(false);
-  const today = useMemo(() => todayISO(), []);
+
+  // Keep "today" live: a PWA left open overnight must roll over to the new day.
+  const [today, setToday] = useState(() => todayISO());
+  useEffect(() => {
+    const sync = () => setToday((t) => (todayISO() !== t ? todayISO() : t));
+    const onVis = () => document.visibilityState === "visible" && sync();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", sync);
+    const iv = setInterval(sync, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", sync);
+      clearInterval(iv);
+    };
+  }, []);
 
   if (!plan) return null;
+
+  const unit = profile?.unitPreference ?? "metric";
 
   const actions: UIActions = {
     toggleDone: (id) => applyPlan(setStatus(plan, id, plan.workouts[id]?.status === "done" ? "planned" : "done")),
@@ -36,7 +59,8 @@ export function AppShell() {
     unskip: (id) => applyPlan(setStatus(plan, id, "planned")),
     move: (id, date) => applyPlan(moveWorkout(plan, id, date)),
     swap: (id, d) => applyPlan(swapDiscipline(plan, id, d)),
-    logInstead: (id, note) => applyPlan(logInstead(plan, id, note)),
+    unswap: (id) => applyPlan(unswapDiscipline(plan, id)),
+    logInstead: (id, note, opts) => applyPlan(logInstead(plan, id, note, opts)),
     rebuild: () => applyPlan(rebuildFromToday(plan, today)),
     ease: (days) => applyPlan(easeUpcoming(plan, today, days)),
   };
@@ -51,6 +75,7 @@ export function AppShell() {
     <UICtx.Provider
       value={{
         today,
+        unit,
         openWorkout: setDetailId,
         openCoach: (prefill) => setCoach({ open: true, prefill }),
         goTab: setTab,
@@ -87,7 +112,16 @@ export function AppShell() {
       </div>
 
       {detail && <WorkoutDetail workout={detail} plan={plan} />}
-      {coach.open && <CoachSheet plan={plan} today={today} prefill={coach.prefill} onClose={() => setCoach({ open: false })} />}
+      {coach.open && (
+        <CoachSheet
+          plan={plan}
+          today={today}
+          prefill={coach.prefill}
+          messages={coachMsgs}
+          setMessages={setCoachMsgs}
+          onClose={() => setCoach({ open: false })}
+        />
+      )}
     </UICtx.Provider>
   );
 }

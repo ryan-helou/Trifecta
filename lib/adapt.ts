@@ -50,12 +50,35 @@ export function setStatus(plan: Plan, id: string, status: Workout["status"], not
   return p;
 }
 
-export function logInstead(plan: Plan, id: string, note: string): Plan {
+export function logInstead(
+  plan: Plan,
+  id: string,
+  note: string,
+  opts?: { discipline?: Discipline; durationSec?: number },
+): Plan {
   const p = clonePlan(plan);
   const w = p.workouts[id];
   if (!w) return p;
-  p.workouts[id] = { ...w, status: "swapped", note };
+  p.workouts[id] = {
+    ...w,
+    status: "swapped",
+    note,
+    // record what they actually did so Progress attributes it to the right sport
+    loggedDiscipline: opts?.discipline ?? w.discipline,
+    loggedDurationSec: opts?.durationSec ?? w.estDurationSec,
+  };
   return p;
+}
+
+/** Discipline that a completed/logged workout should be credited to. */
+export function creditedDiscipline(w: Workout): Discipline {
+  return w.status === "swapped" ? w.loggedDiscipline ?? w.discipline : w.discipline;
+}
+
+/** Seconds a completed/logged workout should count for. */
+export function creditedSeconds(w: Workout): number {
+  if (w.status === "swapped") return w.loggedDurationSec ?? w.estDurationSec ?? 0;
+  return w.estDurationSec ?? 0;
 }
 
 /** Move a workout to a new date (kept inside the plan window). Returns null if invalid. */
@@ -90,18 +113,26 @@ function replacementDraft(ctx: BuildCtx, discipline: Discipline, minutes: number
   }
 }
 
-/** Swap a session for an easy session of a different discipline (keeps the day). */
+/** Swap a session for an easy session of a different discipline (keeps the day & id, so it's undoable). */
 export function swapDiscipline(plan: Plan, id: string, discipline: Discipline): Plan {
   const p = clonePlan(plan);
   const w = p.workouts[id];
   if (!w) return p;
   const ctx: BuildCtx = { paces: p.paces, level: p.profile.level };
   const draft = replacementDraft(ctx, discipline, (w.estDurationSec || 2400) / 60);
-  const newId = `${w.id}-swap-${discipline}`;
-  delete p.workouts[id];
-  const nw: Workout = {
+  // preserve the pre-swap session (or the earliest one, if already swapped) so it can be restored
+  const original = w.swappedFrom ?? {
+    discipline: w.discipline,
+    type: w.type,
+    title: w.title,
+    purpose: w.purpose,
+    segments: w.segments,
+    estDurationSec: w.estDurationSec,
+    estDistanceM: w.estDistanceM,
+    primaryZone: w.primaryZone,
+  };
+  p.workouts[id] = {
     ...w,
-    id: newId,
     discipline: draft.discipline,
     type: draft.type,
     title: draft.title,
@@ -111,10 +142,32 @@ export function swapDiscipline(plan: Plan, id: string, discipline: Discipline): 
     estDistanceM: draft.estDistanceM,
     primaryZone: draft.primaryZone,
     status: "planned",
-    note: `Swapped from ${w.discipline}`,
+    note: `Swapped from ${original.discipline}`,
+    swappedFrom: original,
   };
-  p.workouts[newId] = nw;
-  reindexWeeks(p);
+  return p; // same id / date / week — no reindex needed
+}
+
+/** Undo a swap, restoring the original session. */
+export function unswapDiscipline(plan: Plan, id: string): Plan {
+  const p = clonePlan(plan);
+  const w = p.workouts[id];
+  if (!w || !w.swappedFrom) return p;
+  const o = w.swappedFrom;
+  p.workouts[id] = {
+    ...w,
+    discipline: o.discipline,
+    type: o.type,
+    title: o.title,
+    purpose: o.purpose,
+    segments: o.segments,
+    estDurationSec: o.estDurationSec,
+    estDistanceM: o.estDistanceM,
+    primaryZone: o.primaryZone,
+    status: "planned",
+    note: undefined,
+    swappedFrom: undefined,
+  };
   return p;
 }
 
@@ -183,7 +236,7 @@ export function weekProgress(plan: Plan, wk: Week): { done: number; total: numbe
     plannedSec += w.estDurationSec || 0;
     if (w.status === "done" || w.status === "swapped") {
       done++;
-      doneSec += w.estDurationSec || 0;
+      doneSec += creditedSeconds(w);
     }
   }
   return { done, total, plannedSec, doneSec };

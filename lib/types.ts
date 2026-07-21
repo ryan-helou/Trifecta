@@ -6,6 +6,10 @@ export type RaceType = "olympic" | "half" | "full" | "custom";
 
 export type Level = "beginner" | "intermediate" | "advanced" | "elite";
 
+// Distance/pace display system. Swim pace stays per-100m in both; imperial
+// affects run/bike distances (miles) and run pace (min/mi).
+export type Unit = "metric" | "imperial";
+
 export type Discipline = "swim" | "bike" | "run" | "brick" | "strength" | "rest";
 
 // A workout's role in the training week.
@@ -59,8 +63,22 @@ export interface Workout {
   status: "planned" | "done" | "skipped" | "swapped" | "moved";
   /** if the athlete logged something different */
   note?: string;
+  /** what the athlete actually did when they "did something else" (status "swapped") */
+  loggedDiscipline?: Discipline;
+  loggedDurationSec?: number;
   /** set when the plan reshuffles a workout */
   movedFrom?: string;
+  /** original session preserved when swapped to another sport, so the swap can be undone */
+  swappedFrom?: {
+    discipline: Discipline;
+    type: SessionType;
+    title: string;
+    purpose: string;
+    segments: Segment[];
+    estDurationSec: number;
+    estDistanceM?: number;
+    primaryZone: Zone;
+  };
 }
 
 export type Phase = "base" | "build" | "peak" | "taper";
@@ -108,6 +126,7 @@ export interface Profile {
   weeklyHoursCap?: number; // athlete-imposed ceiling on weekly hours
   restDayPreference?: number; // 0=Mon … 6=Sun, a day they'd like off
   focusDiscipline?: Discipline; // a limiter they want to bias toward
+  unitPreference?: Unit; // km vs mi for distance/pace display (default metric)
   createdAtISO: string;
 }
 

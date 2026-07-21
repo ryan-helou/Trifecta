@@ -1,4 +1,4 @@
-import { Discipline, PaceModel, Zone } from "./types";
+import { Discipline, PaceModel, Unit, Zone } from "./types";
 import { ZONES, rpeLabel } from "./zones";
 import { fmtPaceRange, fmtPace100Range } from "./format";
 
@@ -10,7 +10,7 @@ export interface TargetView {
   zoneName: string;
 }
 
-export function targetView(discipline: Discipline, zone: Zone, paces: PaceModel): TargetView {
+export function targetView(discipline: Discipline, zone: Zone, paces: PaceModel, unit: Unit = "metric"): TargetView {
   const meta = ZONES[zone];
   const secondary: string[] = [rpeLabel(zone)];
 
@@ -19,7 +19,7 @@ export function targetView(discipline: Discipline, zone: Zone, paces: PaceModel)
     const hr = paces.hr.zones[zone];
     if (paces.hr.maxHR && hr.loBpm) secondary.push(`${hr.loBpm}–${hr.hiBpm} bpm`);
     return {
-      primary: fmtPaceRange(z.loSecPerKm, z.hiSecPerKm),
+      primary: fmtPaceRange(z.loSecPerKm, z.hiSecPerKm, unit),
       secondary,
       zoneName: meta.name,
     };

@@ -24,6 +24,7 @@ interface Ctx {
   logout(): Promise<void>;
   startPlan(profile: Profile, plan: Plan): void;
   applyPlan(plan: Plan): void;
+  updateProfile(profile: Profile): void;
   resetPlan(): void;
 }
 
@@ -154,6 +155,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [username, profile, persist],
   );
 
+  const updateProfile = useCallback(
+    (prof: Profile) => {
+      setProfile(prof);
+      // keep the copy embedded in the plan in sync so both read the same prefs
+      setPlan((pl) => {
+        const next = pl ? { ...pl, profile: prof } : pl;
+        persist(username, prof, next);
+        return next;
+      });
+    },
+    [username, persist],
+  );
+
   const resetPlan = useCallback(() => {
     setProfile(null);
     setPlan(null);
@@ -170,7 +184,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider
-      value={{ screen, username, profile, plan, offline, signup, login, logout, startPlan, applyPlan, resetPlan }}
+      value={{ screen, username, profile, plan, offline, signup, login, logout, startPlan, applyPlan, updateProfile, resetPlan }}
     >
       {children}
     </AppCtx.Provider>
