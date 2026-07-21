@@ -24,14 +24,22 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="relative flex h-[100dvh] flex-col overflow-hidden">
-      {/* forge atmosphere */}
-      <div className="forge-floor" aria-hidden />
-      <EmberField />
-      <div className="noise-overlay" aria-hidden />
-      <div className="forge-vignette" aria-hidden />
+    <div className="relative min-h-[100dvh] w-full overflow-x-hidden">
+      {/* dawn atmosphere — fixed to the viewport and self-clipped, so the wide glow
+          never triggers horizontal scroll and stays put while the page scrolls */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="forge-floor" aria-hidden />
+        <EmberField />
+        <div className="noise-overlay" aria-hidden />
+        <div className="forge-vignette" aria-hidden />
+      </div>
 
-      <div className="no-scrollbar safe-t safe-b relative z-10 mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col overflow-y-auto px-6">
+      {/* content column — fills the screen, but grows + lets the page scroll when it
+          can't fit, and always keeps clear of the home indicator */}
+      <div
+        className="safe-t relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-md flex-col px-6"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.25rem)" }}
+      >
         {/* brand lockup */}
         <div className="animate-fade-up flex items-center gap-2.5 pt-6" style={{ animationDelay: "60ms" }}>
           <Reactor size={34} />
