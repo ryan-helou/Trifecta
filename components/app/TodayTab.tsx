@@ -20,7 +20,7 @@ export function TodayTab() {
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="space-y-5 px-4 py-4">
+    <div className="space-y-5 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
       <div className="animate-fade-up flex items-center justify-between">
         <div>
           <div className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.24em] text-muted">{greeting}</div>
@@ -67,7 +67,7 @@ export function TodayTab() {
       {/* week at a glance */}
       <button
         onClick={() => goTab("plan")}
-        className="animate-fade-up card block w-full p-4 text-left transition hover:brightness-110"
+        className="animate-fade-up card block w-full p-4 text-left transition hover:brightness-110 active:scale-[0.995] active:brightness-125"
         style={{ animationDelay: "180ms" }}
       >
         <div className="mb-3 flex items-center justify-between">

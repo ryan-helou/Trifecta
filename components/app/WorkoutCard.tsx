@@ -17,7 +17,7 @@ export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; on
   return (
     <button
       onClick={onOpen}
-      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-[20px] border border-line py-3 pl-3.5 pr-3 text-left transition hover:border-line-soft hover:brightness-110 ${
+      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-[20px] border border-line py-3 pl-3.5 pr-3 text-left transition hover:border-line-soft hover:brightness-110 active:scale-[0.99] active:brightness-125 ${
         dimmed ? "opacity-55" : ""
       } ${isRace ? "ring-1 ring-accent/70" : ""}`}
       style={{ background: "linear-gradient(100deg, color-mix(in oklab, var(--surface) 92%, transparent), var(--surface))" }}
@@ -34,7 +34,7 @@ export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; on
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className={`block truncate font-display text-[0.98rem] font-semibold leading-tight ${isRace ? "text-gradient" : ""}`}>
+        <span className={`line-clamp-2 font-display text-[0.98rem] font-semibold leading-tight ${isRace ? "text-gradient" : ""}`}>
           {workout.title}
         </span>
         <span className="mt-1 flex items-center gap-1.5 font-mono text-[0.72rem] text-muted">

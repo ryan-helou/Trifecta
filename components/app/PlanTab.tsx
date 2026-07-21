@@ -26,7 +26,7 @@ export function PlanTab() {
   const prog = weekProgress(plan, week);
 
   return (
-    <div className="px-4 py-4">
+    <div className="px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
       <div className="animate-fade-up">
         <div className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.24em] text-muted">Training plan · {plan.totalWeeks} weeks</div>
         <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">
@@ -44,7 +44,7 @@ export function PlanTab() {
               key={w.index}
               data-w={w.index}
               onClick={() => setSel(w.index)}
-              className={`flex-shrink-0 rounded-full px-3.5 py-2 font-display text-[0.82rem] font-semibold transition ${
+              className={`flex-shrink-0 rounded-full px-3.5 py-2 font-display text-[0.82rem] font-semibold transition active:brightness-110 ${
                 on ? "accent-gradient text-[#1a0d06]" : "border border-line bg-surface-2 text-muted"
               } ${isCur && !on ? "ring-1 ring-accent/45" : ""}`}
             >
@@ -60,7 +60,7 @@ export function PlanTab() {
           <button
             onClick={() => setSel((s) => Math.max(0, s - 1))}
             disabled={sel === 0}
-            className="grid h-8 w-8 place-items-center rounded-[10px] border border-line bg-surface-2 text-muted transition hover:text-foreground disabled:opacity-30"
+            className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface-2 text-lg text-muted transition hover:text-foreground active:brightness-125 disabled:opacity-30"
           >
             ‹
           </button>
@@ -73,7 +73,7 @@ export function PlanTab() {
           <button
             onClick={() => setSel((s) => Math.min(plan.weeks.length - 1, s + 1))}
             disabled={sel === plan.weeks.length - 1}
-            className="grid h-8 w-8 place-items-center rounded-[10px] border border-line bg-surface-2 text-muted transition hover:text-foreground disabled:opacity-30"
+            className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface-2 text-lg text-muted transition hover:text-foreground active:brightness-125 disabled:opacity-30"
           >
             ›
           </button>

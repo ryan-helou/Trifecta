@@ -48,21 +48,21 @@ export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
         className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full"
         style={{ background: "radial-gradient(closest-side, rgba(255,106,44,.22), transparent)" }}
       />
-      <div className="relative flex items-start justify-between">
-        <div>
-          <div className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.22em] text-muted">{dist.name} · Race day</div>
-          <div className="mt-2 flex items-baseline gap-2.5">
-            <span className="heat-molten font-display text-[3.4rem] font-bold leading-[0.85] tabular-nums">{days}</span>
+      <div className="relative">
+        <div className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.2em] text-muted">{dist.name} · Race day</div>
+        <div className="mt-2 flex items-end justify-between gap-3">
+          <div className="flex items-baseline gap-2.5">
+            <span className="heat-molten font-display text-[3.4rem] font-bold leading-[0.8] tabular-nums">{days}</span>
             <span className="text-sm leading-[1.05] text-muted">
               days
               <br />
               to go
             </span>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="font-mono text-[0.6rem] font-bold uppercase tracking-[0.14em] text-muted">Projected</div>
-          <div className="mt-1 font-display text-[1.3rem] font-bold tabular-nums">{fmtClock(est)}</div>
+          <div className="text-right">
+            <div className="font-mono text-[0.58rem] font-bold uppercase tracking-[0.12em] text-muted">Projected</div>
+            <div className="mt-0.5 font-display text-[1.25rem] font-bold tabular-nums">{fmtClock(est)}</div>
+          </div>
         </div>
       </div>
       <div className="mt-4 flex border-t border-line-soft pt-3 font-mono text-[0.72rem] font-bold">
