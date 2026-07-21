@@ -13,7 +13,7 @@ function secret(): string {
   return (
     process.env.SESSION_SECRET ||
     process.env.DATABASE_URL || // stable-ish fallback in prod
-    "amagohtrain-dev-secret-change-me"
+    "amatri-dev-secret-change-me"
   );
 }
 

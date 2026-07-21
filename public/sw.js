@@ -1,5 +1,5 @@
-// AmagohTrain service worker — makes the app installable and usable offline.
-const CACHE = "amagohtrain-v1";
+// AmaTri service worker — makes the app installable and usable offline.
+const CACHE = "amatri-v1";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

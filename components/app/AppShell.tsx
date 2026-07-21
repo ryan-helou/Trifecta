@@ -23,7 +23,7 @@ import {
 
 const COACH_GREETING: CoachMsg = {
   role: "coach",
-  text: "I'm your AMAGOH train coach. Ask me anything about today's session, pacing, fueling, or how you're feeling.",
+  text: "I'm your AmaTri coach. Ask me anything about today's session, pacing, fueling, or how you're feeling.",
 };
 
 export function AppShell() {
