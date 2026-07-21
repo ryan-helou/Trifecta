@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Discipline, Plan, Segment, Workout, Zone } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import { Discipline, Plan, Segment, Unit, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { targetView } from "@/lib/targets";
 import { fmtDistance, fmtDuration } from "@/lib/format";
@@ -23,10 +23,10 @@ function ZoneChip({ zone }: { zone?: Zone }) {
   );
 }
 
-function SegRow({ seg, paces }: { seg: Segment; paces: Plan["paces"] }) {
+function SegRow({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; unit: Unit }) {
   const disc = (seg.discipline ?? "run") as Discipline;
   const showTarget = seg.zone && seg.kind !== "rest" && disc !== "strength" && disc !== "rest";
-  const tv = showTarget ? targetView(disc, seg.zone as Zone, paces) : null;
+  const tv = showTarget ? targetView(disc, seg.zone as Zone, paces, unit) : null;
   return (
     <div className="py-2.5">
       <div className="flex items-start justify-between gap-3">
@@ -52,12 +52,14 @@ function sectionOf(k: Segment["kind"]): "warmup" | "main" | "cooldown" {
 const SECTION_LABEL = { warmup: "Warm-up", main: "Main set", cooldown: "Cool-down" };
 
 export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
-  const { openWorkout, openCoach, actions } = useUI();
+  const { openWorkout, openCoach, actions, unit } = useUI();
   const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
   const [note, setNote] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
   const meta = DISCIPLINE_META[workout.discipline];
   const isRace = workout.id === "w-race-day";
   const done = workout.status === "done";
+  const swapped = !!workout.swappedFrom;
 
   // group segments into sections
   const sections: { label: string; segs: Segment[] }[] = [];
@@ -73,11 +75,25 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
 
   const close = () => openWorkout(null);
 
+  // dialog a11y: focus on open + Escape to close
+  useEffect(() => {
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="fixed inset-0 z-40 flex flex-col justify-end" onClick={close}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="animate-pop relative max-h-[92vh] overflow-y-auto rounded-t-3xl border-t border-line bg-background pb-8 safe-b"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={workout.title}
+        tabIndex={-1}
+        className="animate-pop relative max-h-[92vh] overflow-y-auto rounded-t-3xl border-t border-line bg-background pb-8 outline-none safe-b"
         onClick={(e) => e.stopPropagation()}
       >
         {/* grab handle */}
@@ -101,7 +117,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           {/* totals */}
           <div className="mb-4 flex gap-2">
             <Stat label="Duration" value={workout.estDurationSec > 0 ? fmtDuration(workout.estDurationSec) : "—"} />
-            {workout.estDistanceM ? <Stat label="Distance" value={fmtDistance(workout.estDistanceM)} /> : null}
+            {workout.estDistanceM ? <Stat label="Distance" value={fmtDistance(workout.estDistanceM, unit)} /> : null}
             <Stat label="Intensity" value={ZONES[workout.primaryZone].name} accent />
           </div>
 
@@ -129,7 +145,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                 <div className="mb-0.5 mt-2 text-xs font-bold uppercase tracking-wide text-muted">{sec.label}</div>
                 <div className="divide-y divide-line rounded-2xl border border-line bg-surface px-3.5">
                   {sec.segs.map((s, j) => (
-                    <SegRow key={j} seg={s} paces={plan.paces} />
+                    <SegRow key={j} seg={s} paces={plan.paces} unit={unit} />
                   ))}
                 </div>
               </div>

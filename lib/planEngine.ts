@@ -62,6 +62,9 @@ export function categoryOf(p: Profile): Cat {
 }
 
 const RACE_BIKE_KMH: Record<Level, number> = { beginner: 26, intermediate: 30, advanced: 33, elite: 36 };
+// Typical flat-course FTP the level speeds above implicitly assume — used to
+// scale race speed when the athlete gives their own FTP.
+const TYPICAL_FTP: Record<Level, number> = { beginner: 150, intermediate: 200, advanced: 260, elite: 320 };
 
 /** Rough race-day finish estimate from the athlete's derived paces. */
 export function estimateRaceSeconds(
@@ -76,7 +79,12 @@ export function estimateRaceSeconds(
   const swimSec = (dist.swim / 100) * swimPace;
   // bike ~ level speed adjusted for race intensity by distance
   const bikeFactor = cat === "full" ? 0.9 : cat === "half" ? 1.0 : 1.08;
-  const bikeKmh = RACE_BIKE_KMH[level] * bikeFactor;
+  let bikeKmh = RACE_BIKE_KMH[level] * bikeFactor;
+  // If the athlete gave an FTP, scale speed by power: on the flat, aero drag
+  // dominates so P ∝ v³ → v ∝ FTP^(1/3). Higher FTP than the level norm = faster.
+  if (paces.bike.ftp && paces.bike.ftp > 0) {
+    bikeKmh *= Math.cbrt(paces.bike.ftp / TYPICAL_FTP[level]);
+  }
   const bikeSec = (dist.bike / 1000 / bikeKmh) * 3600;
   // run ~ Z2 (full), Z3 (half), Z4-ish (olympic)
   const runZone = cat === "full" ? 2 : cat === "half" ? 3 : 4;
