@@ -1,5 +1,6 @@
 import { Level, PaceModel, Profile, Zone } from "./types";
 import { ZONES } from "./zones";
+import { fmtDistance } from "./format";
 
 // ---------------------------------------------------------------------------
 // Derive per-athlete intensity targets from whatever inputs we have.
@@ -117,3 +118,10 @@ export const SWIM_PR_OPTIONS = [
   { label: "400m", distanceM: 400 },
   { label: "1500m", distanceM: 1500 },
 ];
+
+/** Nice label for a PR distance: preset name if it matches one, else a formatted distance. */
+export function prLabel(discipline: "run" | "swim", distanceM: number): string {
+  const opts = discipline === "run" ? RUN_PR_OPTIONS : SWIM_PR_OPTIONS;
+  const preset = opts.find((o) => o.distanceM === distanceM);
+  return preset ? preset.label : fmtDistance(distanceM);
+}

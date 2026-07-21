@@ -27,7 +27,7 @@ export function LoadingAnimation({
     `Analyzing your ${race} goal…`,
     "Reading your PRs and setting training zones…",
     "Structuring Base → Build → Peak → Taper…",
-    `Balancing your ${profile.daysPerWeek} days around long sessions…`,
+    `Balancing your ${profile.workoutsPerWeek} workouts around long sessions…`,
     "Applying the 80/20 intensity rule…",
     "Placing your bricks and threshold work…",
     "Forging your plan…",
