@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
-import { fmtPace, fmtPace100 } from "@/lib/format";
-import { fmtFullDate } from "@/lib/dates";
+import { fmtPace, fmtPace100, fmtDistance } from "@/lib/format";
+import { fmtFullDate, daysBetween } from "@/lib/dates";
 import { raceDistances } from "@/lib/planEngine";
 import { InstallHint } from "./InstallHint";
 import { Wordmark } from "../Wordmark";
@@ -17,49 +17,64 @@ export function ProfileTab() {
 
   const dist = raceDistances(profile);
   const paces = plan.paces;
-
-  const rows: [string, string][] = [
-    ["Race", dist.name],
-    ["Date", fmtFullDate(profile.raceDateISO)],
-    ["Level", profile.level],
-    ["Workouts / week", String(profile.workoutsPerWeek)],
+  const daysOut = Math.max(0, daysBetween(today, profile.raceDateISO));
+  const legs = [
+    { label: "Swim", v: fmtDistance(dist.swim), c: "var(--swim)" },
+    { label: "Bike", v: fmtDistance(dist.bike), c: "var(--bike)" },
+    { label: "Run", v: fmtDistance(dist.run), c: "var(--run)" },
   ];
 
   return (
-    <div className="space-y-4 px-4 py-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl accent-gradient font-display text-2xl font-bold text-[#1a0d06]">
+    <div className="space-y-5 px-4 py-4">
+      {/* identity */}
+      <div className="animate-fade-up flex items-center gap-3.5">
+        <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl accent-gradient font-display text-2xl font-bold text-[#1a0d06]">
           {username?.[0]?.toUpperCase()}
         </div>
         <div>
-          <div className="font-display text-2xl font-bold capitalize">{username}</div>
-          <div className="text-sm text-muted">AMAGOH train athlete</div>
+          <div className="font-display text-2xl font-bold capitalize tracking-tight">{username}</div>
+          <div className="mt-0.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
+            <span className="capitalize">{profile.level}</span> · AMAGOH train athlete
+          </div>
         </div>
       </div>
 
-      <Section title="Your race">
-        {rows.map(([k, v], i) => (
-          <Row key={k} k={k} v={v} first={i === 0} />
-        ))}
-      </Section>
+      {/* race card — the target, discipline-coded (echoes Today's hero) */}
+      <div className="card-glass forge-card relative overflow-hidden p-[18px]">
+        <div className="forge-edge" aria-hidden />
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-accent-soft">Your race</div>
+            <div className="mt-1 font-display text-[1.35rem] font-bold leading-tight">{dist.name}</div>
+            <div className="mt-0.5 text-sm text-muted">{fmtFullDate(profile.raceDateISO)}</div>
+          </div>
+          <div className="text-right">
+            <div className="heat-molten font-display text-[2rem] font-bold leading-none tabular-nums">{daysOut}</div>
+            <div className="font-mono text-[0.56rem] font-bold uppercase tracking-[0.14em] text-muted">days out</div>
+          </div>
+        </div>
+        <div className="mt-4 flex border-t border-line-soft pt-3 font-mono text-[0.72rem] font-bold">
+          {legs.map((l, i) => (
+            <div key={l.label} className={`flex-1 ${i === 1 ? "text-center" : i === 2 ? "text-right" : ""}`}>
+              <span style={{ color: l.c }}>{l.label.toUpperCase()}</span> <span className="tabular-nums text-foreground/75">{l.v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
-      <Section title="Your training paces">
-        <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm)} first raw />
-        <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} raw />
-        <Row k="Bike FTP" v={paces.bike.ftp ? `${paces.bike.ftp} W` : "Zone / RPE based"} raw />
+      <Section title="Training paces">
+        <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm)} first />
+        <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} />
+        <Row k="Bike FTP" v={paces.bike.ftp ? `${paces.bike.ftp} W` : "Zone / RPE based"} />
         {paces.hr.maxHR ? <Row k="Max HR" v={`${paces.hr.maxHR} bpm`} /> : null}
-        <div className="px-4 pb-3 pt-1 text-xs text-muted">
+        <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
           {paces.run.source === "pr" ? "Dialed in from your PRs." : "Estimated from your level — add PRs to sharpen them."}
         </div>
       </Section>
 
       <Section title="Adjust your plan">
-        <button onClick={() => actions.ease(7)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-surface-2">
-          <span>Not feeling 100% — ease this week</span><span className="text-muted">›</span>
-        </button>
-        <button onClick={() => actions.rebuild()} className="flex w-full items-center justify-between border-t border-line px-4 py-3 text-left hover:bg-surface-2">
-          <span>Rebuild plan around today</span><span className="text-muted">›</span>
-        </button>
+        <ActionRow first onClick={() => actions.ease(7)} label="Not feeling 100% — ease this week" />
+        <ActionRow onClick={() => actions.rebuild()} label="Rebuild plan around today" />
       </Section>
 
       <InstallHint />
@@ -79,7 +94,9 @@ export function ProfileTab() {
         <button onClick={logout} className="btn btn-ghost w-full py-3">Log out</button>
       </div>
 
-      <div className="pb-4 text-center text-xs text-muted"><Wordmark /> · your path to the finish line</div>
+      <div className="pb-4 text-center font-mono text-[0.62rem] font-bold uppercase tracking-[0.16em] text-muted">
+        <Wordmark /> · your path to the finish line
+      </div>
     </div>
   );
 }
@@ -87,16 +104,29 @@ export function ProfileTab() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-muted">{title}</div>
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface">{children}</div>
+      <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">{title}</div>
+      <div className="card overflow-hidden">{children}</div>
     </div>
   );
 }
-function Row({ k, v, first, raw }: { k: string; v: string; first?: boolean; raw?: boolean }) {
+
+function Row({ k, v, first }: { k: string; v: string; first?: boolean }) {
   return (
     <div className={`flex items-center justify-between px-4 py-3 ${first ? "" : "border-t border-line"}`}>
       <span className="text-sm text-muted">{k}</span>
-      <span className={`font-semibold ${raw ? "" : "capitalize"}`}>{v}</span>
+      <span className="font-mono text-sm font-semibold tabular-nums">{v}</span>
     </div>
+  );
+}
+
+function ActionRow({ label, onClick, first }: { label: string; onClick: () => void; first?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center justify-between px-4 py-3.5 text-left text-sm transition hover:bg-surface-2 ${first ? "" : "border-t border-line"}`}
+    >
+      <span>{label}</span>
+      <span className="text-accent-soft">›</span>
+    </button>
   );
 }
