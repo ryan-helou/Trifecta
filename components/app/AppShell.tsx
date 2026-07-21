@@ -9,12 +9,15 @@ import { ToastProvider } from "./Toast";
 import { TodayTab } from "./TodayTab";
 import { PlanTab } from "./PlanTab";
 import { ProgressTab } from "./ProgressTab";
+import { FriendsTab } from "./FriendsTab";
 import { ProfileTab } from "./ProfileTab";
 import { WorkoutDetail } from "./WorkoutDetail";
+import { CheckinSheet } from "./CheckinSheet";
 import { CoachSheet } from "./CoachSheet";
 import { todayISO } from "@/lib/dates";
 import {
   easeUpcoming,
+  logCheckin,
   logInstead,
   moveWorkout,
   rebuildFromToday,
@@ -32,6 +35,7 @@ export function AppShell() {
   const { plan, profile, applyPlan } = useApp();
   const [tab, setTab] = useState<TabKey>("today");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [checkinId, setCheckinId] = useState<string | null>(null);
   const [coach, setCoach] = useState<{ open: boolean; prefill?: string }>({ open: false });
   const [coachMsgs, setCoachMsgs] = useState<CoachMsg[]>([COACH_GREETING]);
   const [dismissRealign, setDismissRealign] = useState(false);
@@ -63,6 +67,7 @@ export function AppShell() {
     swap: (id, d) => applyPlan(swapDiscipline(plan, id, d)),
     unswap: (id) => applyPlan(unswapDiscipline(plan, id)),
     logInstead: (id, note, opts) => applyPlan(logInstead(plan, id, note, opts)),
+    logCheckin: (id, entry) => applyPlan(logCheckin(plan, id, entry)),
     rebuild: () => applyPlan(rebuildFromToday(plan, today)),
     ease: (days) => applyPlan(easeUpcoming(plan, today, days)),
   };
@@ -72,6 +77,7 @@ export function AppShell() {
   );
 
   const detail = detailId ? plan.workouts[detailId] : null;
+  const checkin = checkinId ? plan.workouts[checkinId] : null;
 
   return (
     <UICtx.Provider
@@ -79,6 +85,7 @@ export function AppShell() {
         today,
         unit,
         openWorkout: setDetailId,
+        openCheckin: setCheckinId,
         openCoach: (prefill) => setCoach({ open: true, prefill }),
         goTab: setTab,
         actions,
@@ -109,6 +116,7 @@ export function AppShell() {
               {tab === "today" && <TodayTab />}
               {tab === "plan" && <PlanTab />}
               {tab === "progress" && <ProgressTab />}
+              {tab === "friends" && <FriendsTab />}
               {tab === "profile" && <ProfileTab />}
             </TabDeck>
           </div>
@@ -118,6 +126,7 @@ export function AppShell() {
       </ToastProvider>
 
       {detail && <WorkoutDetail workout={detail} plan={plan} />}
+      {checkin && <CheckinSheet workout={checkin} plan={plan} today={today} onClose={() => setCheckinId(null)} />}
       {coach.open && (
         <CoachSheet
           plan={plan}

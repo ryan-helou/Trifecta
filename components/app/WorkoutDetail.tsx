@@ -37,7 +37,7 @@ function SegRow({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; unit
       </div>
       {tv && (
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-          <span className="font-semibold text-accent-soft">{tv.primary}</span>
+          <span className="font-semibold text-accent">{tv.primary}</span>
           {tv.secondary.map((s, i) => (
             <span key={i} className="tnum">· {s}</span>
           ))}
@@ -53,8 +53,14 @@ function sectionOf(k: Segment["kind"]): "warmup" | "main" | "cooldown" {
 }
 const SECTION_LABEL = { warmup: "Warm-up", main: "Main set", cooldown: "Cool-down" };
 
+const FEEL_META: Record<NonNullable<Workout["feel"]>, { emoji: string; label: string }> = {
+  great: { emoji: "🙂", label: "Felt great" },
+  ok: { emoji: "😐", label: "Felt OK" },
+  rough: { emoji: "😣", label: "Felt rough" },
+};
+
 export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
-  const { openWorkout, openCoach, actions, unit } = useUI();
+  const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
   const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
   const [note, setNote] = useState("");
   const meta = DISCIPLINE_META[workout.discipline];
@@ -85,7 +91,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
               {meta.icon}
             </div>
             <div>
-              <h2 className={`font-display text-xl font-bold leading-tight ${isRace ? "text-gradient" : ""}`}>{workout.title}</h2>
+              <h2 className={`font-display text-xl font-semibold leading-tight ${isRace ? "text-accent" : ""}`}>{workout.title}</h2>
               <div className="text-sm capitalize text-muted">{meta.label} · {workout.type.replace("_", " ")}</div>
             </div>
           </div>
@@ -106,7 +112,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
 
           {/* purpose */}
           <div className="mb-4 rounded-2xl border border-accent/25 bg-accent/5 p-3.5">
-            <div className="mb-1 text-xs font-bold uppercase tracking-wide text-accent-soft">Why it matters</div>
+            <div className="eyebrow mb-1 text-[0.72rem] text-accent">Why it matters</div>
             <p className="text-sm leading-relaxed">{workout.purpose}</p>
           </div>
 
@@ -114,11 +120,28 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
             <div className="mb-4 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-muted">Note: {workout.note}</div>
           )}
 
+          {/* how it went — the logged check-in */}
+          {done && (workout.rpe != null || workout.feel || workout.actualDurationSec != null || workout.actualDistanceM != null) && (
+            <div className="mb-4 rounded-2xl border p-3.5" style={{ borderColor: "color-mix(in oklab, var(--success) 35%, transparent)", background: "color-mix(in oklab, var(--success) 7%, transparent)" }}>
+              <div className="eyebrow mb-2 text-[0.72rem]" style={{ color: "var(--success)" }}>How it went</div>
+              <div className="flex flex-wrap items-center gap-2">
+                {workout.feel && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm">
+                    <span>{FEEL_META[workout.feel].emoji}</span>{FEEL_META[workout.feel].label}
+                  </span>
+                )}
+                {workout.rpe != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">RPE {workout.rpe}</span>}
+                {workout.actualDurationSec != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDuration(workout.actualDurationSec)}</span>}
+                {workout.actualDistanceM != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDistance(workout.actualDistanceM, unit)}</span>}
+              </div>
+            </div>
+          )}
+
           {/* segments */}
           <div className="mb-5">
             {sections.map((sec, i) => (
               <div key={i} className="mb-2">
-                <div className="mb-0.5 mt-2 text-xs font-bold uppercase tracking-wide text-muted">{sec.label}</div>
+                <div className="eyebrow mb-0.5 mt-2 text-[0.72rem]">{sec.label}</div>
                 <div className="divide-y divide-line rounded-2xl border border-line bg-surface px-3.5">
                   {sec.segs.map((s, j) => (
                     <SegRow key={j} seg={s} paces={plan.paces} unit={unit} />
@@ -153,11 +176,19 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           {!isRace ? (
             <div className="space-y-2">
               <button
-                onClick={() => { haptic(done ? "light" : "success"); actions.toggleDone(workout.id); }}
+                onClick={() => {
+                  if (done) { haptic("light"); actions.toggleDone(workout.id); }
+                  else { haptic("success"); actions.toggleDone(workout.id); close(); openCheckin(workout.id); }
+                }}
                 className={`btn w-full py-3.5 text-base ${done ? "btn-ghost" : "btn-primary"}`}
               >
                 {done ? "✓ Completed — undo" : "Mark complete"}
               </button>
+              {done && (
+                <button onClick={() => { close(); openCheckin(workout.id); }} className="btn btn-ghost w-full py-2.5 text-sm">
+                  {workout.rpe != null || workout.feel || workout.actualDurationSec != null ? "Edit check-in" : "＋ Add a check-in"}
+                </button>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => setMode(mode === "move" ? null : "move")} className="btn btn-ghost py-2.5 text-sm">Move day</button>
                 <button onClick={() => setMode(mode === "swap" ? null : "swap")} className="btn btn-ghost py-2.5 text-sm">Swap sport</button>
@@ -193,8 +224,8 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-muted">{label}</div>
-      <div className={`font-display text-base font-bold tnum ${accent ? "text-accent-soft" : ""}`}>{value}</div>
+      <div className="eyebrow text-[0.66rem]">{label}</div>
+      <div className={`font-display text-base font-semibold tnum ${accent ? "text-accent" : ""}`}>{value}</div>
     </div>
   );
 }

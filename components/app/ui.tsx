@@ -1,7 +1,14 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { Discipline, Unit } from "@/lib/types";
+import { Discipline, Feel, Unit } from "@/lib/types";
+
+export interface CheckinEntry {
+  rpe?: number;
+  feel?: Feel;
+  actualDurationSec?: number;
+  actualDistanceM?: number;
+}
 
 export interface CoachMsg {
   role: "coach" | "you";
@@ -16,16 +23,18 @@ export interface UIActions {
   swap(id: string, discipline: Discipline): void;
   unswap(id: string): void;
   logInstead(id: string, note: string, opts?: { discipline?: Discipline; durationSec?: number }): void;
+  logCheckin(id: string, entry: CheckinEntry): void;
   rebuild(): void;
   ease(days: number): void;
 }
 
-export type TabKey = "today" | "plan" | "progress" | "profile";
+export type TabKey = "today" | "plan" | "progress" | "friends" | "profile";
 
 export interface UICtxValue {
   today: string;
   unit: Unit;
   openWorkout(id: string | null): void;
+  openCheckin(id: string | null): void;
   openCoach(prefill?: string): void;
   goTab(tab: TabKey): void;
   actions: UIActions;

@@ -77,8 +77,30 @@ export function creditedDiscipline(w: Workout): Discipline {
 
 /** Seconds a completed/logged workout should count for. */
 export function creditedSeconds(w: Workout): number {
+  if (w.actualDurationSec != null) return w.actualDurationSec; // athlete logged what they actually did
   if (w.status === "swapped") return w.loggedDurationSec ?? w.estDurationSec ?? 0;
   return w.estDurationSec ?? 0;
+}
+
+/** Record a post-session check-in (effort / feel / actual time & distance) and mark it complete. */
+export function logCheckin(
+  plan: Plan,
+  id: string,
+  entry: { rpe?: number; feel?: Workout["feel"]; actualDurationSec?: number; actualDistanceM?: number },
+): Plan {
+  const p = clonePlan(plan);
+  const w = p.workouts[id];
+  if (!w) return p;
+  p.workouts[id] = {
+    ...w,
+    // completing a swapped ("did something else") session keeps that status; otherwise it's done
+    status: w.status === "swapped" ? "swapped" : "done",
+    rpe: entry.rpe ?? w.rpe,
+    feel: entry.feel ?? w.feel,
+    actualDurationSec: entry.actualDurationSec ?? w.actualDurationSec,
+    actualDistanceM: entry.actualDistanceM ?? w.actualDistanceM,
+  };
+  return p;
 }
 
 /** Move a workout to a new date (kept inside the plan window). Returns null if invalid. */

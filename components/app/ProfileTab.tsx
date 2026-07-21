@@ -34,31 +34,31 @@ export function ProfileTab() {
           {username?.[0]?.toUpperCase()}
         </div>
         <div>
-          <div className="font-display text-2xl font-bold capitalize tracking-tight">{username}</div>
-          <div className="mt-0.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
-            <span className="capitalize">{profile.level}</span> · AmaTri athlete
+          <div className="font-display text-2xl font-semibold capitalize tracking-tight">{username}</div>
+          <div className="eyebrow mt-1 text-[0.72rem]">
+            {profile.level} · AmaTri athlete
           </div>
         </div>
       </div>
 
       {/* race card — the target, discipline-coded (echoes Today's hero) */}
-      <div className="card-glass forge-card relative overflow-hidden p-[18px]">
-        <div className="forge-edge" aria-hidden />
+      <div className="card-glass relative overflow-hidden p-5">
         <div className="flex items-start justify-between">
           <div>
-            <div className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-accent-soft">Your race</div>
-            <div className="mt-1 font-display text-[1.35rem] font-bold leading-tight">{dist.name}</div>
+            <div className="eyebrow text-[0.72rem]">Your race</div>
+            <div className="mt-1.5 font-display text-[1.4rem] font-semibold leading-tight">{dist.name}</div>
             <div className="mt-0.5 text-sm text-muted">{fmtFullDate(profile.raceDateISO)}</div>
           </div>
           <div className="text-right">
-            <div className="heat-molten font-display text-[2rem] font-bold leading-none tabular-nums">{daysOut}</div>
-            <div className="font-mono text-[0.56rem] font-bold uppercase tracking-[0.14em] text-muted">days out</div>
+            <div className="font-display text-[2.1rem] font-semibold leading-none tabular-nums text-accent">{daysOut}</div>
+            <div className="eyebrow text-[0.64rem]">days out</div>
           </div>
         </div>
-        <div className="mt-4 flex border-t border-line-soft pt-3 font-mono text-[0.72rem] font-bold">
+        <div className="mt-5 flex border-t border-line-soft pt-3.5">
           {legs.map((l, i) => (
             <div key={l.label} className={`flex-1 ${i === 1 ? "text-center" : i === 2 ? "text-right" : ""}`}>
-              <span style={{ color: l.c }}>{l.label.toUpperCase()}</span> <span className="tabular-nums text-foreground/75">{l.v}</span>
+              <span className="eyebrow text-[0.72rem]" style={{ color: l.c }}>{l.label}</span>{" "}
+              <span className="tabular-nums text-sm text-foreground/80">{l.v}</span>
             </div>
           ))}
         </div>
@@ -97,7 +97,7 @@ export function ProfileTab() {
         <button onClick={logout} className="btn btn-ghost w-full py-3">Log out</button>
       </div>
 
-      <div className="pb-4 text-center font-mono text-[0.62rem] font-bold uppercase tracking-[0.16em] text-muted">
+      <div className="eyebrow pb-4 text-center text-[0.66rem]">
         <Wordmark /> · your path to the finish line
       </div>
 
@@ -109,7 +109,7 @@ export function ProfileTab() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">{title}</div>
+      <div className="eyebrow mb-2 text-[0.72rem]">{title}</div>
       <div className="card overflow-hidden">{children}</div>
     </div>
   );
@@ -119,7 +119,7 @@ function Row({ k, v, first }: { k: string; v: string; first?: boolean }) {
   return (
     <div className={`flex items-center justify-between px-4 py-3 ${first ? "" : "border-t border-line"}`}>
       <span className="text-sm text-muted">{k}</span>
-      <span className="font-mono text-sm font-semibold tabular-nums">{v}</span>
+      <span className="text-sm font-semibold tabular-nums">{v}</span>
     </div>
   );
 }

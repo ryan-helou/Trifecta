@@ -29,9 +29,9 @@ export function PlanTab() {
   return (
     <div className="px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
       <div className="animate-fade-up">
-        <div className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.24em] text-muted">Training plan · {plan.totalWeeks} weeks</div>
-        <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">
-          The road to <span className="text-gradient">race day</span>
+        <div className="eyebrow text-[0.72rem]">Training plan · {plan.totalWeeks} weeks</div>
+        <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight">
+          The road to <span className="italic text-accent">race day</span>
         </h1>
       </div>
 
@@ -45,8 +45,8 @@ export function PlanTab() {
               key={w.index}
               data-w={w.index}
               onClick={() => { haptic("select"); setSel(w.index); }}
-              className={`flex-shrink-0 rounded-full px-3.5 py-2 font-display text-[0.82rem] font-semibold transition active:brightness-110 ${
-                on ? "accent-gradient text-[#1a0d06]" : "border border-line bg-surface-2 text-muted"
+              className={`flex-shrink-0 rounded-full px-3.5 py-2 text-[0.82rem] font-semibold transition active:brightness-110 ${
+                on ? "bg-accent text-[#17130a]" : "border border-line bg-surface-2 text-muted"
               } ${isCur && !on ? "ring-1 ring-accent/45" : ""}`}
             >
               {w.isRaceWeek ? "🏁 Race" : w.label.replace(" · Recovery", "*")}
@@ -66,8 +66,8 @@ export function PlanTab() {
             ‹
           </button>
           <div>
-            <div className="font-display text-[1.1rem] font-bold">{week.label}</div>
-            <div className="mt-0.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.12em] text-muted">
+            <div className="font-display text-[1.15rem] font-semibold">{week.label}</div>
+            <div className="eyebrow mt-1 text-[0.7rem]">
               {week.phase} phase · {fmtDuration(week.targetHours * 3600)} target
             </div>
           </div>
@@ -80,7 +80,7 @@ export function PlanTab() {
           </button>
         </div>
         <span
-          className="rounded-full border px-2.5 py-1 font-mono text-[0.7rem] font-bold text-accent-soft"
+          className="rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold tabular-nums text-accent"
           style={{ borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)" }}
         >
           {prog.done}/{prog.total}
@@ -92,7 +92,7 @@ export function PlanTab() {
       </div>
 
       <p className="mt-3.5 rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm leading-snug text-muted">
-        <span className="text-accent-soft">◆</span> {week.focus}
+        <span className="text-accent">◆</span> {week.focus}
       </p>
 
       {/* agenda */}
@@ -104,11 +104,11 @@ export function PlanTab() {
           return (
             <div key={day}>
               <div className="mb-2 flex items-center gap-2">
-                <span className={`font-mono text-[0.66rem] font-bold uppercase tracking-[0.18em] ${isToday ? "text-foreground" : "text-muted"}`}>{weekdayShort(day)}</span>
-                <span className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-muted">{fmtDayMonth(iso)}</span>
+                <span className={`eyebrow text-[0.72rem] ${isToday ? "!text-foreground" : ""}`}>{weekdayShort(day)}</span>
+                <span className="eyebrow text-[0.72rem]">{fmtDayMonth(iso)}</span>
                 {isToday && (
                   <span
-                    className="rounded-full border px-1.5 py-0.5 font-mono text-[0.58rem] font-bold uppercase tracking-wide text-accent-soft"
+                    className="eyebrow rounded-full border px-1.5 py-0.5 text-[0.62rem] text-accent"
                     style={{ borderColor: "color-mix(in oklab, var(--accent) 40%, transparent)" }}
                   >
                     Today
@@ -146,8 +146,8 @@ function DayStrip({ week, today, plan }: { week: Week; today: string; plan: Plan
               isToday ? "border-accent/60 bg-accent/10" : "border-line bg-surface-2"
             }`}
           >
-            <span className="font-mono text-[9px] font-bold uppercase tracking-wide text-muted">{weekdayShort(day)[0]}</span>
-            <span className="font-display text-[0.95rem] font-bold tabular-nums">{Number(iso.slice(8, 10))}</span>
+            <span className="eyebrow text-[0.6rem]">{weekdayShort(day)[0]}</span>
+            <span className="font-display text-[0.98rem] font-semibold tabular-nums">{Number(iso.slice(8, 10))}</span>
             <span className="mt-0.5 flex h-1.5 items-center gap-[3px]">
               {items.length === 0 ? (
                 <span className="h-1.5 w-1.5 rounded-full bg-line" />

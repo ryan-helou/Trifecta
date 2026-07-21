@@ -28,6 +28,9 @@ export type SessionType =
 
 export type Zone = 1 | 2 | 3 | 4 | 5;
 
+// How a finished session actually felt (post-session check-in).
+export type Feel = "great" | "ok" | "rough";
+
 // One building block inside a workout.
 export interface Segment {
   kind: "warmup" | "main" | "cooldown" | "rest";
@@ -66,6 +69,11 @@ export interface Workout {
   /** what the athlete actually did when they "did something else" (status "swapped") */
   loggedDiscipline?: Discipline;
   loggedDurationSec?: number;
+  /** post-session check-in — how it actually went (optional; captured on completion) */
+  rpe?: number; // perceived effort, 1–10
+  feel?: Feel; // subjective how-it-felt
+  actualDurationSec?: number; // what the athlete actually did (overrides the estimate for credit)
+  actualDistanceM?: number;
   /** set when the plan reshuffles a workout */
   movedFrom?: string;
   /** original session preserved when swapped to another sport, so the swap can be undone */

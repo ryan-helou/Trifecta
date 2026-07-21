@@ -180,8 +180,8 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       header={
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <div>
-            <div className="font-mono text-[0.6rem] font-bold uppercase tracking-[0.22em] text-muted">Edit settings</div>
-            <div className="font-display text-lg font-bold">Your race &amp; training</div>
+            <div className="eyebrow text-[0.7rem]">Edit settings</div>
+            <div className="font-display text-lg font-semibold">Your race &amp; training</div>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted transition hover:text-foreground">✕</button>
         </div>
@@ -295,7 +295,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               <StepRow label="Run" icon="🏃" value={perSport.run} onChange={(n) => setSport("run", n)} />
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <span className="mr-1 self-center font-mono text-[0.6rem] uppercase tracking-wide text-muted">Rest day</span>
+              <span className="eyebrow mr-1 self-center text-[0.66rem]">Rest day</span>
               {WD.map((w, i) => (
                 <button key={w} onClick={() => setRestDay(restDay === i ? undefined : i)} className={`chip ${restDay === i ? "border-accent bg-accent/10 text-foreground" : ""}`}>{w}</button>
               ))}
@@ -406,7 +406,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
           {/* extras */}
           <Field label="Extras">
             <div className="mb-3">
-              <div className="mb-2 font-mono text-[0.6rem] uppercase tracking-wide text-muted">Limiter (bias the plan)</div>
+              <div className="eyebrow mb-2 text-[0.66rem]">Limiter (bias the plan)</div>
               <div className="flex gap-2">
                 {FOCI.map((f) => (
                   <button key={f.key} onClick={() => setFocus(focus === f.key ? undefined : f.key)} className={`flex-1 rounded-2xl border py-2.5 text-center transition ${focus === f.key ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2"}`}>
@@ -479,7 +479,7 @@ function StepRow({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">{label}</div>
+      <div className="eyebrow mb-2 text-[0.72rem]">{label}</div>
       {children}
     </div>
   );
@@ -489,8 +489,8 @@ function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   return (
     <button
       onClick={onClick}
-      className={`rounded-full py-2.5 text-center font-display text-sm font-semibold transition ${
-        on ? "accent-gradient text-[#1a0d06]" : "border border-line bg-surface-2 text-muted"
+      className={`rounded-full py-2.5 text-center text-sm font-semibold transition ${
+        on ? "bg-accent text-[#17130a]" : "border border-line bg-surface-2 text-muted"
       }`}
     >
       {children}
@@ -501,7 +501,7 @@ function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; chi
 function NumIn({ label, value, onChange }: { label: string; value?: number; onChange: (n: number | undefined) => void }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="font-mono text-[0.58rem] font-bold uppercase tracking-wide text-muted">{label}</span>
+      <span className="eyebrow text-[0.64rem]">{label}</span>
       <input
         className="input"
         type="number"
