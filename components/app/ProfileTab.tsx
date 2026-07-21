@@ -7,12 +7,14 @@ import { fmtPace, fmtPace100, fmtDistance } from "@/lib/format";
 import { fmtFullDate, daysBetween } from "@/lib/dates";
 import { raceDistances } from "@/lib/planEngine";
 import { InstallHint } from "./InstallHint";
+import { EditSettings } from "./EditSettings";
 import { Wordmark } from "../Wordmark";
 
 export function ProfileTab() {
   const { plan, username, profile, logout, resetPlan } = useApp();
   const { actions, today } = useUI();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [editing, setEditing] = useState(false);
   if (!plan || !profile) return null;
 
   const dist = raceDistances(profile);
@@ -72,8 +74,9 @@ export function ProfileTab() {
         </div>
       </Section>
 
-      <Section title="Adjust your plan">
-        <ActionRow first onClick={() => actions.ease(7)} label="Not feeling 100% — ease this week" />
+      <Section title="Manage your plan">
+        <ActionRow first onClick={() => setEditing(true)} label="Edit race & training settings" />
+        <ActionRow onClick={() => actions.ease(7)} label="Not feeling 100% — ease this week" />
         <ActionRow onClick={() => actions.rebuild()} label="Rebuild plan around today" />
       </Section>
 
@@ -97,6 +100,8 @@ export function ProfileTab() {
       <div className="pb-4 text-center font-mono text-[0.62rem] font-bold uppercase tracking-[0.16em] text-muted">
         <Wordmark /> · your path to the finish line
       </div>
+
+      {editing && <EditSettings profile={profile} onClose={() => setEditing(false)} />}
     </div>
   );
 }
