@@ -251,6 +251,20 @@ body {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* cinematic edge falloff — pulls focus to the center, adds photographic depth */
+.forge-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(122% 88% at 50% 40%, transparent 55%, rgba(2, 4, 8, 0.55) 100%);
+}
+
+/* discipline labels read as lit metal — each glows in its own colour */
+.lit-swim { text-shadow: 0 0 14px rgba(38, 198, 218, 0.45); }
+.lit-bike { text-shadow: 0 0 14px rgba(255, 176, 32, 0.40); }
+.lit-run  { text-shadow: 0 0 14px rgba(255, 90, 95, 0.45); }
+
 /* fine forge grain — tactile texture over the atmosphere, kills gradient
    banding. Sits above the glow/embers but below the content (crisp text). */
 .noise-overlay {
