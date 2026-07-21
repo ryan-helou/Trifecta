@@ -9,7 +9,7 @@ import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
 import { CatalogRace } from "@/lib/raceCatalog";
 import { planSummaryContext } from "@/lib/adapt";
 import { apiIntake, apiPlanSummary, ParsedInjury } from "@/lib/api";
-import { RUN_PR_OPTIONS, SWIM_PR_OPTIONS, prLabel } from "@/lib/paces";
+import { RUN_PR_OPTIONS, SWIM_PR_OPTIONS, BIKE_PR_OPTIONS, prLabel } from "@/lib/paces";
 import { fmtClock } from "@/lib/format";
 import { todayISO, addDays, fmtFullDate } from "@/lib/dates";
 
@@ -23,14 +23,17 @@ interface Draft {
   raceDateISO?: string;
   level?: Level;
   perSport: { swim: number; bike: number; run: number };
+  // when true, AmaTri picks the per-sport mix from level + race distance
+  autoFrequency?: boolean;
   focusDiscipline?: Discipline;
-  strength: { enabled: boolean; daysPerWeek: number; split: StrengthSplit };
+  strength: { enabled: boolean; daysPerWeek: number; split: StrengthSplit; customSplit?: string };
   restDayPreference?: number;
   weeklyHoursCap?: number;
   equipment: { pool: boolean; trainer: boolean; gym: boolean };
   blackouts: DateRange[];
   runPR?: { distanceM: number; timeSec: number; label: string };
   swimPR?: { distanceM: number; timeSec: number; label: string };
+  bikePR?: { distanceM: number; timeSec: number; label: string };
   ftp?: number;
   maxHR?: number;
   injuries: Injury[];
@@ -38,6 +41,27 @@ interface Draft {
 }
 
 const STEPS = ["race", "custom", "date", "level", "frequency", "strength", "schedule", "prs", "injuries", "review"] as const;
+
+// When the athlete lets us decide, derive a sensible weekly sport mix from their
+// experience and race distance — more experience means more sessions, and longer
+// races lean harder on the bike (and the run for a full).
+function suggestFrequency(level?: Level, raceType?: RaceType): Draft["perSport"] {
+  const byLevel: Record<Level, Draft["perSport"]> = {
+    beginner: { swim: 2, bike: 2, run: 2 },
+    intermediate: { swim: 2, bike: 3, run: 3 },
+    advanced: { swim: 3, bike: 4, run: 3 },
+    elite: { swim: 3, bike: 4, run: 4 },
+  };
+  const f = { ...byLevel[level ?? "beginner"] };
+  if (raceType === "half" || raceType === "full") f.bike += 1;
+  if (raceType === "full") f.run += 1;
+  return f;
+}
+
+// The per-sport counts actually used: the athlete's own, or our suggestion in auto mode.
+function resolvePerSport(d: Draft): Draft["perSport"] {
+  return d.autoFrequency ? suggestFrequency(d.level, d.raceType) : d.perSport;
+}
 
 function parseTime(str: string): number | null {
   const s = str.trim();
@@ -78,14 +102,16 @@ export function Onboarding() {
 
   const step = STEPS[idx];
   const isCustom = draft.raceType === "custom";
+  const perSport = resolvePerSport(draft);
 
   const totalSessions =
-    draft.perSport.swim + draft.perSport.bike + draft.perSport.run + (draft.strength.enabled ? draft.strength.daysPerWeek : 0);
+    perSport.swim + perSport.bike + perSport.run + (draft.strength.enabled ? draft.strength.daysPerWeek : 0);
 
   const finalProfile: Profile | null = useMemo(() => {
     if (!username || !draft.raceType || !draft.raceDateISO || !draft.level) return null;
+    const ps = resolvePerSport(draft);
     const strengthDays = draft.strength.enabled ? draft.strength.daysPerWeek : 0;
-    const wpw = Math.max(1, Math.min(21, draft.perSport.swim + draft.perSport.bike + draft.perSport.run + strengthDays));
+    const wpw = Math.max(1, Math.min(21, ps.swim + ps.bike + ps.run + strengthDays));
     return {
       username,
       raceType: draft.raceType,
@@ -96,11 +122,12 @@ export function Onboarding() {
       raceDateISO: draft.raceDateISO,
       level: draft.level,
       workoutsPerWeek: wpw,
-      perSport: { ...draft.perSport },
+      perSport: { ...ps },
       strength: draft.strength,
       restDayPreference: draft.restDayPreference,
       runPR: draft.runPR,
       swimPR: draft.swimPR,
+      bikePR: draft.bikePR,
       ftp: draft.ftp,
       maxHR: draft.maxHR,
       weeklyHoursCap: draft.weeklyHoursCap,
@@ -424,21 +451,62 @@ function LevelStep({ draft, set }: StepProps) {
 }
 
 function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
-  const ps = draft.perSport;
+  const auto = !!draft.autoFrequency;
+  const ps = resolvePerSport(draft);
   const setSport = (k: keyof Draft["perSport"], v: number) => set((d) => ({ ...d, perSport: { ...d.perSport, [k]: v } }));
   const foci: { key: Discipline; label: string; icon: string }[] = [
     { key: "swim", label: "Swim", icon: "🏊" },
     { key: "bike", label: "Bike", icon: "🚴" },
     { key: "run", label: "Run", icon: "🏃" },
   ];
+  const autoSports: { key: keyof Draft["perSport"]; label: string; icon: string }[] = [
+    { key: "swim", label: "Swim", icon: "🏊" },
+    { key: "bike", label: "Bike", icon: "🚴" },
+    { key: "run", label: "Run", icon: "🏃" },
+  ];
   return (
     <div>
-      <Head title="How often for each sport?" sub="Set your swim, bike, and run sessions a week — we'll place them intelligently." />
-      <div className="flex flex-col gap-2.5">
-        <Stepper label="Swim" icon="🏊" value={ps.swim} onChange={(n) => setSport("swim", n)} />
-        <Stepper label="Bike" icon="🚴" value={ps.bike} onChange={(n) => setSport("bike", n)} />
-        <Stepper label="Run" icon="🏃" value={ps.run} onChange={(n) => setSport("run", n)} />
+      <Head title="How often for each sport?" sub="Set your swim, bike, and run sessions a week — or let us pick the mix for you." />
+
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        {([
+          [true, "Let AmaTri decide"],
+          [false, "I'll choose"],
+        ] as const).map(([val, label]) => (
+          <button
+            key={label}
+            onClick={() => set((d) => ({ ...d, autoFrequency: val }))}
+            className={`rounded-full py-2.5 text-center font-display text-sm font-semibold transition ${
+              auto === val ? "accent-gradient text-[#1a0d06]" : "border border-line bg-surface-2 text-muted"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+
+      {auto ? (
+        <div className="rounded-2xl border border-line bg-surface-2 p-4 animate-fade-up">
+          <p className="mb-3 text-sm text-muted">
+            We&apos;ll set your weekly mix from your experience and race — here&apos;s what we&apos;d run. Switch to <span className="font-semibold text-foreground">I&apos;ll choose</span> to set it yourself.
+          </p>
+          <div className="grid grid-cols-3 gap-2.5">
+            {autoSports.map((s) => (
+              <div key={s.key} className="rounded-2xl border border-line bg-surface-3 py-3 text-center">
+                <div className="text-2xl">{s.icon}</div>
+                <div className="mt-1 font-display text-xl font-bold tabular-nums">{ps[s.key]}</div>
+                <div className="text-xs text-muted">{s.label}/wk</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          <Stepper label="Swim" icon="🏊" value={ps.swim} onChange={(n) => setSport("swim", n)} />
+          <Stepper label="Bike" icon="🚴" value={ps.bike} onChange={(n) => setSport("bike", n)} />
+          <Stepper label="Run" icon="🏃" value={ps.run} onChange={(n) => setSport("run", n)} />
+        </div>
+      )}
       <p className="mt-3 text-center text-sm text-muted">
         {total} session{total === 1 ? "" : "s"} a week{total > 7 ? " — we'll stack some as doubles" : ""}
         {draft.strength.enabled ? " (incl. strength)" : ""}
@@ -470,6 +538,7 @@ const SPLITS: { key: StrengthSplit; name: string; d: string }[] = [
   { key: "upper-lower", name: "Upper / Lower", d: "Alternate upper-body and leg days." },
   { key: "push-pull-legs", name: "Push / Pull / Legs", d: "Classic 3-way split for higher volume." },
   { key: "core", name: "Core & mobility", d: "Trunk stability and injury-proofing, low fatigue." },
+  { key: "custom", name: "My own split", d: "Follow your own routine — write it down and we'll schedule it." },
 ];
 
 function StrengthStep({ draft, set }: StepProps) {
@@ -513,6 +582,17 @@ function StrengthStep({ draft, set }: StepProps) {
                 </Card>
               ))}
             </div>
+            {s.split === "custom" && (
+              <div className="mt-3 animate-fade-up">
+                <textarea
+                  className="input min-h-[90px] resize-none"
+                  placeholder="Write your own split — e.g. Mon: Push · Wed: Pull · Fri: Legs. We'll reserve the time and keep it clear of your hardest sessions."
+                  value={s.customSplit ?? ""}
+                  onChange={(e) => upd({ customSplit: e.target.value })}
+                />
+                <p className="mt-2 text-xs text-muted">We schedule your session as its own block — you bring the exercises.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -619,6 +699,8 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
   const [runTime, setRunTime] = useState(draft.runPR ? fmtClock(draft.runPR.timeSec) : "");
   const [swimDistM, setSwimDistM] = useState(draft.swimPR ? String(draft.swimPR.distanceM) : "");
   const [swimTime, setSwimTime] = useState(draft.swimPR ? fmtClock(draft.swimPR.timeSec) : "");
+  const [bikeDistKm, setBikeDistKm] = useState(draft.bikePR ? String(draft.bikePR.distanceM / 1000) : "");
+  const [bikeTime, setBikeTime] = useState(draft.bikePR ? fmtClock(draft.bikePR.timeSec) : "");
 
   function commitRun(distKmStr: string, timeStr: string) {
     const distM = Math.round(parseFloat(distKmStr) * 1000);
@@ -630,9 +712,15 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
     const sec = parseTime(timeStr);
     set((d) => ({ ...d, swimPR: distM > 0 && sec ? { distanceM: distM, timeSec: sec, label: prLabel("swim", distM) } : undefined }));
   }
+  function commitBike(distKmStr: string, timeStr: string) {
+    const distM = Math.round(parseFloat(distKmStr) * 1000);
+    const sec = parseTime(timeStr);
+    set((d) => ({ ...d, bikePR: distM > 0 && sec ? { distanceM: distM, timeSec: sec, label: prLabel("bike", distM) } : undefined }));
+  }
 
   const runMatchesM = Math.round(parseFloat(runDistKm) * 1000);
   const swimMatchesM = Math.round(parseFloat(swimDistM));
+  const bikeMatchesM = Math.round(parseFloat(bikeDistKm) * 1000);
 
   return (
     <div>
@@ -704,10 +792,44 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
         </div>
       </div>
 
+      <div className="mb-5 rounded-2xl border border-line bg-surface-2 p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold">🚴 Bike PR</div>
+        <div className="flex flex-wrap gap-2">
+          {BIKE_PR_OPTIONS.map((o) => (
+            <button
+              key={o.label}
+              onClick={() => { const km = String(o.distanceM / 1000); setBikeDistKm(km); commitBike(km, bikeTime); }}
+              className={`chip ${bikeMatchesM === o.distanceM ? "border-accent bg-accent/10" : ""}`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="flex items-center gap-1.5">
+            <input
+              className="input"
+              inputMode="decimal"
+              placeholder="Distance"
+              value={bikeDistKm}
+              onChange={(e) => { setBikeDistKm(e.target.value); commitBike(e.target.value, bikeTime); }}
+            />
+            <span className="text-xs text-muted">km</span>
+          </div>
+          <input
+            className="input"
+            placeholder="Time, e.g. 1:05:00"
+            value={bikeTime}
+            onChange={(e) => { setBikeTime(e.target.value); commitBike(bikeDistKm, e.target.value); }}
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <NumFieldOpt label="🚴 Bike FTP" unit="W" value={draft.ftp} onChange={(n) => set((d) => ({ ...d, ftp: n }))} />
         <NumFieldOpt label="❤️ Max HR" unit="bpm" value={draft.maxHR} onChange={(n) => set((d) => ({ ...d, maxHR: n }))} />
       </div>
+      <p className="mt-2 text-xs text-muted">Your FTP still powers bike pacing — the PR is a benchmark we track your fitness against.</p>
     </div>
   );
 }
@@ -731,7 +853,7 @@ function NumFieldOpt({ label, value, unit, onChange }: { label: string; value?: 
   );
 }
 
-const SEV_LABEL: Record<Injury["severity"], string> = { niggle: "niggle", moderate: "moderate", severe: "severe" };
+const SEV_LABEL: Record<Injury["severity"], string> = { niggle: "mild", moderate: "moderate", severe: "severe" };
 
 function InjuriesStep({ draft, set }: StepProps) {
   const [text, setText] = useState(draft.intakeNotes ?? "");
@@ -761,7 +883,7 @@ function InjuriesStep({ draft, set }: StepProps) {
   return (
     <div>
       <Head
-        title="Any injuries or niggles?"
+        title="Any injuries or aches?"
         sub="Type it like you'd text a coach — knees, shoulders, a dodgy back, whatever. We'll build the plan around it."
       />
       <textarea
@@ -825,17 +947,28 @@ function ReviewStep({ draft, total }: { draft: Draft; total: number }) {
       : draft.raceType === "half"
       ? "Ironman 70.3"
       : "Full Ironman");
+  const ps = resolvePerSport(draft);
   const rows: [string, string][] = [
     ["Race", race],
     ["Date", draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
     ["Level", draft.level ?? "—"],
-    ["Weekly sessions", `${total} · 🏊 ${draft.perSport.swim} · 🚴 ${draft.perSport.bike} · 🏃 ${draft.perSport.run}`],
+    [
+      "Weekly sessions",
+      `${total} · 🏊 ${ps.swim} · 🚴 ${ps.bike} · 🏃 ${ps.run}${draft.autoFrequency ? " · auto" : ""}`,
+    ],
   ];
   if (draft.raceLocation) rows.push(["Location", draft.raceLocation]);
-  if (draft.strength.enabled) rows.push(["Strength", `${draft.strength.daysPerWeek}×/wk · ${draft.strength.split.replace("-", " / ")}`]);
+  if (draft.strength.enabled) {
+    const splitLabel =
+      draft.strength.split === "custom"
+        ? draft.strength.customSplit?.trim() || "Custom"
+        : draft.strength.split.replace("-", " / ");
+    rows.push(["Strength", `${draft.strength.daysPerWeek}×/wk · ${splitLabel}`]);
+  }
   if (draft.focusDiscipline) rows.push(["Focus", draft.focusDiscipline]);
   if (draft.runPR) rows.push(["Run PR", draft.runPR.label]);
   if (draft.swimPR) rows.push(["Swim PR", draft.swimPR.label]);
+  if (draft.bikePR) rows.push(["Bike PR", draft.bikePR.label]);
   if (draft.ftp) rows.push(["FTP", `${draft.ftp} W`]);
   if (draft.injuries.length) rows.push(["Working around", draft.injuries.map((i) => i.area).join(", ")]);
   if (draft.blackouts.length) rows.push(["Time off", `${draft.blackouts.length} block${draft.blackouts.length === 1 ? "" : "s"}`]);

@@ -450,6 +450,7 @@ function pickWeekSlots(
   // ---- strength (split-aware) ---------------------------------------------
   function buildStrengthRoles(count: number): Role[] {
     const split = p.strength?.split ?? "full";
+    const customSplit = p.strength?.customSplit; // athlete's own plan, when split === "custom"
     const home = p.equipment?.gym === false; // no gym ⇒ bodyweight home circuit
     const prefDays = [0, 4, 2, 3]; // Mon, Fri, Wed, Thu
     const min = recover ? 25 : 35;
@@ -459,7 +460,7 @@ function pickWeekSlots(
       roles.push({
         prefDay: prefDays[i % prefDays.length],
         discipline: "strength", hard: false, scalable: false, weight: 0.7, minMin: min, maxMin: min,
-        build: () => W.strengthFor(ctx, split, idx, recover, home),
+        build: () => W.strengthFor(ctx, split, idx, recover, home, customSplit),
       });
     }
     return roles;
