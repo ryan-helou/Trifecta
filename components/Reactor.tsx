@@ -2,7 +2,7 @@
 
 /**
  * The AmaTri chronograph mark — a fine watch dial rather than a sci-fi reactor.
- * A hairline bezel, minute ticks, and a single champagne hand. When `progress`
+ * A hairline bezel, minute ticks, and a single ink hand. When `progress`
  * (0–100) is supplied the hand points to it and an accent arc fills the bezel
  * (used on the plan-generation loading screen). Otherwise the hand sweeps once
  * every few seconds like a running second-hand. Calm, precise, unadorned.

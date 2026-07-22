@@ -1,5 +1,5 @@
 /**
- * The AmaTri wordmark — "Ama" in the foreground, "Tri" in champagne italic (the
+ * The AmaTri wordmark — "Ama" in the foreground, "Tri" in ink italic (the
  * triathlon hook, in the Fraunces display face when rendered in a heading).
  * Inherits the parent font-size, so it reads right at any heading size.
  */
