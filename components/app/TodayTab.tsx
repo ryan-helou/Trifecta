@@ -1,19 +1,38 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
+import { useToast } from "./Toast";
 import { SwipeableWorkout } from "./SwipeableWorkout";
 import { WorkoutCard } from "./WorkoutCard";
+import { ReadinessSheet } from "./ReadinessSheet";
 import { ProgressRing } from "./motion";
 import { Icon } from "./icons";
 import { PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
+import { readinessBand } from "@/lib/readiness";
+import { calibrationDue } from "@/lib/calibrate";
 import { computeStreak } from "@/lib/stats";
 import { fmtFullDate as fullDate, addDays, dayIndexOf, fmtDayMonth, weekdayLong } from "@/lib/dates";
 
 export function TodayTab() {
   const { plan, username, offline } = useApp();
-  const { today, openCoach, openWorkout, goTab } = useUI();
+  const { today, openCoach, openWorkout, goTab, actions } = useUI();
+  const toast = useToast();
+  const [readyOpen, setReadyOpen] = useState(false);
+
+  // auto-recalibrate paces at most weekly, once per app session, from how recent
+  // sessions actually went. Only surfaces a toast when something moved.
+  const didAutoCal = useRef(false);
+  useEffect(() => {
+    if (didAutoCal.current || !plan) return;
+    if (!calibrationDue(plan, today)) return;
+    didAutoCal.current = true;
+    const res = actions.recalibrate();
+    if (res && res.changed) toast({ text: res.notes[0] ?? "We tuned your paces from recent sessions.", tone: "success" });
+  }, [plan, today, actions, toast]);
+
   if (!plan) return null;
 
   const todays = workoutsOn(plan, today);
@@ -23,6 +42,7 @@ export function TodayTab() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const streak = computeStreak(plan, today);
+  const todayReadiness = plan.readiness?.[today];
 
   // the next scheduled session after today — so the home screen always answers
   // "what's coming?", not just "what's today" (especially on rest days)
@@ -80,6 +100,46 @@ export function TodayTab() {
         </div>
       )}
 
+      {/* daily readiness — the injury-safe morning check that regulates today */}
+      {todays.length > 0 && !todayReadiness && (
+        <button
+          onClick={() => setReadyOpen(true)}
+          className="animate-fade-up card block w-full p-4 text-left transition hover:brightness-110 active:scale-[0.995]"
+          style={{ animationDelay: "105ms" }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="eyebrow text-[0.72rem]">Morning check-in</div>
+              <div className="mt-0.5 font-display text-[1.05rem] font-semibold">How are you feeling today?</div>
+              <div className="mt-0.5 text-sm text-muted">Ten seconds — we&apos;ll tune today&apos;s session to your readiness.</div>
+            </div>
+            <span className="text-accent-soft text-lg">›</span>
+          </div>
+        </button>
+      )}
+      {todayReadiness && (
+        <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm">
+          <span className="flex items-center gap-2 text-muted">
+            <span
+              aria-hidden
+              className="h-2 w-2 rounded-full"
+              style={{
+                background:
+                  readinessBand(todayReadiness.score) === "low"
+                    ? "var(--warning)"
+                    : readinessBand(todayReadiness.score) === "high"
+                    ? "var(--success)"
+                    : "var(--accent)",
+              }}
+            />
+            Readiness today
+          </span>
+          <span className="font-semibold tabular-nums">
+            {todayReadiness.score}/100{todayReadiness.eased ? " · eased" : ""}
+          </span>
+        </div>
+      )}
+
       <div className="animate-fade-up" style={{ animationDelay: "120ms" }}>
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="font-display text-[1.15rem] font-semibold">Today</h2>
@@ -129,6 +189,8 @@ export function TodayTab() {
         <PhaseBar plan={plan} current={wk.index} />
         <div className="mt-3 text-sm leading-snug text-muted">{wk.focus}</div>
       </button>
+
+      {readyOpen && <ReadinessSheet onClose={() => setReadyOpen(false)} />}
     </div>
   );
 }

@@ -1,8 +1,9 @@
-import { Discipline, Plan, Week, Workout } from "./types";
+import { Discipline, Plan, Week, Workout, Zone } from "./types";
 import { addDays, dayIndexOf, fromISO, mondayOf } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
 import { generatePlan } from "./planEngine";
+import { ZONES } from "./zones";
 import { fmtDuration } from "./format";
 
 // ---------------------------------------------------------------------------
@@ -233,7 +234,14 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
     if (t === cutoff && keptTodayDone.has(`${w.date}·${w.discipline}`)) continue;
     kept[w.id] = w;
   }
-  const merged: Plan = { ...fresh, workouts: kept, id: plan.id, notice: "Plan rebuilt around today — you're realigned to hit race day." };
+  const merged: Plan = {
+    ...fresh,
+    workouts: kept,
+    id: plan.id,
+    // readiness is dated history — carry it across a rebuild (weeks/easedWeeks regenerate)
+    readiness: plan.readiness,
+    notice: "Plan rebuilt around today — you're realigned to hit race day.",
+  };
   reindexWeeks(merged);
   return merged;
 }
@@ -265,6 +273,102 @@ export function easeUpcoming(plan: Plan, fromISODate: string, days: number): Pla
     }
   }
   return p;
+}
+
+// ---- closed-loop adaptation --------------------------------------------
+// The plan reacts to how the last two weeks actually went. Two directions:
+//   • ease  — missed a lot, or sessions felt consistently hard → soften the
+//             upcoming week (the protective move; this is the whole injury-safe
+//             promise). Applied on the athlete's tap.
+//   • ahead — nailed nearly everything and it felt easy → a positive nudge. We
+//             deliberately DON'T pile on more load (that's how people get hurt);
+//             the deterministic plan already progresses. It's encouragement only.
+
+const isDoneW = (w: Workout) => w.status === "done" || w.status === "swapped";
+const zoneRpeMid = (z: Zone) => (ZONES[z].rpe[0] + ZONES[z].rpe[1]) / 2;
+const FEEL_STRAIN = { rough: 2, ok: 0, great: -1.5 } as const;
+
+/** How hard a completed session felt vs. what its zone prescribed (RPE units). */
+function sessionStrain(w: Workout): number | null {
+  const parts: number[] = [];
+  if (typeof w.rpe === "number") parts.push(w.rpe - zoneRpeMid(w.primaryZone));
+  if (w.feel) parts.push(FEEL_STRAIN[w.feel]);
+  if (!parts.length) return null;
+  return parts.reduce((a, b) => a + b, 0) / parts.length;
+}
+
+export interface AdaptationSuggestion {
+  kind: "ease" | "ahead";
+  weekIndex: number; // the upcoming week the suggestion is about
+  weekLabel: string;
+  reason: string;
+  missed: number;
+  scheduled: number;
+  avgStrain: number | null;
+  signals: number; // completed sessions with feedback considered
+}
+
+/** Look at the trailing two weeks and decide whether the upcoming week should be
+ *  eased (or celebrate that the athlete's ahead). Pure. Returns null when the
+ *  plan is on track or there isn't enough signal yet. */
+export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSuggestion | null {
+  // the week containing today, and the next one (what we'd adjust)
+  const cur = plan.weeks.find((w) => todayISO >= w.startDate && todayISO < addDays(w.startDate, 7));
+  if (!cur) return null;
+  const next = plan.weeks.find((w) => w.index === cur.index + 1);
+  if (!next || next.isRaceWeek) return null; // never touch race week
+
+  const from = addDays(todayISO, -14);
+  const past = Object.values(plan.workouts).filter(
+    (w) => w.discipline !== "rest" && w.date >= from && w.date < todayISO,
+  );
+  const scheduled = past.length;
+  const missed = past.filter((w) => w.status === "skipped" || w.status === "planned").length;
+  const strains = past.map(sessionStrain).filter((s): s is number => s != null);
+  const avgStrain = strains.length ? strains.reduce((a, b) => a + b, 0) / strains.length : null;
+  const missRate = scheduled ? missed / scheduled : 0;
+
+  const easeable = next.phase === "base" || next.phase === "build" || next.phase === "peak";
+  const alreadyEased = (plan.easedWeeks ?? []).includes(next.index);
+
+  // EASE: fell behind, or the work is consistently overreaching.
+  if (easeable && !alreadyEased && (missRate >= 0.4 || (strains.length >= 3 && avgStrain != null && avgStrain >= 1.5))) {
+    const reason =
+      missRate >= 0.4
+        ? `You've missed ${missed} of ${scheduled} sessions in the last two weeks.`
+        : `Your recent sessions have felt consistently hard.`;
+    return { kind: "ease", weekIndex: next.index, weekLabel: next.label, reason, missed, scheduled, avgStrain, signals: strains.length };
+  }
+
+  // AHEAD: nailing it and feeling comfortable — encouragement, no extra load.
+  if (easeable && missRate <= 0.1 && strains.length >= 3 && avgStrain != null && avgStrain <= -1.0) {
+    return {
+      kind: "ahead",
+      weekIndex: next.index,
+      weekLabel: next.label,
+      reason: "You've hit nearly everything and it's feeling comfortable.",
+      missed,
+      scheduled,
+      avgStrain,
+      signals: strains.length,
+    };
+  }
+  return null;
+}
+
+/** Apply an adaptation. Easing softens the target week and records it so we don't
+ *  re-suggest; "ahead" changes nothing structural (by design) beyond marking it. */
+export function applyAdaptation(plan: Plan, s: AdaptationSuggestion): Plan {
+  if (s.kind !== "ease") return plan;
+  const wk = plan.weeks.find((w) => w.index === s.weekIndex);
+  if (!wk) return plan;
+  // soften every hard session across that week (Mon–Sun)
+  const eased = easeUpcoming(plan, wk.startDate, 6);
+  const targetWeek = eased.weeks.find((w) => w.index === s.weekIndex);
+  if (targetWeek) targetWeek.targetHours = Math.round(targetWeek.targetHours * 0.9 * 2) / 2;
+  eased.easedWeeks = [...(plan.easedWeeks ?? []), s.weekIndex];
+  eased.notice = `We eased ${wk.label} so you absorb the training and stay healthy.`;
+  return eased;
 }
 
 // ---- week / plan progress helpers (for the UI) ----

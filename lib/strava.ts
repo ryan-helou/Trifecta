@@ -115,6 +115,8 @@ export interface StravaActivity {
   elapsed_time?: number; // seconds
   average_heartrate?: number;
   has_heartrate?: boolean;
+  average_watts?: number; // avg power (bike, if a power meter was present)
+  device_watts?: boolean; // true when watts came from a real meter, not an estimate
 }
 
 export async function fetchActivity(accessToken: string, id: number): Promise<StravaActivity | null> {
@@ -157,6 +159,8 @@ export function actualsFromActivity(a: StravaActivity): WorkoutActuals {
     distanceM: a.distance != null ? Math.round(a.distance) : undefined,
     durationSec: a.moving_time ?? a.elapsed_time,
     avgHr: a.has_heartrate && a.average_heartrate ? Math.round(a.average_heartrate) : undefined,
+    // only trust real-meter power for calibration — Strava's estimated watts are noisy
+    avgWatts: a.device_watts && a.average_watts ? Math.round(a.average_watts) : undefined,
     startedAtISO: a.start_date,
   };
 }

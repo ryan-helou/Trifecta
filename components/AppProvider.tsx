@@ -24,6 +24,7 @@ interface Ctx {
   logout(): Promise<void>;
   startPlan(profile: Profile, plan: Plan): void;
   applyPlan(plan: Plan): void;
+  applyPlanAndProfile(plan: Plan, profile: Profile): void;
   updateProfile(profile: Profile): void;
   resetPlan(): void;
 }
@@ -155,6 +156,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [username, profile, persist],
   );
 
+  // atomic profile + plan write — calibration changes profile.calibration AND
+  // plan.paces together, so they must persist in a single save (no stale closure).
+  const applyPlanAndProfile = useCallback(
+    (pl: Plan, prof: Profile) => {
+      setProfile(prof);
+      setPlan(pl);
+      persist(username, prof, pl);
+    },
+    [username, persist],
+  );
+
   const updateProfile = useCallback(
     (prof: Profile) => {
       setProfile(prof);
@@ -184,7 +196,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider
-      value={{ screen, username, profile, plan, offline, signup, login, logout, startPlan, applyPlan, updateProfile, resetPlan }}
+      value={{ screen, username, profile, plan, offline, signup, login, logout, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
     >
       {children}
     </AppCtx.Provider>

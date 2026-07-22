@@ -1,6 +1,12 @@
 import { generatePlan } from "../lib/planEngine";
 import { Profile } from "../lib/types";
 import { fmtDuration } from "../lib/format";
+import { addDays } from "../lib/dates";
+import { derivePaces } from "../lib/paces";
+import { projectRace } from "../lib/predict";
+import { calibratePaces } from "../lib/calibrate";
+import { assessAdaptation, applyAdaptation } from "../lib/adapt";
+import { logReadiness, readinessScore, READY_LOW } from "../lib/readiness";
 
 function mk(over: Partial<Profile>): Profile {
   const race = new Date();
@@ -133,4 +139,109 @@ for (const { name, p } of scenarios) {
     }
   }
 }
+// ===========================================================================
+// TIER 1 — the adaptive loop (projection · calibration · adaptation · readiness)
+// ===========================================================================
+function check(cond: boolean, msg: string) {
+  if (!cond) { console.log(`  !! FAIL: ${msg}`); problems++; }
+  else console.log(`  ✓ ${msg}`);
+}
+const HARD = ["threshold", "vo2", "tempo", "brick"];
+
+console.log("\n\n########## TIER 1: adaptive loop ##########");
+
+// ---- race-time projection ----
+console.log("\n=== projection ===");
+{
+  const p = mk({ raceType: "half", level: "beginner", raceDateISO: raceInWeeks(20), runPR: { distanceM: 21097, timeSec: 7200, label: "HM" }, ftp: 180 });
+  const proj = projectRace(p);
+  check(proj.currentSec > 0 && proj.projectedSec > 0, "both projected times are positive");
+  check(proj.projectedSec <= proj.currentSec, "projected (with plan) ≤ current fitness");
+  check(proj.gainSec >= 0, "gain ≥ 0");
+  const near = projectRace({ ...p, raceDateISO: raceInWeeks(3) });
+  check(near.gainFrac < proj.gainFrac, "fewer weeks to race → smaller modelled gain");
+  console.log(`     current=${fmtDuration(proj.currentSec)} projected=${fmtDuration(proj.projectedSec)} gain=${fmtDuration(proj.gainSec)}`);
+}
+
+// ---- calibration: consistently-too-hard eases the run targets ----
+console.log("\n=== calibration ===");
+{
+  const p = mk({ raceType: "half", raceDateISO: raceInWeeks(20), perSport: { swim: 2, bike: 2, run: 3 }, runPR: { distanceM: 10000, timeSec: 2700, label: "10k" } });
+  const plan = generatePlan(p);
+  const today = addDays(plan.startDateISO, 21);
+  let n = 0;
+  for (const w of Object.values(plan.workouts)) {
+    if (w.date < today && w.discipline === "run") { w.status = "done"; w.rpe = 10; w.feel = "rough"; n++; }
+  }
+  check(n >= 3, `set up ${n} hot run sessions`);
+  const res = calibratePaces(plan, today);
+  check(!!res && res.changed, "calibration produced a change");
+  check((res?.calibration.run ?? 0) < 0, "run eased (adj < 0) when sessions ran hot");
+  const basePace = derivePaces(p).run.thresholdSecPerKm;
+  const calPace = derivePaces({ ...p, calibration: res!.calibration }).run.thresholdSecPerKm;
+  check(calPace > basePace, "eased run threshold pace is slower (higher sec/km)");
+}
+// ---- calibration: strong & easy sharpens ----
+{
+  const p = mk({ raceType: "half", raceDateISO: raceInWeeks(20), perSport: { swim: 2, bike: 2, run: 3 }, runPR: { distanceM: 10000, timeSec: 2700, label: "10k" } });
+  const plan = generatePlan(p);
+  const today = addDays(plan.startDateISO, 21);
+  for (const w of Object.values(plan.workouts)) {
+    if (w.date < today && w.discipline === "run") { w.status = "done"; w.rpe = 2; w.feel = "great"; }
+  }
+  const res = calibratePaces(plan, today);
+  check((res?.calibration.run ?? 0) > 0, "run sharpened (adj > 0) when sessions felt easy");
+}
+// ---- calibration: not enough data → null ----
+{
+  const plan = generatePlan(mk({ raceType: "olympic", raceDateISO: raceInWeeks(14) }));
+  check(calibratePaces(plan, addDays(plan.startDateISO, 3)) === null, "no recent data → null");
+}
+
+// ---- adaptation: missing lots → ease next week ----
+console.log("\n=== adaptation ===");
+{
+  const p = mk({ raceType: "half", raceDateISO: raceInWeeks(20), perSport: { swim: 2, bike: 3, run: 3 } });
+  const plan = generatePlan(p);
+  const today = addDays(plan.startDateISO, 21); // week 3; weeks 1–2 left unlogged = missed
+  const sug = assessAdaptation(plan, today);
+  check(!!sug && sug.kind === "ease", "missed sessions → ease suggestion");
+  if (sug) {
+    const applied = applyAdaptation(plan, sug);
+    check((applied.easedWeeks ?? []).includes(sug.weekIndex), "eased week is recorded");
+    const wk = applied.weeks.find((w) => w.index === sug.weekIndex)!;
+    const stillHard = wk.workoutIds.filter((id) => HARD.includes(applied.workouts[id].type));
+    check(stillHard.length === 0, "no hard sessions remain in the eased week");
+  }
+}
+// ---- adaptation: on-track → null ----
+{
+  const p = mk({ raceType: "half", raceDateISO: raceInWeeks(20), perSport: { swim: 2, bike: 3, run: 3 } });
+  const plan = generatePlan(p);
+  const today = addDays(plan.startDateISO, 21);
+  for (const w of Object.values(plan.workouts)) if (w.date < today && w.discipline !== "rest") { w.status = "done"; w.feel = "ok"; }
+  check(assessAdaptation(plan, today) === null, "all done & feeling ok → no suggestion");
+}
+
+// ---- readiness ----
+console.log("\n=== readiness ===");
+{
+  check(readinessScore({ sleep: 1, legs: 1, energy: 1 }) < READY_LOW, "all-poor scores low");
+  check(readinessScore({ sleep: 3, legs: 3, energy: 3 }) >= 75, "all-fresh scores high");
+  const p = mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), perSport: { swim: 2, bike: 2, run: 3 } });
+  const plan = generatePlan(p);
+  const hard = Object.values(plan.workouts).find((w) => HARD.includes(w.type) && w.status === "planned");
+  check(!!hard, "found a hard session to test against");
+  if (hard) {
+    const eased = logReadiness(plan, hard.date, { sleep: 1, legs: 1, energy: 1 });
+    const entry = eased.readiness![hard.date];
+    check(entry.score < READY_LOW && entry.eased === true, "low readiness eases the day");
+    check(!HARD.includes(eased.workouts[hard.id].type) || eased.workouts[hard.id].note === "Eased off", "today's hard session was softened");
+    const plan2 = generatePlan(p);
+    const highRes = logReadiness(plan2, hard.date, { sleep: 3, legs: 3, energy: 3 });
+    check(!highRes.readiness![hard.date].eased, "high readiness does not ease");
+    check(highRes.workouts[hard.id].type === plan2.workouts[hard.id].type, "high readiness leaves the session unchanged");
+  }
+}
+
 console.log(`\n\n${problems === 0 ? "✅ NO PROBLEMS" : "❌ " + problems + " PROBLEMS"}`);

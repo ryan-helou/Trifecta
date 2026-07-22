@@ -29,7 +29,17 @@ const SWIM_CSS_DEFAULT: Record<Level, number> = {
   elite: 80, // 1:20
 };
 
+// Bound on how far auto-calibration can move a target either way (±15%).
+export const CAL_MAX = 0.15;
+const clampAdj = (v: number | undefined) => Math.max(-CAL_MAX, Math.min(CAL_MAX, v || 0));
+
 export function derivePaces(p: Profile): PaceModel {
+  // auto-calibration: positive = fitter than declared → sharpen targets.
+  const cal = p.calibration;
+  const runAdj = clampAdj(cal?.run);
+  const swimAdj = clampAdj(cal?.swim);
+  const bikeAdj = clampAdj(cal?.bike);
+
   // ---- RUN threshold pace ----
   let thresholdSecPerKm: number;
   let runSource: "pr" | "level";
@@ -42,6 +52,8 @@ export function derivePaces(p: Profile): PaceModel {
     thresholdSecPerKm = RUN_THRESHOLD_DEFAULT[p.level];
     runSource = "level";
   }
+  // fitter → faster (lower sec/km); over-aggressive → slower.
+  thresholdSecPerKm *= 1 - runAdj;
   const runZones = {} as PaceModel["run"]["zones"];
   ([1, 2, 3, 4, 5] as Zone[]).forEach((z) => {
     const [ml, mh] = ZONES[z].paceMult;
@@ -62,6 +74,7 @@ export function derivePaces(p: Profile): PaceModel {
     cssSecPer100 = SWIM_CSS_DEFAULT[p.level];
     swimSource = "level";
   }
+  cssSecPer100 *= 1 - swimAdj;
   const swimZones = {} as PaceModel["swim"]["zones"];
   ([1, 2, 3, 4, 5] as Zone[]).forEach((z) => {
     const [ol, oh] = ZONES[z].cssOffset;
@@ -71,7 +84,8 @@ export function derivePaces(p: Profile): PaceModel {
   });
 
   // ---- BIKE %FTP (+ watts if FTP known) ----
-  const ftp = p.ftp && p.ftp > 0 ? p.ftp : null;
+  // fitter → higher FTP; over-aggressive → lower.
+  const ftp = p.ftp && p.ftp > 0 ? Math.round(p.ftp * (1 + bikeAdj)) : null;
   const bikeZones = {} as PaceModel["bike"]["zones"];
   ([1, 2, 3, 4, 5] as Zone[]).forEach((z) => {
     const [lo, hi] = ZONES[z].ftpPct;
