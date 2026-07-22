@@ -12,39 +12,64 @@ import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 
-function ZoneChip({ zone }: { zone?: Zone }) {
-  if (!zone) return null;
-  const m = ZONES[zone];
-  const onLight = zone <= 2; // light gray zone bg → dark text
+/** A short "8 × 100" / "6 × 3′" summary of a session's main repeat set. */
+function repsSummary(w: Workout): string | null {
+  const rep = w.segments.find((s) => (s.repeat ?? 1) > 1 && s.children && s.children.length);
+  if (!rep || !rep.repeat) return null;
+  const child = rep.children!.find((c) => c.kind !== "rest") ?? rep.children![0];
+  const u = child.distanceM ? `${child.distanceM}m` : child.durationSec ? `${Math.round(child.durationSec / 60)}′` : "";
+  return u ? `${rep.repeat} × ${u}` : `${rep.repeat}×`;
+}
+
+function RepeatGlyph() {
   return (
-    <span
-      className="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"
-      style={{ background: `var(${m.colorVar})`, color: onLight ? "#0f0f0f" : "#fff" }}
-    >
-      Z{zone}
-    </span>
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M17 3l4 4-4 4" /><path d="M21 7H8a4 4 0 00-4 4" /><path d="M7 21l-4-4 4-4" /><path d="M3 17h13a4 4 0 004-4" />
+    </svg>
   );
 }
 
-function SegRow({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; unit: Unit }) {
+/** One step of a session — a zone dot, what to do, and the target pace/zone. */
+function Step({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; unit: Unit }) {
   const disc = (seg.discipline ?? "run") as Discipline;
-  const showTarget = seg.zone && seg.kind !== "rest" && disc !== "strength" && disc !== "rest";
-  const tv = showTarget ? targetView(disc, seg.zone as Zone, paces, unit) : null;
+  const isRest = seg.kind === "rest";
+  const z = seg.zone;
+  const showTarget = z && !isRest && disc !== "strength" && disc !== "rest";
+  const tv = showTarget ? targetView(disc, z as Zone, paces, unit) : null;
   return (
-    <div className="py-2.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-sm font-medium leading-snug">{seg.description}</div>
-        <ZoneChip zone={seg.zone} />
+    <div className="flex items-start gap-2.5 border-b border-line-soft py-2 last:border-b-0">
+      <span
+        aria-hidden
+        className="mt-[5px] h-2 w-2 flex-shrink-0 rounded-[2px]"
+        style={{ background: z ? `var(--z${z})` : "var(--rest)", opacity: isRest ? 0.55 : 1 }}
+      />
+      <div className={`min-w-0 flex-1 text-sm leading-snug ${isRest ? "text-muted" : ""}`}>
+        {seg.description}
+        {seg.cue && <div className="mt-0.5 text-xs italic text-muted">{seg.cue}</div>}
       </div>
-      {tv && (
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-          <span className="font-semibold text-accent">{tv.primary}</span>
-          {tv.secondary.map((s, i) => (
-            <span key={i} className="tnum">· {s}</span>
-          ))}
+      {(tv || z) && (
+        <div className="flex-shrink-0 whitespace-nowrap pt-px text-right text-xs tabular-nums text-muted">
+          {tv && <span className="font-medium text-accent">{tv.primary}</span>}
+          {z && <span className="ml-1.5">Z{z}</span>}
         </div>
       )}
-      {seg.cue && <div className="mt-1 text-xs italic text-muted">{seg.cue}</div>}
+    </div>
+  );
+}
+
+/** A repeating set — a "×N" badge over an indented list of its steps. */
+function RepBlock({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; unit: Unit }) {
+  const reps = seg.repeat ?? 1;
+  return (
+    <div className="py-1">
+      <div className="mb-1 inline-flex items-center gap-1.5 rounded-md bg-accent px-2 py-[3px] text-[11px] font-semibold text-white">
+        <RepeatGlyph /> {reps} ×
+      </div>
+      <div className="border-l-2 border-line pl-3.5">
+        {(seg.children ?? []).map((c, i) => (
+          <Step key={i} seg={c} paces={paces} unit={unit} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -65,6 +90,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
   const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
   const [note, setNote] = useState("");
   const meta = DISCIPLINE_META[workout.discipline];
+  const reps = repsSummary(workout);
   const isRace = workout.id === "w-race-day";
   const done = workout.status === "done";
   const swapped = !!workout.swappedFrom;
@@ -93,7 +119,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
             </div>
             <div>
               <h2 className={`font-display text-xl font-semibold leading-tight ${isRace ? "text-accent" : ""}`}>{workout.title}</h2>
-              <div className="text-sm capitalize text-muted">{meta.label} · {workout.type.replace("_", " ")}</div>
+              <div className="text-sm capitalize text-muted">{meta.label} · {workout.type.replace("_", " ")}{reps ? ` · ${reps}` : ""}</div>
             </div>
           </div>
 
@@ -104,10 +130,11 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
             <Stat label="Intensity" value={ZONES[workout.primaryZone].name} accent />
           </div>
 
-          {/* interval bar */}
+          {/* shape — a small at-a-glance silhouette of the session */}
           {!isRace && (
             <div className="mb-4">
-              <IntervalBar segments={workout.segments} />
+              <div className="eyebrow mb-1.5 text-[0.66rem]">Shape</div>
+              <IntervalBar segments={workout.segments} height={14} />
             </div>
           )}
 
@@ -138,15 +165,22 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
             </div>
           )}
 
-          {/* segments */}
-          <div className="mb-5">
+          {/* structure — written out, reps grouped (warm-up / main set / cool-down) */}
+          <div className="mb-5 space-y-4">
             {sections.map((sec, i) => (
-              <div key={i} className="mb-2">
-                <div className="eyebrow mb-0.5 mt-2 text-[0.72rem]">{sec.label}</div>
-                <div className="divide-y divide-line rounded-2xl border border-line bg-surface px-3.5">
-                  {sec.segs.map((s, j) => (
-                    <SegRow key={j} seg={s} paces={plan.paces} unit={unit} />
-                  ))}
+              <div key={i}>
+                <div className="mb-1 flex items-center gap-2.5">
+                  <span className="eyebrow text-[0.7rem]">{sec.label}</span>
+                  <span aria-hidden className="h-px flex-1 bg-line" />
+                </div>
+                <div>
+                  {sec.segs.map((s, j) =>
+                    s.children && s.children.length ? (
+                      <RepBlock key={j} seg={s} paces={plan.paces} unit={unit} />
+                    ) : (
+                      <Step key={j} seg={s} paces={plan.paces} unit={unit} />
+                    ),
+                  )}
                 </div>
               </div>
             ))}
