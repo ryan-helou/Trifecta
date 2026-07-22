@@ -787,18 +787,21 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
       <Head title="Your personal bests" sub="Optional, but the sharper your pace targets. Tap a preset or type any distance. Skip any you don't know." />
 
       {/* units — sets how the whole app shows distance & pace */}
-      <div className="mb-4 grid grid-cols-2 gap-2">
-        {([["metric", "Kilometres"], ["imperial", "Miles"]] as const).map(([val, label]) => (
-          <button
-            key={val}
-            onClick={() => switchUnit(val)}
-            className={`rounded-full py-2.5 text-center font-display text-sm font-semibold transition ${
-              unit === val ? "accent-gradient text-white" : "border border-line bg-surface-2 text-muted"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-4 flex items-center justify-between">
+        <span className="text-sm font-semibold text-muted">Units</span>
+        <div className="inline-flex rounded-full border border-line bg-surface-2 p-0.5">
+          {([["metric", "km"], ["imperial", "mi"]] as const).map(([val, label]) => (
+            <button
+              key={val}
+              onClick={() => switchUnit(val)}
+              className={`rounded-full px-4 py-1.5 text-center font-display text-sm font-semibold transition ${
+                unit === val ? "accent-gradient text-white" : "text-muted"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mb-5 rounded-2xl border border-line bg-surface-2 p-4">
