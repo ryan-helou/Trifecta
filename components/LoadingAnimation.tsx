@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Profile } from "@/lib/types";
-import { Reactor } from "./Reactor";
+import { TriathleteMorph } from "./TriathleteMorph";
 import { Wordmark } from "./Wordmark";
 
 const RACE_LABEL: Record<string, string> = {
@@ -61,7 +61,7 @@ export function LoadingAnimation({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-      <Reactor size={200} progress={progress} />
+      <TriathleteMorph progress={progress} width={300} />
       <div className="mt-8 font-display text-5xl font-bold tabular-nums tracking-tight">
         {Math.round(progress)}
         <span className="text-2xl text-muted">%</span>
