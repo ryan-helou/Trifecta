@@ -152,9 +152,16 @@ export function Onboarding() {
     };
   }, [username, draft]);
 
+  // Steps that don't apply are skipped: the custom-distance step (unless it's a
+  // custom race), and the race-day step when a real event was picked — the event
+  // already carries its date, so there's nothing to ask.
+  const hasEventDate = !!(draft.raceId && draft.raceDateISO);
+  const stepActive = (s: (typeof STEPS)[number]) =>
+    (s !== "custom" || isCustom) && (s !== "date" || !hasEventDate);
+
   function skip(dir: 1 | -1, from: number): number {
     let n = from + dir;
-    while (STEPS[n] === "custom" && !isCustom) n += dir;
+    while (n > 0 && n < STEPS.length - 1 && !stepActive(STEPS[n])) n += dir;
     return Math.max(0, Math.min(STEPS.length - 1, n));
   }
   const next = () => setIdx((i) => skip(1, i));
@@ -177,8 +184,9 @@ export function Onboarding() {
     }
   })();
 
-  const visibleCount = STEPS.length - (isCustom ? 0 : 1);
-  const visibleIdx = idx - (idx > 1 && !isCustom ? 1 : 0);
+  const activeSteps = STEPS.filter(stepActive);
+  const visibleCount = activeSteps.length;
+  const visibleIdx = Math.max(0, activeSteps.indexOf(step));
 
   if (generating && finalProfile) {
     return (
@@ -324,12 +332,13 @@ type StepProps = { draft: Draft; set: React.Dispatch<React.SetStateAction<Draft>
 
 function RaceStep({ draft, set }: StepProps) {
   const [mode, setMode] = useState<"distance" | "event">(draft.raceId ? "event" : "distance");
-  const races: { key: RaceType; name: string; d: string }[] = [
-    { key: "olympic", name: "Olympic", d: "1.5 km swim · 40 km bike · 10 km run" },
-    { key: "half", name: "Ironman 70.3", d: "1.9 km swim · 90 km bike · 21.1 km run" },
-    { key: "full", name: "Full Ironman", d: "3.8 km swim · 180 km bike · 42.2 km run" },
-    { key: "custom", name: "Custom distance", d: "Set your own swim / bike / run" },
+  const races: { key: RaceType; name: string; legs?: [string, string, string] }[] = [
+    { key: "olympic", name: "Olympic", legs: ["1.5 km swim", "40 km bike", "10 km run"] },
+    { key: "half", name: "Ironman 70.3", legs: ["1.9 km swim", "90 km bike", "21.1 km run"] },
+    { key: "full", name: "Full Ironman", legs: ["3.8 km swim", "180 km bike", "42.2 km run"] },
+    { key: "custom", name: "Custom distance" },
   ];
+  const legColor = ["--swim", "--bike", "--run"] as const;
 
   // pick a bare distance → drop any real-event identity
   const pickDistance = (key: RaceType) =>
@@ -368,7 +377,18 @@ function RaceStep({ draft, set }: StepProps) {
           {races.map((r) => (
             <Card key={r.key} active={draft.raceType === r.key && !draft.raceId} onClick={() => pickDistance(r.key)}>
               <div className="font-display text-lg font-semibold">{r.name}</div>
-              <div className="text-sm text-muted">{r.d}</div>
+              {r.legs ? (
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-sm font-medium">
+                  {r.legs.map((leg, i) => (
+                    <span key={leg} className="flex items-center gap-1.5">
+                      {i > 0 && <span aria-hidden className="text-line">·</span>}
+                      <span style={{ color: `var(${legColor[i]})` }}>{leg}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-muted">Set your own swim / bike / run</div>
+              )}
             </Card>
           ))}
         </div>
@@ -441,11 +461,11 @@ function DateStep({ draft, set }: StepProps) {
 }
 
 function LevelStep({ draft, set }: StepProps) {
-  const levels: { key: Level; name: string; d: string }[] = [
-    { key: "beginner", name: "Beginner", d: "New to triathlon or building your first base." },
-    { key: "intermediate", name: "Intermediate", d: "A season or two in; comfortable in all three sports." },
-    { key: "advanced", name: "Advanced", d: "Consistent training, targeting a strong result." },
-    { key: "elite", name: "Elite", d: "High training load, chasing the podium." },
+  const levels: { key: Level; name: string; d: string; c: string }[] = [
+    { key: "beginner", name: "Beginner", d: "New to triathlon or building your first base.", c: "--z2" },
+    { key: "intermediate", name: "Intermediate", d: "A season or two in; comfortable in all three sports.", c: "--z3" },
+    { key: "advanced", name: "Advanced", d: "Consistent training, targeting a strong result.", c: "--z4" },
+    { key: "elite", name: "Elite", d: "High training load, chasing the podium.", c: "--z5" },
   ];
   return (
     <div>
@@ -453,8 +473,11 @@ function LevelStep({ draft, set }: StepProps) {
       <div className="flex flex-col gap-2.5">
         {levels.map((l) => (
           <Card key={l.key} active={draft.level === l.key} onClick={() => set((d) => ({ ...d, level: l.key }))}>
-            <div className="font-display text-lg font-semibold">{l.name}</div>
-            <div className="text-sm text-muted">{l.d}</div>
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: `var(${l.c})` }} />
+              <div className="font-display text-lg font-semibold">{l.name}</div>
+            </div>
+            <div className="mt-1 text-sm text-muted">{l.d}</div>
           </Card>
         ))}
       </div>
@@ -505,8 +528,8 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
           <div className="grid grid-cols-3 gap-2.5">
             {autoSports.map((s) => (
               <div key={s.key} className="rounded-2xl border border-line bg-surface-3 py-3 text-center">
-                <div className="flex justify-center"><Icon name={s.icon} size={24} /></div>
-                <div className="mt-1 font-display text-xl font-bold tabular-nums">{ps[s.key]}</div>
+                <div className="flex justify-center" style={{ color: `var(--${s.key})` }}><Icon name={s.icon} size={24} /></div>
+                <div className="mt-1 font-display text-xl font-bold tabular-nums" style={{ color: `var(--${s.key})` }}>{ps[s.key]}</div>
                 <div className="text-xs text-muted">{s.label}/wk</div>
               </div>
             ))}
@@ -531,10 +554,15 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
               key={f.key}
               onClick={() => set((d) => ({ ...d, focusDiscipline: d.focusDiscipline === f.key ? undefined : f.key }))}
               className={`flex-1 rounded-2xl border py-3 text-center transition ${
-                draft.focusDiscipline === f.key ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2"
+                draft.focusDiscipline === f.key ? "ring-1" : "border-line bg-surface-2"
               }`}
+              style={
+                draft.focusDiscipline === f.key
+                  ? { borderColor: `var(--${f.key})`, background: `color-mix(in oklab, var(--${f.key}) 12%, transparent)`, boxShadow: `0 0 0 1px var(--${f.key})` }
+                  : undefined
+              }
             >
-              <div className="flex justify-center"><Icon name={f.icon} size={24} /></div>
+              <div className="flex justify-center" style={{ color: `var(--${f.key})` }}><Icon name={f.icon} size={24} /></div>
               <div className="mt-1 text-sm font-semibold">{f.label}</div>
             </button>
           ))}
@@ -562,9 +590,12 @@ function StrengthStep({ draft, set }: StepProps) {
       <div className="grid grid-cols-2 gap-2.5">
         <button
           onClick={() => upd({ enabled: true })}
-          className={`rounded-2xl border py-4 font-display font-semibold transition ${
-            s.enabled ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2"
-          }`}
+          className={`rounded-2xl border py-4 font-display font-semibold transition ${s.enabled ? "ring-1" : "border-line bg-surface-2"}`}
+          style={
+            s.enabled
+              ? { color: "var(--strength)", borderColor: "var(--strength)", background: "color-mix(in oklab, var(--strength) 12%, transparent)", boxShadow: "0 0 0 1px var(--strength)" }
+              : undefined
+          }
         >
           Yes, include it
         </button>
