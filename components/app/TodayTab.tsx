@@ -21,7 +21,7 @@ import { fmtFullDate as fullDate, addDays, dayIndexOf, fmtDayMonth, weekdayLong 
 
 export function TodayTab() {
   const { plan, profile, username, offline } = useApp();
-  const { today, openCoach, openWorkout, goTab, actions } = useUI();
+  const { today, openCoach, openWorkout, openLog, goTab, actions } = useUI();
   const toast = useToast();
   const [readyOpen, setReadyOpen] = useState(false);
 
@@ -69,10 +69,16 @@ export function TodayTab() {
             </div>
           )}
         </div>
-        <button onClick={() => openCoach()} className="card-glass flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold">
-          <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
-          Coach
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => openLog()} className="card-glass flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold">
+            <span aria-hidden className="text-base leading-none text-accent">＋</span>
+            Log
+          </button>
+          <button onClick={() => openCoach()} className="card-glass flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold">
+            <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
+            Coach
+          </button>
+        </div>
       </div>
 
       {offline && (
@@ -163,6 +169,12 @@ export function TodayTab() {
             ))}
           </div>
         )}
+        <button
+          onClick={() => openLog()}
+          className="mt-2.5 w-full rounded-2xl border border-dashed border-line py-3 text-center text-sm font-semibold text-muted transition hover:border-accent/50 hover:text-foreground"
+        >
+          ＋ Log a workout you did
+        </button>
       </div>
 
       {/* up next — the next session after today */}

@@ -3,7 +3,7 @@
 import { createContext, useContext } from "react";
 import { Discipline, Feel, ReadinessInput, Unit } from "@/lib/types";
 import type { CalibrationResult } from "@/lib/calibrate";
-import type { AdaptationSuggestion } from "@/lib/adapt";
+import type { AdaptationSuggestion, LoggedWorkout, LogResult } from "@/lib/adapt";
 
 export interface CheckinEntry {
   rpe?: number;
@@ -26,6 +26,8 @@ export interface UIActions {
   unswap(id: string): void;
   logInstead(id: string, note: string, opts?: { discipline?: Discipline; durationSec?: number }): void;
   logCheckin(id: string, entry: CheckinEntry): void;
+  /** log a workout the athlete actually did; matches/ticks/swaps against the plan */
+  logWorkout(input: LoggedWorkout): Omit<LogResult, "plan">;
   rebuild(): void;
   ease(days: number): void;
   /** record today's morning readiness (eases the day if low) */
@@ -46,6 +48,8 @@ export interface UICtxValue {
   openCoach(prefill?: string): void;
   /** open the edit-settings sheet (race/training/PRs) from anywhere */
   openSettings(): void;
+  /** open the "log a workout" sheet */
+  openLog(): void;
   goTab(tab: TabKey): void;
   actions: UIActions;
 }
