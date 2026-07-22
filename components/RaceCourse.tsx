@@ -29,7 +29,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /* -- geometry ---------------------------------------------------------------- */
 
-// viewBox: 0 0 320 190. x runs start → finish; y is elevation (smaller = higher).
+// viewBox: 0 0 340 190. x runs start → finish; y is elevation (smaller = higher).
 const BASE = 158; // chart baseline (sea level / ground) for the area fill
 
 /** Sample a Catmull-Rom spline through `anchors` into a dense, smooth polyline. */
@@ -105,6 +105,17 @@ function buildCourse(): { legs: Leg[]; total: number } {
 
 const COURSE = buildCourse();
 
+// viewBox width — a little wider than the finish so the flag has room
+const VBW = 340;
+
+// The route is inset within the viewBox (START label margin on the left, finish
+// flag on the right). Exported so a progress bar can be aligned to the exact
+// start → finish span the marker travels, as fractions of the rendered width.
+export const COURSE_SPAN = {
+  left: COURSE.legs[0].pts[0].x / VBW,
+  right: COURSE.legs[2].pts[COURSE.legs[2].pts.length - 1].x / VBW,
+};
+
 // perceptual balance for the completed-area tints (blue reads darker than
 // ochre/red at the same alpha, so it gets less)
 const FILL_OPACITY: Record<Leg["key"], number> = { swim: 0.26, bike: 0.44, run: 0.4 };
@@ -175,7 +186,7 @@ function FinishFlag({ p, reduce, checkerId }: { p: Pt; reduce: boolean; checkerI
 
 /* -- component ---------------------------------------------------------------- */
 
-export function RaceCourse({ progress, width = 300 }: { progress: number; width?: number }) {
+export function RaceCourse({ progress }: { progress: number }) {
   const [reduce, setReduce] = useState(false);
   useEffect(() => {
     setReduce(!!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
@@ -206,7 +217,7 @@ export function RaceCourse({ progress, width = 300 }: { progress: number; width?
   const finish = COURSE.legs[2].pts[COURSE.legs[2].pts.length - 1];
 
   return (
-    <svg viewBox="0 0 320 190" width={width} height={width * (190 / 320)} style={{ display: "block", overflow: "visible" }} aria-hidden>
+    <svg viewBox={`0 0 ${VBW} 190`} style={{ display: "block", width: "100%", height: "auto", overflow: "visible" }} aria-hidden>
       <defs>
         {/* finish-flag checker */}
         <pattern id={checkerId} width="6.4" height="6.4" patternUnits="userSpaceOnUse">
@@ -219,7 +230,7 @@ export function RaceCourse({ progress, width = 300 }: { progress: number; width?
           <rect x="0" y="0" width={r2(tip.x)} height="190" />
         </clipPath>
         <clipPath id={todoId}>
-          <rect x={r2(tip.x)} y="0" width={r2(320 - tip.x)} height="190" />
+          <rect x={r2(tip.x)} y="0" width={r2(VBW - tip.x)} height="190" />
         </clipPath>
       </defs>
 
