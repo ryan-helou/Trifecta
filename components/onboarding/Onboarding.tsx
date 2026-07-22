@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../AppProvider";
 import { LoadingAnimation } from "../LoadingAnimation";
-import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit } from "@/lib/types";
+import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit, Unit } from "@/lib/types";
 import { generatePlan } from "@/lib/planEngine";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
 import { CatalogRace } from "@/lib/raceCatalog";
@@ -37,6 +37,7 @@ interface Draft {
   bikePR?: { distanceM: number; timeSec: number; label: string };
   ftp?: number;
   maxHR?: number;
+  unit?: Unit; // km vs mi for distance/pace display
   injuries: Injury[];
   intakeNotes?: string;
 }
@@ -139,6 +140,7 @@ export function Onboarding() {
       bikePR: draft.bikePR,
       ftp: draft.ftp,
       maxHR: draft.maxHR,
+      unitPreference: draft.unit ?? "metric",
       weeklyHoursCap: draft.weeklyHoursCap,
       focusDiscipline: draft.focusDiscipline,
       equipment: draft.equipment,
@@ -703,16 +705,33 @@ function ScheduleStep({ draft, set }: StepProps) {
   );
 }
 
+const M_PER_MILE = 1609.34;
+
 function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) => number | null }) {
-  const [runDistKm, setRunDistKm] = useState(draft.runPR ? String(draft.runPR.distanceM / 1000) : "");
+  const unit = draft.unit ?? "metric";
+  const factor = unit === "imperial" ? M_PER_MILE : 1000; // display distance → metres
+  const dLabel = unit === "imperial" ? "mi" : "km";
+
+  const [runDist, setRunDist] = useState(draft.runPR ? String(+(draft.runPR.distanceM / factor).toFixed(2)) : "");
   const [runTime, setRunTime] = useState(draft.runPR ? fmtClock(draft.runPR.timeSec) : "");
   const [swimDistM, setSwimDistM] = useState(draft.swimPR ? String(draft.swimPR.distanceM) : "");
   const [swimTime, setSwimTime] = useState(draft.swimPR ? fmtClock(draft.swimPR.timeSec) : "");
-  const [bikeDistKm, setBikeDistKm] = useState(draft.bikePR ? String(draft.bikePR.distanceM / 1000) : "");
+  const [bikeDist, setBikeDist] = useState(draft.bikePR ? String(+(draft.bikePR.distanceM / factor).toFixed(2)) : "");
   const [bikeTime, setBikeTime] = useState(draft.bikePR ? fmtClock(draft.bikePR.timeSec) : "");
 
-  function commitRun(distKmStr: string, timeStr: string) {
-    const distM = Math.round(parseFloat(distKmStr) * 1000);
+  // switching units keeps the same real distances — re-express the typed numbers
+  // in the new unit so the underlying PR (stored in metres) never silently changes.
+  function switchUnit(u: Unit) {
+    if (u === unit) return;
+    const nf = u === "imperial" ? M_PER_MILE : 1000;
+    const conv = (s: string) => { const n = parseFloat(s); return isNaN(n) ? s : String(+((n * factor) / nf).toFixed(2)); };
+    setRunDist((s) => conv(s));
+    setBikeDist((s) => conv(s));
+    set((d) => ({ ...d, unit: u }));
+  }
+
+  function commitRun(distStr: string, timeStr: string) {
+    const distM = Math.round(parseFloat(distStr) * factor);
     const sec = parseTime(timeStr);
     set((d) => ({ ...d, runPR: distM > 0 && sec ? { distanceM: distM, timeSec: sec, label: prLabel("run", distM) } : undefined }));
   }
@@ -721,19 +740,34 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
     const sec = parseTime(timeStr);
     set((d) => ({ ...d, swimPR: distM > 0 && sec ? { distanceM: distM, timeSec: sec, label: prLabel("swim", distM) } : undefined }));
   }
-  function commitBike(distKmStr: string, timeStr: string) {
-    const distM = Math.round(parseFloat(distKmStr) * 1000);
+  function commitBike(distStr: string, timeStr: string) {
+    const distM = Math.round(parseFloat(distStr) * factor);
     const sec = parseTime(timeStr);
     set((d) => ({ ...d, bikePR: distM > 0 && sec ? { distanceM: distM, timeSec: sec, label: prLabel("bike", distM) } : undefined }));
   }
 
-  const runMatchesM = Math.round(parseFloat(runDistKm) * 1000);
+  const runMatchesM = Math.round(parseFloat(runDist) * factor);
   const swimMatchesM = Math.round(parseFloat(swimDistM));
-  const bikeMatchesM = Math.round(parseFloat(bikeDistKm) * 1000);
+  const bikeMatchesM = Math.round(parseFloat(bikeDist) * factor);
 
   return (
     <div>
       <Head title="Your personal bests" sub="Optional, but the sharper your pace targets. Tap a preset or type any distance. Skip any you don't know." />
+
+      {/* units — sets how the whole app shows distance & pace */}
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        {([["metric", "Kilometres"], ["imperial", "Miles"]] as const).map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => switchUnit(val)}
+            className={`rounded-full py-2.5 text-center font-display text-sm font-semibold transition ${
+              unit === val ? "accent-gradient text-white" : "border border-line bg-surface-2 text-muted"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <div className="mb-5 rounded-2xl border border-line bg-surface-2 p-4">
         <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Icon name="run" size={15} className="text-run" />Run PR</div>
@@ -741,7 +775,7 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
           {RUN_PR_OPTIONS.map((o) => (
             <button
               key={o.label}
-              onClick={() => { const km = String(o.distanceM / 1000); setRunDistKm(km); commitRun(km, runTime); }}
+              onClick={() => { const v = String(+(o.distanceM / factor).toFixed(2)); setRunDist(v); commitRun(v, runTime); }}
               className={`chip ${runMatchesM === o.distanceM ? "border-accent bg-accent/10" : ""}`}
             >
               {o.label}
@@ -754,16 +788,16 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
               className="input"
               inputMode="decimal"
               placeholder="Distance"
-              value={runDistKm}
-              onChange={(e) => { setRunDistKm(e.target.value); commitRun(e.target.value, runTime); }}
+              value={runDist}
+              onChange={(e) => { setRunDist(e.target.value); commitRun(e.target.value, runTime); }}
             />
-            <span className="text-xs text-muted">km</span>
+            <span className="text-xs text-muted">{dLabel}</span>
           </div>
           <input
             className="input"
             placeholder="Time, e.g. 22:30"
             value={runTime}
-            onChange={(e) => { setRunTime(e.target.value); commitRun(runDistKm, e.target.value); }}
+            onChange={(e) => { setRunTime(e.target.value); commitRun(runDist, e.target.value); }}
           />
         </div>
       </div>
@@ -807,7 +841,7 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
           {BIKE_PR_OPTIONS.map((o) => (
             <button
               key={o.label}
-              onClick={() => { const km = String(o.distanceM / 1000); setBikeDistKm(km); commitBike(km, bikeTime); }}
+              onClick={() => { const v = String(+(o.distanceM / factor).toFixed(2)); setBikeDist(v); commitBike(v, bikeTime); }}
               className={`chip ${bikeMatchesM === o.distanceM ? "border-accent bg-accent/10" : ""}`}
             >
               {o.label}
@@ -820,16 +854,16 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
               className="input"
               inputMode="decimal"
               placeholder="Distance"
-              value={bikeDistKm}
-              onChange={(e) => { setBikeDistKm(e.target.value); commitBike(e.target.value, bikeTime); }}
+              value={bikeDist}
+              onChange={(e) => { setBikeDist(e.target.value); commitBike(e.target.value, bikeTime); }}
             />
-            <span className="text-xs text-muted">km</span>
+            <span className="text-xs text-muted">{dLabel}</span>
           </div>
           <input
             className="input"
             placeholder="Time, e.g. 1:05:00"
             value={bikeTime}
-            onChange={(e) => { setBikeTime(e.target.value); commitBike(bikeDistKm, e.target.value); }}
+            onChange={(e) => { setBikeTime(e.target.value); commitBike(bikeDist, e.target.value); }}
           />
         </div>
       </div>

@@ -210,16 +210,28 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
   // so we namespace them with a "kept-" prefix — otherwise a fresh future session
   // with the same relative index/day/discipline overwrites a completed past one,
   // silently wiping training history (banked hours, streaks, PRs) on every rebuild.
+  // Also preserve a session ALREADY COMPLETED today — otherwise editing settings /
+  // rebuilding on the same day resets it to "planned", losing the completion (and
+  // the streak) despite the "completed sessions were kept" promise. We record its
+  // date+discipline so the fresh plan doesn't drop a duplicate on the same slot.
   const kept: Record<string, Workout> = {};
+  const keptTodayDone = new Set<string>();
   for (const w of Object.values(plan.workouts)) {
-    if (fromISO(w.date).getTime() < cutoff) {
+    const t = fromISO(w.date).getTime();
+    const isPast = t < cutoff;
+    const isTodayDone = t === cutoff && (w.status === "done" || w.status === "swapped");
+    if (isPast || isTodayDone) {
       const id = `kept-${w.id}`;
       kept[id] = { ...w, id };
+      if (isTodayDone) keptTodayDone.add(`${w.date}·${w.discipline}`);
     }
   }
-  // add fresh workouts from today onward
+  // add fresh workouts from today onward, minus any today slot already completed
   for (const w of Object.values(fresh.workouts)) {
-    if (fromISO(w.date).getTime() >= cutoff) kept[w.id] = w;
+    const t = fromISO(w.date).getTime();
+    if (t < cutoff) continue;
+    if (t === cutoff && keptTodayDone.has(`${w.date}·${w.discipline}`)) continue;
+    kept[w.id] = w;
   }
   const merged: Plan = { ...fresh, workouts: kept, id: plan.id, notice: "Plan rebuilt around today — you're realigned to hit race day." };
   reindexWeeks(merged);
