@@ -9,17 +9,15 @@ import { fmtFullDate, daysBetween } from "@/lib/dates";
 import { raceDistances, raceCategoryName, isFitnessGoal } from "@/lib/planEngine";
 import { projectRace } from "@/lib/predict";
 import { InstallHint } from "./InstallHint";
-import { EditSettings } from "./EditSettings";
 import { Connections } from "./Connections";
 import { Notifications } from "./Notifications";
 import { Wordmark } from "../Wordmark";
 
 export function ProfileTab() {
   const { plan, username, profile, logout, resetPlan } = useApp();
-  const { actions, today } = useUI();
+  const { actions, today, openSettings } = useUI();
   const toast = useToast();
   const [confirmReset, setConfirmReset] = useState(false);
-  const [editing, setEditing] = useState(false);
   if (!plan || !profile) return null;
 
   const recalibrate = () => {
@@ -129,7 +127,7 @@ export function ProfileTab() {
       </Section>
 
       <Section title="Manage your plan">
-        <ActionRow first onClick={() => setEditing(true)} label="Edit race & training settings" />
+        <ActionRow first onClick={openSettings} label="Edit race & training settings" />
         <ActionRow onClick={recalibrate} label="Recalibrate paces from my sessions" />
         <ActionRow onClick={() => actions.ease(7)} label="Not feeling 100% — ease this week" />
         <ActionRow onClick={() => actions.rebuild()} label="Rebuild plan around today" />
@@ -159,8 +157,6 @@ export function ProfileTab() {
       <div className="eyebrow pb-4 text-center text-[0.66rem]">
         <Wordmark /> · your path to the finish line
       </div>
-
-      {editing && <EditSettings profile={profile} onClose={() => setEditing(false)} />}
     </div>
   );
 }

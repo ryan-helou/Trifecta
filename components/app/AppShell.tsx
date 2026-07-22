@@ -14,6 +14,7 @@ import { ProfileTab } from "./ProfileTab";
 import { WorkoutDetail } from "./WorkoutDetail";
 import { CheckinSheet } from "./CheckinSheet";
 import { CoachSheet } from "./CoachSheet";
+import { EditSettings } from "./EditSettings";
 import { todayISO } from "@/lib/dates";
 import {
   applyAdaptation,
@@ -44,6 +45,7 @@ export function AppShell() {
   const [checkinId, setCheckinId] = useState<string | null>(null);
   const [coach, setCoach] = useState<{ open: boolean; prefill?: string }>({ open: false });
   const [coachMsgs, setCoachMsgs] = useState<CoachMsg[]>([COACH_GREETING]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [dismissRealign, setDismissRealign] = useState(false);
   const [dismissAdapt, setDismissAdapt] = useState(false);
 
@@ -112,6 +114,7 @@ export function AppShell() {
         openWorkout: setDetailId,
         openCheckin: setCheckinId,
         openCoach: (prefill) => setCoach({ open: true, prefill }),
+        openSettings: () => setSettingsOpen(true),
         goTab: setTab,
         actions,
       }}
@@ -183,6 +186,7 @@ export function AppShell() {
 
       {detail && <WorkoutDetail workout={detail} plan={plan} />}
       {checkin && <CheckinSheet workout={checkin} plan={plan} today={today} onClose={() => setCheckinId(null)} />}
+      {settingsOpen && profile && <EditSettings profile={profile} onClose={() => setSettingsOpen(false)} />}
       {coach.open && (
         <CoachSheet
           plan={plan}

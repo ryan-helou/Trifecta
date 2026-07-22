@@ -10,6 +10,7 @@ import { logReadiness, readinessScore, READY_LOW } from "../lib/readiness";
 import { flattenWorkout } from "../lib/workoutSteps";
 import { buildWorkoutFit } from "../lib/fit";
 import { publicCard, raceKeyOf } from "../lib/social";
+import { profileGaps } from "../lib/profileGaps";
 
 function mk(over: Partial<Profile>): Profile {
   const race = new Date();
@@ -194,6 +195,21 @@ console.log("\n=== fitness mode (no race) ===");
   // social card degrades gracefully (no daysOut, Fitness category)
   const card = publicCard("fit", { profile: plan.profile, plan }, addDays(plan.startDateISO, 3));
   check(card.race?.daysOut == null && card.race?.category === "Fitness", "fitness social card has no race countdown");
+}
+
+// ---- profile gaps: the "finish your profile" nudge, derived from the profile ----
+console.log("\n=== profile gaps (finish-your-profile nudge) ===");
+{
+  // a race distance picked but no date → nudge to add the date
+  const g1 = profileGaps(mk({ raceType: "half", raceDateISO: "" }));
+  check(g1.some((g) => g.key === "racedate"), "distance picked + no date → race-date gap");
+  // a fitness athlete chose to have no race → never nudged for a date
+  const g2 = profileGaps(mk({ raceType: "fitness", raceDateISO: "" }));
+  check(!g2.some((g) => g.key === "racedate"), "fitness athlete not nudged for a race date");
+  check(g2.some((g) => g.key === "prs"), "no PRs/FTP → performance-data gap");
+  // a complete-enough profile → no gaps
+  const g3 = profileGaps(mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), ftp: 220 }));
+  check(g3.length === 0, "race with a date + FTP → no gaps");
 }
 
 // ---- long-session day: long ride anchors on the chosen day, long run the day after ----
