@@ -114,17 +114,20 @@ const FILL_OPACITY: Record<Leg["key"], number> = { swim: 0.26, bike: 0.44, run: 
 const pathD = (pts: Pt[]) => "M " + pts.map((p) => `${r2(p.x)} ${r2(p.y)}`).join(" L ");
 const areaD = (pts: Pt[]) => `${pathD(pts)} L ${r2(pts[pts.length - 1].x)} ${BASE} L ${r2(pts[0].x)} ${BASE} Z`;
 
-/** Point at local arc length `a` along one leg's polyline. */
-function pointOnLeg(leg: Leg, a: number): Pt {
-  if (a <= 0) return leg.pts[0];
-  if (a >= leg.len) return leg.pts[leg.pts.length - 1];
-  for (let i = 1; i < leg.pts.length; i++) {
-    if (leg.cum[i] >= a) {
-      const t = (a - leg.cum[i - 1]) / (leg.cum[i] - leg.cum[i - 1] || 1);
-      return { x: lerp(leg.pts[i - 1].x, leg.pts[i].x, t), y: lerp(leg.pts[i - 1].y, leg.pts[i].y, t) };
+/** Point (and arc length) on a leg at a given x. The course is authored x-
+ *  monotonic, so we can drive everything by x — which keeps the marker in
+ *  lockstep with the linear percentage (arc length would let hills lag it). */
+function atX(leg: Leg, x: number): { pt: Pt; arc: number } {
+  const pts = leg.pts;
+  if (x <= pts[0].x) return { pt: pts[0], arc: 0 };
+  if (x >= pts[pts.length - 1].x) return { pt: pts[pts.length - 1], arc: leg.len };
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].x >= x) {
+      const t = (x - pts[i - 1].x) / (pts[i].x - pts[i - 1].x || 1);
+      return { pt: { x, y: lerp(pts[i - 1].y, pts[i].y, t) }, arc: lerp(leg.cum[i - 1], leg.cum[i], t) };
     }
   }
-  return leg.pts[leg.pts.length - 1];
+  return { pt: pts[pts.length - 1], arc: leg.len };
 }
 
 /* -- small scene pieces ------------------------------------------------------ */
@@ -186,15 +189,18 @@ export function RaceCourse({ progress, width = 300 }: { progress: number; width?
   const checkerId = `checker-${uid}`;
 
   const p = clamp(progress, 0, 100);
-  const tipArc = (p / 100) * COURSE.total;
-
-  // which leg is the marker in, and where
-  let active = COURSE.legs[0];
-  for (const leg of COURSE.legs) if (tipArc >= leg.startArc - 0.001) active = leg;
-  const tip = pointOnLeg(active, tipArc - active.startArc);
 
   const allPts = COURSE.legs.flatMap((l) => l.pts);
   const start = COURSE.legs[0].pts[0];
+  const startX = start.x;
+  const finishX = allPts[allPts.length - 1].x;
+  // marker advances linearly across the course width, so its x == p% across —
+  // matching the percentage readout and the progress bar exactly
+  const tipX = lerp(startX, finishX, p / 100);
+
+  let active = COURSE.legs[0];
+  for (const leg of COURSE.legs) if (tipX >= leg.pts[0].x - 0.001) active = leg;
+  const tip = atX(active, tipX).pt;
   const t1 = COURSE.legs[0].pts[COURSE.legs[0].pts.length - 1];
   const t2 = COURSE.legs[1].pts[COURSE.legs[1].pts.length - 1];
   const finish = COURSE.legs[2].pts[COURSE.legs[2].pts.length - 1];
@@ -242,7 +248,9 @@ export function RaceCourse({ progress, width = 300 }: { progress: number; width?
 
       {/* inked-in progress line: each leg colours in as the marker passes through */}
       {COURSE.legs.map((leg) => {
-        const frac = clamp((tipArc - leg.startArc) / leg.len, 0, 1);
+        const legStartX = leg.pts[0].x;
+        const legEndX = leg.pts[leg.pts.length - 1].x;
+        const frac = tipX <= legStartX ? 0 : tipX >= legEndX ? 1 : atX(leg, tipX).arc / leg.len;
         if (frac <= 0) return null;
         return (
           <path
