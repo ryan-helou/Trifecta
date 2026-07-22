@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Profile } from "@/lib/types";
-import { RaceCourse } from "./RaceCourse";
+import { COURSE_SPAN, RaceCourse } from "./RaceCourse";
 import { Wordmark } from "./Wordmark";
 
 const RACE_LABEL: Record<string, string> = {
@@ -61,16 +61,25 @@ export function LoadingAnimation({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-      <RaceCourse progress={progress} width={320} />
+      <div className="w-full max-w-xs">
+        <RaceCourse progress={progress} />
+      </div>
       <div className="mt-8 font-display text-5xl font-bold tabular-nums tracking-tight">
         {Math.round(progress)}
         <span className="text-2xl text-muted">%</span>
       </div>
-      <div className="mt-4 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-surface-2">
+      {/* progress bar — inset to the course's start → finish span so its fill
+          tracks directly under the marker */}
+      <div className="mt-4 w-full max-w-xs">
         <div
-          className="h-full rounded-full bg-accent"
-          style={{ width: `${progress}%`, transition: "width 0.1s linear" }}
-        />
+          className="h-1.5 overflow-hidden rounded-full bg-surface-2"
+          style={{
+            marginLeft: `${COURSE_SPAN.left * 100}%`,
+            width: `${(COURSE_SPAN.right - COURSE_SPAN.left) * 100}%`,
+          }}
+        >
+          <div className="h-full rounded-full bg-accent" style={{ width: `${progress}%` }} />
+        </div>
       </div>
       <div key={stepIndex} className="animate-rise mt-5 h-6 text-sm font-medium text-muted">
         {steps[stepIndex]}
