@@ -493,6 +493,7 @@ export function planSummaryContext(plan: Plan): string {
   }
   else lines.push("No strength training.");
   if (p.restDayPreference != null) lines.push(`Preferred rest day: ${DOW[p.restDayPreference]}.`);
+  if (p.longSessionDay != null) lines.push(`Long-session day: ${DOW[p.longSessionDay]}.`);
   if (p.weeklyHoursCap) lines.push(`Weekly hours capped at ${p.weeklyHoursCap}.`);
   if (p.equipment) {
     const lack: string[] = [];

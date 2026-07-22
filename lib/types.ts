@@ -233,6 +233,7 @@ export interface Profile {
   // extras
   weeklyHoursCap?: number; // athlete-imposed ceiling on weekly hours
   restDayPreference?: number; // 0=Mon … 6=Sun, a day they'd like off
+  longSessionDay?: number; // 0=Mon … 6=Sun, the day with most time for long sessions (default Sat=5)
   focusDiscipline?: Discipline; // a limiter they want to bias toward
   unitPreference?: Unit; // km vs mi for distance/pace display (default metric)
   // ---- deep personalization (all optional; the engine honours them) ----

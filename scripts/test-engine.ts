@@ -196,6 +196,25 @@ console.log("\n=== fitness mode (no race) ===");
   check(card.race?.daysOut == null && card.race?.category === "Fitness", "fitness social card has no race countdown");
 }
 
+// ---- long-session day: long ride anchors on the chosen day, long run the day after ----
+console.log("\n=== long-session day ===");
+{
+  const build = (longDay?: number) => {
+    const plan = generatePlan(mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, ...(longDay != null ? { longSessionDay: longDay } : {}) }));
+    const wk = plan.weeks.find((w) => w.phase === "build" && !w.isRecovery) ?? plan.weeks[Math.floor(plan.totalWeeks * 0.6)];
+    const ws = wk.workoutIds.map((id) => plan.workouts[id]);
+    const bike = ws.filter((w) => w.discipline === "bike" || w.discipline === "brick").sort((a, b) => b.estDurationSec - a.estDurationSec)[0];
+    const run = ws.filter((w) => w.discipline === "run").sort((a, b) => b.estDurationSec - a.estDurationSec)[0];
+    return { bikeDay: bike?.dayIndex, runDay: run?.dayIndex };
+  };
+  const def = build(); // default Saturday (5)
+  check(def.bikeDay === 5, `default long ride lands on Saturday (got d${def.bikeDay})`);
+  check(def.runDay === 6, `default long run lands on Sunday (got d${def.runDay})`);
+  const wed = build(2); // Wednesday
+  check(wed.bikeDay === 2, `long ride follows longSessionDay=Wed (got d${wed.bikeDay})`);
+  check(wed.runDay === 3, `long run lands the day after, Thu (got d${wed.runDay})`);
+}
+
 // ---- calibration: consistently-too-hard eases the run targets ----
 console.log("\n=== calibration ===");
 {

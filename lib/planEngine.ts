@@ -375,6 +375,11 @@ function pickWeekSlots(
   const mods = injuryMods(p);
   const counts = weekSportCounts(p, phase, isRecovery, mods);
 
+  // The day the athlete has most time for long sessions (default Saturday). The
+  // long ride/brick anchors here; the long run lands the day after.
+  const longDay = ((((p.longSessionDay ?? 5) % 7) + 7) % 7);
+  const longRunDay = (longDay + 1) % 7;
+
   // ---- BIKE ---------------------------------------------------------------
   // The long anchor becomes a brick in build/peak — unless a run injury makes
   // running off the bike unwise, in which case it stays a long endurance ride.
@@ -383,11 +388,11 @@ function pickWeekSlots(
   const bikeRacePace = mods.bike.capZone >= 3;
   const longAnchor: Role = brickOk
     ? {
-        discipline: "brick", hard: !recover, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap + runOff, prefDay: 5,
+        discipline: "brick", hard: !recover, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap + runOff, prefDay: longDay,
         build: (min) => W.brick(ctx, Math.max(30, min - runOff), runOff, bikeRacePace && phase === "peak"),
       }
     : {
-        discipline: "bike", hard: false, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap, prefDay: 5,
+        discipline: "bike", hard: false, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap, prefDay: longDay,
         build: (min) => W.bikeLong(ctx, min, phase !== "base" && !recover && bikeRacePace),
       };
   // when a sport is off-limits (severe injury), keep only gentle, short sessions
@@ -397,7 +402,7 @@ function pickWeekSlots(
 
   // ---- RUN ----------------------------------------------------------------
   const longRun: Role = {
-    discipline: "run", hard: false, scalable: true, weight: 2.2, minMin: 30, maxMin: runCap, prefDay: 6,
+    discipline: "run", hard: false, scalable: true, weight: 2.2, minMin: 30, maxMin: runCap, prefDay: longRunDay,
     build: (min) => W.runLong(ctx, min, phase === "peak" && !recover && mods.run.capZone >= 3),
   };
   const runList: Role[] = mods.run.avoid
