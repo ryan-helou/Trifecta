@@ -3,15 +3,16 @@
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { SwipeableWorkout } from "./SwipeableWorkout";
+import { WorkoutCard } from "./WorkoutCard";
 import { ProgressRing } from "./motion";
 import { Icon } from "./icons";
-import { PhaseBar, RaceCountdown, weekOfDate, workoutsOn } from "./widgets";
+import { PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
-import { fmtFullDate as fullDate } from "@/lib/dates";
+import { fmtFullDate as fullDate, addDays, dayIndexOf, fmtDayMonth, weekdayLong } from "@/lib/dates";
 
 export function TodayTab() {
   const { plan, username, offline } = useApp();
-  const { today, openCoach, goTab } = useUI();
+  const { today, openCoach, openWorkout, goTab } = useUI();
   if (!plan) return null;
 
   const todays = workoutsOn(plan, today);
@@ -20,6 +21,15 @@ export function TodayTab() {
   const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  // the next scheduled session after today — so the home screen always answers
+  // "what's coming?", not just "what's today" (especially on rest days)
+  const next = upcomingAfter(plan, today, 1)[0];
+  const nextLabel = next
+    ? next.date === addDays(today, 1)
+      ? "Tomorrow"
+      : `${weekdayLong(dayIndexOf(next.date))} · ${fmtDayMonth(next.date)}`
+    : "";
 
   return (
     <div className="space-y-5 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
@@ -81,6 +91,17 @@ export function TodayTab() {
           </div>
         )}
       </div>
+
+      {/* up next — the next session after today */}
+      {next && (
+        <div className="animate-fade-up" style={{ animationDelay: "150ms" }}>
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="font-display text-[1.15rem] font-semibold">Up next</h2>
+            <span className="eyebrow text-[0.72rem]">{nextLabel}</span>
+          </div>
+          <WorkoutCard workout={next} onOpen={() => openWorkout(next.id)} />
+        </div>
+      )}
 
       {/* week at a glance */}
       <button

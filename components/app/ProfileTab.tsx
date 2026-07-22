@@ -5,7 +5,7 @@ import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { fmtPace, fmtPace100, fmtDistance } from "@/lib/format";
 import { fmtFullDate, daysBetween } from "@/lib/dates";
-import { raceDistances } from "@/lib/planEngine";
+import { raceDistances, raceCategoryName } from "@/lib/planEngine";
 import { InstallHint } from "./InstallHint";
 import { EditSettings } from "./EditSettings";
 import { Connections } from "./Connections";
@@ -20,11 +20,12 @@ export function ProfileTab() {
 
   const dist = raceDistances(profile);
   const paces = plan.paces;
+  const unit = profile.unitPreference ?? "metric";
   const daysOut = Math.max(0, daysBetween(today, profile.raceDateISO));
   const legs = [
-    { label: "Swim", v: fmtDistance(dist.swim), c: "var(--swim)" },
-    { label: "Bike", v: fmtDistance(dist.bike), c: "var(--bike)" },
-    { label: "Run", v: fmtDistance(dist.run), c: "var(--run)" },
+    { label: "Swim", v: fmtDistance(dist.swim, unit), c: "var(--swim)" },
+    { label: "Bike", v: fmtDistance(dist.bike, unit), c: "var(--bike)" },
+    { label: "Run", v: fmtDistance(dist.run, unit), c: "var(--run)" },
   ];
 
   return (
@@ -46,9 +47,11 @@ export function ProfileTab() {
       <div className="card-glass relative overflow-hidden p-5">
         <div className="flex items-start justify-between">
           <div>
-            <div className="eyebrow text-[0.72rem]">Your race</div>
-            <div className="mt-1.5 font-display text-[1.4rem] font-semibold leading-tight">{dist.name}</div>
-            <div className="mt-0.5 text-sm text-muted">{fmtFullDate(profile.raceDateISO)}</div>
+            <div className="eyebrow text-[0.72rem]">{profile.raceName ? `Your race · ${raceCategoryName(profile)}` : "Your race"}</div>
+            <div className="mt-1.5 font-display text-[1.4rem] font-semibold leading-tight">{profile.raceName ?? dist.name}</div>
+            <div className="mt-0.5 text-sm text-muted">
+              {profile.raceLocation ? `${profile.raceLocation} · ` : ""}{fmtFullDate(profile.raceDateISO)}
+            </div>
           </div>
           <div className="text-right">
             <div className="font-display text-[2.1rem] font-semibold leading-none tabular-nums text-accent">{daysOut}</div>
@@ -66,7 +69,7 @@ export function ProfileTab() {
       </div>
 
       <Section title="Training paces">
-        <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm)} first />
+        <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm, unit)} first />
         <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} />
         <Row k="Bike FTP" v={paces.bike.ftp ? `${paces.bike.ftp} W` : "Zone / RPE based"} />
         {paces.hr.maxHR ? <Row k="Max HR" v={`${paces.hr.maxHR} bpm`} /> : null}

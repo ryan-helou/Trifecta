@@ -106,6 +106,14 @@ export function raceDistances(p: Profile): { swim: number; bike: number; run: nu
   return { ...base, name: p.raceName?.trim() || base.name };
 }
 
+/** The canonical distance-category label (e.g. "Ironman 70.3"), ignoring any
+ *  real-event name — for surfaces that show the event name separately so the
+ *  category and the event don't read as a duplicate. */
+export function raceCategoryName(p: Profile): string {
+  if (p.raceType === "custom" && p.custom) return p.custom.name || "Custom Race";
+  return RACE_DISTANCES[categoryOf(p)].name;
+}
+
 // ---- weekly load curve --------------------------------------------------
 
 function baseFraction(phase: Phase, idxInPhase: number, phaseLen: number, taperPos: number, taperLen: number): number {
