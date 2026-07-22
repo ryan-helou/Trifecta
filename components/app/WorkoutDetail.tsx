@@ -9,6 +9,8 @@ import { fmtDistance, fmtDuration } from "@/lib/format";
 import { addDays, dayIndexOf, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
+import { WorkoutPlayer } from "./WorkoutPlayer";
+import { buildWorkoutFit, fitFilename } from "@/lib/fit";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 
@@ -89,11 +91,33 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
   const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
   const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
   const [note, setNote] = useState("");
+  const [playing, setPlaying] = useState(false);
   const meta = DISCIPLINE_META[workout.discipline];
   const reps = repsSummary(workout);
   const isRace = workout.id === "w-race-day";
   const done = workout.status === "done";
   const swapped = !!workout.swappedFrom;
+  // guided play + watch export make sense for real endurance sessions
+  const canGuide = !isRace && workout.discipline !== "rest" && workout.segments.length > 0;
+  const canExport = canGuide && workout.discipline !== "strength";
+
+  const exportFit = () => {
+    try {
+      const bytes = buildWorkoutFit(workout, plan.paces);
+      const blob = new Blob([bytes as BlobPart], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fitFilename(workout);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      haptic("success");
+    } catch {
+      haptic("warning");
+    }
+  };
 
   // group segments into sections
   const sections: { label: string; segs: Segment[] }[] = [];
@@ -110,6 +134,8 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
   const close = () => openWorkout(null);
 
   return (
+    <>
+    {playing && <WorkoutPlayer workout={workout} plan={plan} onClose={() => setPlaying(false)} />}
     <Sheet onClose={close} label={workout.title}>
       <div className="px-5 pb-8 pt-1">
           {/* header */}
@@ -210,6 +236,14 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           {/* actions */}
           {!isRace ? (
             <div className="space-y-2">
+              {canGuide && !done && (
+                <button
+                  onClick={() => { haptic("medium"); setPlaying(true); }}
+                  className="btn accent-gradient w-full py-3.5 text-base font-semibold text-white"
+                >
+                  ▶ Start guided session
+                </button>
+              )}
               <button
                 onClick={() => {
                   if (done) { haptic("light"); actions.toggleDone(workout.id); }
@@ -239,6 +273,11 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                   {workout.status === "skipped" ? "Un-skip" : "Skip workout"}
                 </button>
               </div>
+              {canExport && (
+                <button onClick={exportFit} className="btn btn-ghost w-full py-2.5 text-sm">
+                  <Icon name="install" size={16} /> Export to watch (.FIT)
+                </button>
+              )}
               <button onClick={() => openCoach(`About my session "${workout.title}": `)} className="btn btn-ghost w-full py-2.5 text-sm">
                 <Icon name="chat" size={16} /> Ask the coach about this
               </button>
@@ -253,6 +292,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           )}
         </div>
     </Sheet>
+    </>
   );
 }
 

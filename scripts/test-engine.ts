@@ -7,6 +7,9 @@ import { projectRace } from "../lib/predict";
 import { calibratePaces } from "../lib/calibrate";
 import { assessAdaptation, applyAdaptation } from "../lib/adapt";
 import { logReadiness, readinessScore, READY_LOW } from "../lib/readiness";
+import { flattenWorkout } from "../lib/workoutSteps";
+import { buildWorkoutFit } from "../lib/fit";
+import { publicCard, raceKeyOf } from "../lib/social";
 
 function mk(over: Partial<Profile>): Profile {
   const race = new Date();
@@ -242,6 +245,56 @@ console.log("\n=== readiness ===");
     check(!highRes.readiness![hard.date].eased, "high readiness does not ease");
     check(highRes.workouts[hard.id].type === plan2.workouts[hard.id].type, "high readiness leaves the session unchanged");
   }
+}
+
+// ===========================================================================
+// TIER 2 — watch export (.FIT) · guided-session flatten · social cards
+// ===========================================================================
+console.log("\n\n########## TIER 2: watch export + social ##########");
+
+// independent CRC-16 (FIT) to validate the encoder's checksums
+const CRC_T = [0x0000,0xcc01,0xd801,0x1400,0xf001,0x3c00,0x2800,0xe401,0xa001,0x6c00,0x7800,0xb401,0x5000,0x9c01,0x8801,0x4400];
+function fitCrc(buf: Uint8Array): number {
+  let crc = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const b = buf[i];
+    let t = CRC_T[crc & 0xf]; crc = (crc >> 4) & 0x0fff; crc = crc ^ t ^ CRC_T[b & 0xf];
+    t = CRC_T[crc & 0xf]; crc = (crc >> 4) & 0x0fff; crc = crc ^ t ^ CRC_T[(b >> 4) & 0xf];
+  }
+  return crc & 0xffff;
+}
+
+console.log("\n=== flatten + FIT export ===");
+{
+  const plan = generatePlan(mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), perSport: { swim: 2, bike: 2, run: 3 }, ftp: 220 }));
+  const w = Object.values(plan.workouts).find((x) => x.discipline === "run" && x.segments.length > 1)
+    ?? Object.values(plan.workouts).find((x) => x.discipline === "run")!;
+  const steps = flattenWorkout(w, plan.paces);
+  check(steps.length > 0, `flatten produced ${steps.length} steps`);
+  check(steps.every((s) => s.durationSec >= 0), "every step has a non-negative duration");
+
+  const fit = buildWorkoutFit(w, plan.paces);
+  check(fit[0] === 14, "FIT header size = 14");
+  check(String.fromCharCode(fit[8], fit[9], fit[10], fit[11]) === ".FIT", "FIT magic bytes = .FIT");
+  const dataSize = fit[4] | (fit[5] << 8) | (fit[6] << 16) | (fit[7] << 24);
+  check(dataSize === fit.length - 16, "FIT data-size field = file − header(14) − CRC(2)");
+  check((fit[12] | (fit[13] << 8)) === fitCrc(fit.subarray(0, 12)), "FIT header CRC valid");
+  const stored = fit[fit.length - 2] | (fit[fit.length - 1] << 8);
+  check(stored === fitCrc(fit.subarray(0, fit.length - 2)), "FIT file CRC valid");
+}
+
+console.log("\n=== social cards ===");
+{
+  const plan = generatePlan(mk({ raceType: "half", raceDateISO: raceInWeeks(18), raceName: "IRONMAN 70.3 Test" }));
+  const today = addDays(plan.startDateISO, 6);
+  Object.values(plan.workouts).filter((w) => w.discipline !== "rest").slice(0, 2).forEach((w) => { w.status = "done"; });
+  const card = publicCard("tester", { profile: plan.profile, plan }, today);
+  check(card.username === "tester", "card carries username");
+  check(!!card.race && card.race.name.includes("70.3"), "card carries race name");
+  check(card.weekDone >= 2, `card counts completed sessions this week (${card.weekDone})`);
+  const k1 = raceKeyOf(plan.profile);
+  const k2 = raceKeyOf({ ...plan.profile, raceDateISO: addDays(plan.profile.raceDateISO, 1) });
+  check(!!k1 && k1 !== k2, "raceKey distinguishes different races");
 }
 
 console.log(`\n\n${problems === 0 ? "✅ NO PROBLEMS" : "❌ " + problems + " PROBLEMS"}`);

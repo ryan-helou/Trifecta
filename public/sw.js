@@ -2,7 +2,7 @@
 // The cache name carries a per-build id (stamped by scripts/stamp-sw.mjs at
 // build time) so the browser sees this file change on every deploy and swaps in
 // the new worker — that's what lets the installed app actually update.
-const CACHE = "amatri-__BUILD_ID__";
+const CACHE = "amatri-1784730469312";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -42,5 +42,40 @@ self.addEventListener("fetch", (event) => {
         return new Response("Offline", { status: 503, statusText: "Offline" });
       }
     })(),
+  );
+});
+
+// ---- notifications ----
+// Focus (or open) the app when a reminder/push is tapped.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const c of all) {
+        if ("focus" in c) {
+          try { await c.navigate(url); } catch {}
+          return c.focus();
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })(),
+  );
+});
+
+// Server-sent Web Push (ready for a future VAPID sender; harmless until then).
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch {}
+  const title = payload.title || "AmaTri";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body || "Time to train.",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: payload.tag || "amatri-push",
+      data: { url: payload.url || "/" },
+    }),
   );
 });

@@ -102,3 +102,28 @@ export async function apiStravaSync() {
 export async function apiStravaDisconnect() {
   return jsonFetch("/api/strava/status", { method: "DELETE" });
 }
+
+// ---- social ----
+
+import type { SocialPayload } from "./social";
+
+export async function apiSocial(today: string): Promise<SocialPayload | null> {
+  const { ok, data } = await jsonFetch(`/api/social?today=${encodeURIComponent(today)}`);
+  return ok ? (data as SocialPayload) : null;
+}
+
+export async function apiFollow(username: string, on: boolean) {
+  const { ok, data } = await jsonFetch("/api/social/follow", {
+    method: on ? "POST" : "DELETE",
+    body: JSON.stringify({ username }),
+  });
+  return { ok, ...(data as { error?: string; following?: boolean }) };
+}
+
+export async function apiKudos(ownerUsername: string, workoutId: string, on: boolean) {
+  const { ok, data } = await jsonFetch("/api/social/kudos", {
+    method: "POST",
+    body: JSON.stringify({ ownerUsername, workoutId, on }),
+  });
+  return { ok, ...(data as { error?: string; on?: boolean; kudos?: number }) };
+}
