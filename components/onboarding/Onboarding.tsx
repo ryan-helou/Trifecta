@@ -124,25 +124,28 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
     perSport.swim + perSport.bike + perSport.run + (draft.strength.enabled ? draft.strength.daysPerWeek : 0);
 
   const finalProfile: Profile | null = useMemo(() => {
-    // the account is created last, so a profile can be assembled before we have a
-    // username — it's filled in at signup (see signupAndStart)
-    const fitness = draft.raceType === "fitness";
-    if (!draft.raceType || !draft.level) return null;
-    if (!fitness && !draft.raceDateISO) return null; // a race needs a date; fitness doesn't
+    // Every question is skippable, so we default anything unanswered: no goal chosen
+    // → fitness, no experience → intermediate. A race distance with no date routes to
+    // a rolling fitness block too (isFitnessGoal), and the nudge asks for the date.
+    // (The account is created last, so a profile assembles before we have a username —
+    // it's filled in at signup; see signupAndStart.)
+    const rt: RaceType = draft.raceType ?? "fitness";
+    const fitness = rt === "fitness";
+    const lvl: Level = draft.level ?? "intermediate";
     // real-event identity only applies to a bare race distance, never custom/fitness
-    const isRealRace = draft.raceType !== "custom" && !fitness;
+    const isRealRace = rt !== "custom" && !fitness;
     const ps = resolvePerSport(draft);
     const strengthDays = draft.strength.enabled ? draft.strength.daysPerWeek : 0;
     const wpw = Math.max(1, Math.min(21, ps.swim + ps.bike + ps.run + strengthDays));
     return {
       username: username ?? "",
-      raceType: draft.raceType,
-      custom: draft.raceType === "custom" ? draft.custom : undefined,
+      raceType: rt,
+      custom: rt === "custom" ? draft.custom : undefined,
       raceName: isRealRace ? draft.raceName : undefined,
       raceLocation: isRealRace ? draft.raceLocation : undefined,
       raceId: isRealRace ? draft.raceId : undefined,
       raceDateISO: fitness ? "" : draft.raceDateISO ?? "",
-      level: draft.level,
+      level: lvl,
       workoutsPerWeek: wpw,
       perSport: { ...ps },
       strength: draft.strength,
@@ -181,18 +184,15 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   const next = () => setIdx((i) => skip(1, i));
   const back = () => setIdx((i) => skip(-1, i));
 
+  // Every question is skippable — Continue is always available. The only guard is a
+  // broken custom race (zero distances), which the athlete actively opened. Skipped
+  // answers fall back to sensible defaults in finalProfile (goal → fitness, level →
+  // intermediate, no date → rolling fitness block), and the in-app "finish your
+  // profile" nudge invites them to fill the important ones later.
   const canNext = (() => {
     switch (step) {
-      case "race":
-        return !!draft.raceType;
       case "custom":
         return draft.custom.swimM > 0 && draft.custom.bikeM > 0 && draft.custom.runM > 0;
-      case "date":
-        return !!draft.raceDateISO && draft.raceDateISO > todayISO();
-      case "level":
-        return !!draft.level;
-      case "frequency":
-        return totalSessions >= 1;
       default:
         return true;
     }
@@ -1176,22 +1176,23 @@ function InjuriesStep({ draft, set }: StepProps) {
 
 function ReviewStep({ draft, total, profile }: { draft: Draft; total: number; profile: Profile | null }) {
   const proj = profile ? projectRace(profile) : null;
-  const fitness = draft.raceType === "fitness";
+  const rt = draft.raceType ?? "fitness"; // skipped goal → fitness
+  const fitness = rt === "fitness";
   const race = fitness
     ? "General fitness"
     : draft.raceName ??
-      (draft.raceType === "custom"
+      (rt === "custom"
         ? draft.custom.name
-        : draft.raceType === "olympic"
+        : rt === "olympic"
         ? "Olympic"
-        : draft.raceType === "half"
+        : rt === "half"
         ? "Ironman 70.3"
         : "Full Ironman");
   const ps = resolvePerSport(draft);
   const rows: [string, string][] = [
     [fitness ? "Goal" : "Race", race],
     ["Date", fitness ? "No race — training for fitness" : draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
-    ["Level", draft.level ?? "—"],
+    ["Level", draft.level ?? "intermediate"],
     [
       "Weekly sessions",
       `${total} · Swim ${ps.swim} · Bike ${ps.bike} · Run ${ps.run}${draft.autoFrequency ? " · auto" : ""}`,

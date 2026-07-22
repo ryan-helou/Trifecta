@@ -44,6 +44,8 @@ export interface UICtxValue {
   openWorkout(id: string | null): void;
   openCheckin(id: string | null): void;
   openCoach(prefill?: string): void;
+  /** open the edit-settings sheet (race/training/PRs) from anywhere */
+  openSettings(): void;
   goTab(tab: TabKey): void;
   actions: UIActions;
 }
