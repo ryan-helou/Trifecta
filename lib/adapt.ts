@@ -1,4 +1,4 @@
-import { Discipline, Plan, Week, Workout, Zone } from "./types";
+import { Discipline, Feel, Plan, Week, Workout, Zone } from "./types";
 import { addDays, dayIndexOf, fromISO, mondayOf } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
@@ -105,6 +105,176 @@ export function logCheckin(
     actualDistanceM: "actualDistanceM" in entry ? entry.actualDistanceM : w.actualDistanceM,
   };
   return p;
+}
+
+// ---- log a workout (manual "here's what I actually did") --------------------
+// The athlete says what they did; we compare it to the planned session that day
+// and either tick it off (equivalent), credit the actual (adjusted), swap the
+// credit to the sport they actually did, or log a bonus session when nothing was
+// planned. A first-person `coachPrefill` lets them tell the AI coach in one tap.
+
+export interface LoggedWorkout {
+  dateISO: string;
+  discipline: Discipline; // swim | bike | run | strength
+  durationSec: number;
+  distanceM?: number;
+  rpe?: number;
+  feel?: Feel;
+  note?: string;
+}
+
+export type LogOutcome = "ticked" | "adjusted" | "swapped" | "bonus";
+
+export interface LogResult {
+  plan: Plan;
+  outcome: LogOutcome;
+  matchedId?: string;
+  headline: string;
+  detail: string;
+  /** a first-person note the athlete can send straight to the coach chat */
+  coachPrefill: string;
+}
+
+/** Would a logged `discipline` count as doing this planned workout? (a brick is
+ *  satisfied by either its ride or its run). */
+function disciplineMatches(logged: Discipline, planned: Discipline): boolean {
+  if (planned === logged) return true;
+  if (planned === "brick" && (logged === "bike" || logged === "run")) return true;
+  return false;
+}
+
+/** Is what the athlete did close enough to the planned session to just tick it off?
+ *  Duration within −30%/+40%, and (when both are known) distance within ±~25%. */
+function isEquivalent(logged: LoggedWorkout, planned: Workout): boolean {
+  const pd = planned.estDurationSec || 0;
+  if (pd > 0) {
+    const r = logged.durationSec / pd;
+    if (r < 0.7 || r > 1.4) return false;
+  }
+  if (logged.distanceM && planned.estDistanceM) {
+    const dr = logged.distanceM / planned.estDistanceM;
+    if (dr < 0.75 || dr > 1.3) return false;
+  }
+  return true;
+}
+
+function feelClause(l: LoggedWorkout): string {
+  const bits: string[] = [];
+  if (l.feel) bits.push(`felt ${l.feel}`);
+  if (typeof l.rpe === "number") bits.push(`RPE ${l.rpe}/10`);
+  return bits.length ? `, ${bits.join(", ")}` : "";
+}
+
+function distClause(l: LoggedWorkout): string {
+  return l.distanceM ? ` · ${(l.distanceM / 1000).toFixed(l.discipline === "swim" ? 2 : 1)} km` : "";
+}
+
+/** Add a self-logged session as a completed workout (used when nothing was planned). */
+function addLoggedWorkout(plan: Plan, input: LoggedWorkout): Plan {
+  const p = clonePlan(plan);
+  const zone: Zone = typeof input.rpe === "number" ? (input.rpe >= 7 ? 4 : input.rpe >= 5 ? 3 : 2) : 2;
+  const base = `logged-${input.dateISO}-${input.discipline}`;
+  let id = base;
+  let n = 1;
+  while (p.workouts[id]) id = `${base}-${++n}`;
+  p.workouts[id] = {
+    id,
+    date: input.dateISO,
+    weekIndex: 0, // fixed by reindexWeeks
+    dayIndex: dayIndexOf(input.dateISO),
+    discipline: input.discipline,
+    type: input.discipline === "strength" ? "strength" : "endurance",
+    title: `Logged ${input.discipline}`,
+    purpose: "A session you logged yourself.",
+    segments: [
+      { kind: "main", discipline: input.discipline, zone, durationSec: input.durationSec, description: "Logged session" },
+    ],
+    estDurationSec: input.durationSec,
+    estDistanceM: input.distanceM,
+    primaryZone: zone,
+    status: "done",
+    rpe: input.rpe,
+    feel: input.feel,
+    actualDurationSec: input.durationSec,
+    actualDistanceM: input.distanceM,
+    note: input.note,
+  };
+  reindexWeeks(p);
+  return p;
+}
+
+export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
+  const durTxt = fmtDuration(input.durationSec);
+  const distTxt = distClause(input);
+  const d = input.discipline;
+
+  // planned, not-yet-done sessions on that day
+  const sameDay = Object.values(plan.workouts).filter(
+    (w) => w.date === input.dateISO && w.discipline !== "rest" && w.status === "planned",
+  );
+  // prefer a discipline match; otherwise the closest-duration session (to swap into)
+  const match =
+    sameDay.find((w) => disciplineMatches(d, w.discipline)) ??
+    [...sameDay].sort(
+      (a, b) => Math.abs((a.estDurationSec || 0) - input.durationSec) - Math.abs((b.estDurationSec || 0) - input.durationSec),
+    )[0];
+
+  if (!match) {
+    return {
+      plan: addLoggedWorkout(plan, input),
+      outcome: "bonus",
+      headline: "Bonus session logged",
+      detail: `Nothing was planned — added your ${d} (${durTxt}${distTxt}) to the log.`,
+      coachPrefill: `I did an unplanned ${d} today: ${durTxt}${distTxt}${feelClause(input)}. Nothing was on the plan — does that change the next few days?`,
+    };
+  }
+
+  if (disciplineMatches(d, match.discipline)) {
+    const done = logCheckin(plan, match.id, {
+      rpe: input.rpe,
+      feel: input.feel,
+      actualDurationSec: input.durationSec,
+      actualDistanceM: input.distanceM,
+    });
+    if (isEquivalent(input, match)) {
+      return {
+        plan: done,
+        outcome: "ticked",
+        matchedId: match.id,
+        headline: "Ticked off ✓",
+        detail: `Matched your planned “${match.title}” — marked complete.`,
+        coachPrefill: `I completed today's ${d} as planned: ${durTxt}${distTxt}${feelClause(input)}. Anything to note for tomorrow?`,
+      };
+    }
+    return {
+      plan: done,
+      outcome: "adjusted",
+      matchedId: match.id,
+      headline: "Logged — credited what you did",
+      detail: `Your ${d} (${durTxt}${distTxt}) differed from the planned ${fmtDuration(match.estDurationSec)} — credited the actual.`,
+      coachPrefill: `Today's ${d} came out as ${durTxt}${distTxt}${feelClause(input)}, vs the planned ${fmtDuration(match.estDurationSec)}. Should I adjust the coming days?`,
+    };
+  }
+
+  // did a different sport than planned → swap the credit to what they actually did
+  let swapped = logInstead(plan, match.id, input.note ?? `Did ${d} instead of ${match.discipline}`, {
+    discipline: d,
+    durationSec: input.durationSec,
+  });
+  swapped = logCheckin(swapped, match.id, {
+    rpe: input.rpe,
+    feel: input.feel,
+    actualDurationSec: input.durationSec,
+    actualDistanceM: input.distanceM,
+  });
+  return {
+    plan: swapped,
+    outcome: "swapped",
+    matchedId: match.id,
+    headline: "Swapped ✓",
+    detail: `Did a ${d} in place of your planned ${match.discipline} — credited to ${d}.`,
+    coachPrefill: `Instead of my planned ${match.discipline} today, I did a ${d}: ${durTxt}${distTxt}${feelClause(input)}. Is that okay, or should I make up the ${match.discipline}?`,
+  };
 }
 
 /** Move a workout to a new date (kept inside the plan window). Returns null if invalid. */

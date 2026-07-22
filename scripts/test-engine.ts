@@ -5,7 +5,7 @@ import { addDays } from "../lib/dates";
 import { derivePaces } from "../lib/paces";
 import { projectRace } from "../lib/predict";
 import { calibratePaces } from "../lib/calibrate";
-import { assessAdaptation, applyAdaptation } from "../lib/adapt";
+import { assessAdaptation, applyAdaptation, logWorkout, creditedDiscipline, creditedSeconds } from "../lib/adapt";
 import { logReadiness, readinessScore, READY_LOW } from "../lib/readiness";
 import { flattenWorkout } from "../lib/workoutSteps";
 import { buildWorkoutFit } from "../lib/fit";
@@ -360,6 +360,67 @@ console.log("\n=== social cards ===");
   const k1 = raceKeyOf(plan.profile);
   const k2 = raceKeyOf({ ...plan.profile, raceDateISO: addDays(plan.profile.raceDateISO, 1) });
   check(!!k1 && k1 !== k2, "raceKey distinguishes different races");
+}
+
+// ---- log a workout: manual actual-vs-plan (tick / adjust / swap / bonus) ----
+console.log("\n=== log a workout ===");
+{
+  const p = mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 } });
+  const plan = generatePlan(p);
+  const runW = Object.values(plan.workouts).find((w) => w.discipline === "run" && w.status === "planned")!;
+  check(!!runW, "found a planned run to log against");
+
+  // 1) equivalent → ticked off, marked done, actuals credited
+  {
+    const r = logWorkout(plan, { dateISO: runW.date, discipline: "run", durationSec: runW.estDurationSec, distanceM: runW.estDistanceM, rpe: 5, feel: "ok" });
+    check(r.outcome === "ticked", `equivalent run → ticked (got ${r.outcome})`);
+    check(r.plan.workouts[runW.id].status === "done", "matched workout marked done");
+    check(r.plan.workouts[runW.id].actualDurationSec === runW.estDurationSec, "actual duration recorded");
+    check(r.coachPrefill.length > 10, "coach prefill is populated");
+  }
+
+  // 2) much shorter → adjusted (still done, credited what you actually did)
+  {
+    const shorter = Math.round(runW.estDurationSec * 0.4);
+    const r = logWorkout(plan, { dateISO: runW.date, discipline: "run", durationSec: shorter });
+    check(r.outcome === "adjusted", `40%-length run → adjusted (got ${r.outcome})`);
+    check(creditedSeconds(r.plan.workouts[runW.id]) === shorter, "credited the shorter actual duration");
+  }
+
+  // 3) different sport than planned → swapped, credit moves to what you did
+  {
+    const bikeDay = Object.values(plan.workouts).find((w) => w.discipline === "bike" && w.status === "planned")!;
+    const daySwims = Object.values(plan.workouts).filter((w) => w.date === bikeDay.date && w.discipline === "swim");
+    if (daySwims.length === 0) {
+      const r = logWorkout(plan, { dateISO: bikeDay.date, discipline: "swim", durationSec: 1800, distanceM: 1500 });
+      check(r.outcome === "swapped", `swim on a non-swim day → swapped (got ${r.outcome})`);
+      check(!!r.matchedId && creditedDiscipline(r.plan.workouts[r.matchedId]) === "swim", "credit moved to swim");
+    } else {
+      check(true, "swap case skipped (day already had a swim planned)");
+    }
+  }
+
+  // 4) nothing planned that day → a bonus session is added and marked done.
+  //    Use a light 3/wk plan so week 0 is guaranteed to have empty days.
+  {
+    const lightPlan = generatePlan(mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), workoutsPerWeek: 3 }));
+    const wk0 = lightPlan.weeks[0];
+    let emptyDate: string | null = null;
+    for (let day = 0; day < 7; day++) {
+      const iso = addDays(wk0.startDate, day);
+      if (!Object.values(lightPlan.workouts).some((w) => w.date === iso)) { emptyDate = iso; break; }
+    }
+    check(!!emptyDate, "found an empty day in a light week");
+    const before = Object.keys(lightPlan.workouts).length;
+    const r = logWorkout(lightPlan, { dateISO: emptyDate!, discipline: "run", durationSec: 1800, rpe: 4 });
+    check(r.outcome === "bonus", `empty day → bonus (got ${r.outcome})`);
+    check(Object.keys(r.plan.workouts).length === before + 1, "bonus session added to the plan");
+    const added = Object.values(r.plan.workouts).find((w) => w.date === emptyDate && w.discipline === "run");
+    check(added?.status === "done", "bonus session is marked done");
+    // it must be reachable from its week too (reindexed), so it shows on the calendar
+    const inWeek = r.plan.weeks.some((w) => w.workoutIds.some((id) => id === added?.id));
+    check(inWeek, "bonus session is attached to its week");
+  }
 }
 
 console.log(`\n\n${problems === 0 ? "✅ NO PROBLEMS" : "❌ " + problems + " PROBLEMS"}`);
