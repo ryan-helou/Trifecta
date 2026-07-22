@@ -10,7 +10,7 @@ import { Wordmark } from "./Wordmark";
  * swim ripples → T1 → rolling bike → T2 → the climb to a checkered finish — the
  * whole of race day drawn as one gesture, in the three discipline colours.
  */
-export function WelcomeScreen({ onStart }: { onStart: () => void }) {
+export function WelcomeScreen({ onCreatePlan, onSignIn }: { onCreatePlan: () => void; onSignIn: () => void }) {
   return (
     <div className="relative flex min-h-[100dvh] w-full flex-col overflow-hidden">
       <div
@@ -58,12 +58,12 @@ export function WelcomeScreen({ onStart }: { onStart: () => void }) {
 
         {/* CTA */}
         <div className="animate-fade-up" style={{ animationDelay: "640ms" }}>
-          <button onClick={onStart} className="btn btn-primary w-full py-3.5 min-[700px]:py-4 text-base">
+          <button onClick={onCreatePlan} className="btn btn-primary w-full py-3.5 min-[700px]:py-4 text-base">
             Create your plan
             <span aria-hidden className="text-lg leading-none">→</span>
           </button>
           <button
-            onClick={onStart}
+            onClick={onSignIn}
             className="mt-3 w-full py-1 text-center text-sm text-muted transition hover:text-foreground"
           >
             Already have an account? <span className="font-semibold text-foreground">Sign in</span>

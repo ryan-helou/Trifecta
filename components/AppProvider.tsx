@@ -21,6 +21,9 @@ interface Ctx {
   offline: boolean;
   signup(u: string, p: string): Promise<string | null>;
   login(u: string, p: string): Promise<string | null>;
+  /** create the account AND commit the just-built plan atomically — so the
+   *  account is the LAST thing an anon athlete does in onboarding */
+  signupAndStart(u: string, p: string, profile: Profile, plan: Plan): Promise<string | null>;
   logout(): Promise<void>;
   startPlan(profile: Profile, plan: Plan): void;
   applyPlan(plan: Plan): void;
@@ -129,6 +132,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, []);
 
+  // create the account and commit the built plan together. Patches the real
+  // username into the profile (and the plan's embedded copy) and persists with
+  // that username explicitly — avoids the stale-closure trap where calling
+  // startPlan() right after signup would still see username === null.
+  const signupAndStart = useCallback(
+    async (u: string, p: string, prof: Profile, pl: Plan): Promise<string | null> => {
+      const { ok, data } = await apiSignup(u, p);
+      if (!ok) return data.error || "Could not create your account.";
+      const uname = data.user.username;
+      const profNamed: Profile = { ...prof, username: uname };
+      const planNamed: Plan = { ...pl, profile: profNamed };
+      setUsername(uname);
+      setProfile(profNamed);
+      setPlan(planNamed);
+      setOffline(false);
+      writeCache(uname, profNamed, planNamed);
+      apiSaveState(profNamed, planNamed).catch(() => setOffline(true));
+      return null;
+    },
+    [],
+  );
+
   const logout = useCallback(async () => {
     await apiLogout().catch(() => {});
     try {
@@ -196,7 +221,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider
-      value={{ screen, username, profile, plan, offline, signup, login, logout, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
+      value={{ screen, username, profile, plan, offline, signup, login, signupAndStart, logout, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
     >
       {children}
     </AppCtx.Provider>

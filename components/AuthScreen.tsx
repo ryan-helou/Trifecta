@@ -5,9 +5,13 @@ import { useApp } from "./AppProvider";
 import { Reactor } from "./Reactor";
 import { Wordmark } from "./Wordmark";
 
-export function AuthScreen() {
-  const { signup, login } = useApp();
-  const [mode, setMode] = useState<"signup" | "login">("signup");
+/**
+ * Login screen for RETURNING athletes. New athletes build their plan first and
+ * create their account at the end of onboarding, so this screen is login-only,
+ * reached via "Sign in" — with a way back to the welcome screen.
+ */
+export function AuthScreen({ onBack }: { onBack?: () => void }) {
+  const { login } = useApp();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -15,9 +19,10 @@ export function AuthScreen() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError(null);
-    const err = mode === "signup" ? await signup(username, password) : await login(username, password);
+    const err = await login(username.trim(), password);
     setBusy(false);
     if (err) setError(err);
   }
@@ -28,65 +33,45 @@ export function AuthScreen() {
         className="safe-t relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-md flex-col px-7"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}
       >
-        {/* brand lockup */}
-        <div className="animate-fade-up flex items-center gap-2.5 pt-7" style={{ animationDelay: "60ms" }}>
-          <Reactor size={30} />
-          <span className="font-display text-lg font-semibold tracking-tight">
-            <Wordmark />
-          </span>
+        {/* brand lockup + back to the welcome screen */}
+        <div className="animate-fade-up flex items-center justify-between pt-7" style={{ animationDelay: "60ms" }}>
+          <div className="flex items-center gap-2.5">
+            <Reactor size={30} />
+            <span className="font-display text-lg font-semibold tracking-tight">
+              <Wordmark />
+            </span>
+          </div>
+          {onBack && (
+            <button onClick={onBack} className="text-sm font-semibold text-muted transition hover:text-foreground">
+              ← Back
+            </button>
+          )}
         </div>
 
-        {/* hero — the thesis */}
+        {/* hero */}
         <div className="shrink-0 pt-14">
-          <div
-            className="animate-fade-up eyebrow flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[0.82rem]"
-            style={{ animationDelay: "240ms" }}
-          >
-            <span><span className="tnum text-foreground">2.4</span> <span className="text-swim">Swim</span></span>
-            <span className="text-line">·</span>
-            <span><span className="tnum text-foreground">112</span> <span className="text-bike">Bike</span></span>
-            <span className="text-line">·</span>
-            <span><span className="tnum text-foreground">26.2</span> <span className="text-run">Run</span></span>
-          </div>
-
           <h1
-            className="animate-rise mt-5 font-display text-[clamp(2.9rem,13vw,4.1rem)] font-semibold leading-[1.0] tracking-[-0.015em]"
+            className="animate-rise font-display text-[clamp(2.9rem,13vw,4.1rem)] font-semibold leading-[1.0] tracking-[-0.015em]"
             style={{ animationDelay: "180ms" }}
           >
-            First light to
+            Welcome
             <br />
-            <span className="italic text-accent">finish line.</span>
+            <span className="italic text-accent">back.</span>
           </h1>
-
           <p
             className="animate-fade-up mt-6 max-w-[22rem] text-[0.98rem] leading-relaxed text-muted"
             style={{ animationDelay: "340ms" }}
           >
-            An Ironman is one enormous day — a dark-water start, a lit-up finish. Train every mile of it with a plan that adapts as you do.
+            Sign in to pick up your plan right where you left off.
           </p>
         </div>
 
         {/* breathing room */}
         <div className="min-h-10 flex-1" aria-hidden />
 
-        {/* auth card — solid, hairline, quiet */}
-        <div className="card-glass animate-rise relative shrink-0 p-4" style={{ animationDelay: "440ms" }}>
-          <div className="flex rounded-full border border-line bg-surface-2 p-1 text-sm font-semibold">
-            <button
-              onClick={() => { setMode("signup"); setError(null); }}
-              className={`flex-1 rounded-full py-2 transition ${mode === "signup" ? "bg-accent text-white" : "text-muted"}`}
-            >
-              Create account
-            </button>
-            <button
-              onClick={() => { setMode("login"); setError(null); }}
-              className={`flex-1 rounded-full py-2 transition ${mode === "login" ? "bg-accent text-white" : "text-muted"}`}
-            >
-              Sign in
-            </button>
-          </div>
-
-          <form onSubmit={submit} className="mt-5 flex flex-col gap-3">
+        {/* login card */}
+        <div className="card-glass animate-rise relative shrink-0 p-5" style={{ animationDelay: "440ms" }}>
+          <form onSubmit={submit} className="flex flex-col gap-3">
             <label className="eyebrow text-[0.78rem]">Username</label>
             <input
               className="input"
@@ -109,14 +94,17 @@ export function AuthScreen() {
             {error && <div className="mt-1 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
 
             <button type="submit" disabled={busy} className="btn btn-primary mt-4 py-3.5 text-base">
-              {busy ? "One sec…" : mode === "signup" ? "Start training" : "Sign in"}
+              {busy ? "One sec…" : "Sign in"}
               {!busy && <span aria-hidden className="text-lg leading-none">→</span>}
             </button>
           </form>
         </div>
 
-        <p className="animate-fade-up shrink-0 py-6 text-center text-xs text-muted" style={{ animationDelay: "540ms" }}>
-          Built for you and your crew. Add it to your home screen to train like it&apos;s a native app.
+        <p className="animate-fade-up shrink-0 py-6 text-center text-sm text-muted" style={{ animationDelay: "540ms" }}>
+          New here?{" "}
+          <button onClick={onBack} className="font-semibold text-foreground underline-offset-2 hover:underline">
+            Build your plan
+          </button>
         </p>
       </div>
     </div>
