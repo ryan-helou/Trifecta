@@ -2,7 +2,7 @@ import { Discipline, Plan, Week, Workout, Zone } from "./types";
 import { addDays, dayIndexOf, fromISO, mondayOf } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
-import { generatePlan } from "./planEngine";
+import { generatePlan, isFitnessGoal } from "./planEngine";
 import { ZONES } from "./zones";
 import { fmtDuration } from "./format";
 
@@ -421,7 +421,17 @@ function raceLabel(plan: Plan): string {
     ? "Olympic-distance triathlon"
     : p.raceType === "half"
     ? "Ironman 70.3"
+    : p.raceType === "fitness"
+    ? "general fitness"
     : "full Ironman";
+}
+
+/** The goal line for AI context — a race + date, or "just getting fitter". */
+function goalLine(plan: Plan): string {
+  const p = plan.profile;
+  return isFitnessGoal(p)
+    ? `Goal: general fitness — no target race. Level: ${p.level}.`
+    : `Race: ${raceLabel(plan)} on ${plan.raceDateISO}. Level: ${p.level}.`;
 }
 
 export function summarizeForCoach(plan: Plan, todayISO: string): string {
@@ -432,7 +442,7 @@ export function summarizeForCoach(plan: Plan, todayISO: string): string {
   });
   const today = Object.values(plan.workouts).filter((w) => w.date === todayISO);
   const lines: string[] = [];
-  lines.push(`Race: ${raceLabel(plan)} on ${plan.raceDateISO}. Level: ${p.level}.`);
+  lines.push(goalLine(plan));
   if (wk) lines.push(`Current week: ${wk.label} (${wk.phase} phase), target ${wk.targetHours}h. Focus: ${wk.focus}`);
   if (p.injuries?.length) {
     lines.push(
@@ -460,10 +470,10 @@ export function summarizeForCoach(plan: Plan, todayISO: string): string {
 export function planSummaryContext(plan: Plan): string {
   const p = plan.profile;
   const lines: string[] = [];
-  lines.push(`Race: ${raceLabel(plan)} on ${plan.raceDateISO}. Level: ${p.level}.`);
+  lines.push(goalLine(plan));
   lines.push(
     `Plan length: ${plan.totalWeeks} weeks${
-      plan.compressed ? " (compressed — race is soon)" : plan.delayedStart ? " (starts later — race is far out)" : ""
+      isFitnessGoal(p) ? " (rolling fitness block)" : plan.compressed ? " (compressed — race is soon)" : plan.delayedStart ? " (starts later — race is far out)" : ""
     }.`,
   );
   const byPhase: Record<string, number> = {};

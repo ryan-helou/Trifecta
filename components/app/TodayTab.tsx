@@ -9,7 +9,8 @@ import { WorkoutCard } from "./WorkoutCard";
 import { ReadinessSheet } from "./ReadinessSheet";
 import { ProgressRing } from "./motion";
 import { Icon } from "./icons";
-import { PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
+import { FitnessHero, PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
+import { isFitnessGoal } from "@/lib/planEngine";
 import { weekProgress } from "@/lib/adapt";
 import { readinessBand } from "@/lib/readiness";
 import { calibrationDue } from "@/lib/calibrate";
@@ -79,7 +80,7 @@ export function TodayTab() {
       )}
 
       <div className="animate-fade-up" style={{ animationDelay: "60ms" }}>
-        <RaceCountdown plan={plan} today={today} />
+        {isFitnessGoal(plan.profile) ? <FitnessHero plan={plan} today={today} /> : <RaceCountdown plan={plan} today={today} />}
       </div>
 
       {plan.notice && <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm text-muted">{plan.notice}</div>}
