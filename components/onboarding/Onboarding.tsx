@@ -799,7 +799,7 @@ function ScheduleStep({ draft, set }: StepProps) {
             <button
               key={w}
               onClick={() => set((d) => ({ ...d, restDayPreference: d.restDayPreference === i ? undefined : i }))}
-              className={`chip ${draft.restDayPreference === i ? "border-accent bg-accent/10 text-foreground" : ""}`}
+              className={`chip ${draft.restDayPreference === i ? "is-selected" : ""}`}
             >
               {w}
             </button>
@@ -938,7 +938,7 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
             <button
               key={o.label}
               onClick={() => { const v = String(+(o.distanceM / factor).toFixed(2)); setRunDist(v); commitRun(v, runTime); }}
-              className={`chip ${runMatchesM === o.distanceM ? "border-accent bg-accent/10" : ""}`}
+              className={`chip ${runMatchesM === o.distanceM ? "is-selected" : ""}`}
             >
               {o.label}
             </button>
@@ -971,7 +971,7 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
             <button
               key={o.label}
               onClick={() => { const m = String(o.distanceM); setSwimDistM(m); commitSwim(m, swimTime); }}
-              className={`chip ${swimMatchesM === o.distanceM ? "border-accent bg-accent/10" : ""}`}
+              className={`chip ${swimMatchesM === o.distanceM ? "is-selected" : ""}`}
             >
               {o.label}
             </button>
@@ -1004,7 +1004,7 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
             <button
               key={o.label}
               onClick={() => { const v = String(+(o.distanceM / factor).toFixed(2)); setBikeDist(v); commitBike(v, bikeTime); }}
-              className={`chip ${bikeMatchesM === o.distanceM ? "border-accent bg-accent/10" : ""}`}
+              className={`chip ${bikeMatchesM === o.distanceM ? "is-selected" : ""}`}
             >
               {o.label}
             </button>

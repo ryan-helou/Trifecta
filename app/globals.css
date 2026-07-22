@@ -197,6 +197,14 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
   border-radius: 999px; font-size: .72rem; font-weight: 600; letter-spacing: .02em;
   border: 1px solid var(--line); background: var(--surface-2); color: var(--text-muted);
 }
+/* selected chip — solid ink, white text. `.chip` is unlayered so Tailwind's
+   layered bg/border/text utilities lose to it; this modifier (also unlayered,
+   higher specificity) reliably wins so the picked state is actually visible. */
+.chip.is-selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
