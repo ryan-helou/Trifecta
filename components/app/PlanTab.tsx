@@ -89,12 +89,22 @@ export function PlanTab() {
             ›
           </button>
         </div>
-        <span
-          className="rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold tabular-nums text-accent"
-          style={{ borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)" }}
-        >
-          {prog.done}/{prog.total}
-        </span>
+        <div className="flex items-center gap-2">
+          {sel !== cur && (
+            <button
+              onClick={() => { haptic("select"); setSel(cur); }}
+              className="chip whitespace-nowrap border-accent/40 text-foreground"
+            >
+              This week
+            </button>
+          )}
+          <span
+            className="rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold tabular-nums text-accent"
+            style={{ borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)" }}
+          >
+            {prog.done}/{prog.total}
+          </span>
+        </div>
       </div>
 
       <div className="mt-3.5">

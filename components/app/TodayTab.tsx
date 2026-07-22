@@ -8,6 +8,7 @@ import { ProgressRing } from "./motion";
 import { Icon } from "./icons";
 import { PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
+import { computeStreak } from "@/lib/stats";
 import { fmtFullDate as fullDate, addDays, dayIndexOf, fmtDayMonth, weekdayLong } from "@/lib/dates";
 
 export function TodayTab() {
@@ -21,6 +22,7 @@ export function TodayTab() {
   const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const streak = computeStreak(plan, today);
 
   // the next scheduled session after today — so the home screen always answers
   // "what's coming?", not just "what's today" (especially on rest days)
@@ -37,6 +39,12 @@ export function TodayTab() {
         <div>
           <div className="eyebrow text-[0.72rem]">{greeting}</div>
           <div className="font-display text-2xl font-semibold capitalize tracking-tight">{username}</div>
+          {streak.current >= 2 && (
+            <div className="mt-1 flex items-center gap-1.5 text-[0.82rem] font-medium text-muted">
+              <Icon name="flame" size={14} className="text-accent" />
+              <span className="font-semibold tabular-nums text-foreground">{streak.current}-day</span> streak
+            </div>
+          )}
         </div>
         <button onClick={() => openCoach()} className="card-glass flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold">
           <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
