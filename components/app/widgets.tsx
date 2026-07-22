@@ -95,6 +95,58 @@ export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
   );
 }
 
+/** The Today hero for fitness mode (no race): there's no countdown, so it anchors
+ *  on where you are in the rolling block — the week number, current phase, this
+ *  week's target hours, and the sessions-per-sport mix. */
+export function FitnessHero({ plan, today }: { plan: Plan; today: string }) {
+  const wk = weekOfDate(plan, today);
+  const counts: Record<"swim" | "bike" | "run", number> = { swim: 0, bike: 0, run: 0 };
+  for (const id of wk.workoutIds) {
+    const w = plan.workouts[id];
+    if (!w) continue;
+    const d = w.discipline === "brick" ? "bike" : w.discipline; // credit the brick's ride to bike
+    if (d === "swim" || d === "bike" || d === "run") counts[d]++;
+  }
+  const legs = [
+    { label: "Swim", v: `${counts.swim}×`, c: "var(--swim)", align: "text-left" },
+    { label: "Bike", v: `${counts.bike}×`, c: "var(--bike)", align: "text-center" },
+    { label: "Run", v: `${counts.run}×`, c: "var(--run)", align: "text-right" },
+  ];
+  return (
+    <div className="card-glass relative overflow-hidden p-5">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="eyebrow text-[0.72rem]">Fitness mode · Building</div>
+        <div className="eyebrow text-[0.72rem] text-muted">{PHASE_LABEL[wk.phase]} block</div>
+      </div>
+      <div className="mt-1 truncate font-display text-[0.98rem] font-semibold leading-tight">All-round triathlon fitness</div>
+
+      <div className="mt-4 flex items-end justify-between gap-4">
+        <div className="flex items-baseline gap-3">
+          <CountUp value={wk.index + 1} className="font-display text-[3.6rem] font-semibold leading-[0.85] tabular-nums text-accent" />
+          <span className="text-sm leading-[1.1] text-muted">
+            week of
+            <br />
+            training
+          </span>
+        </div>
+        <div className="text-right">
+          <div className="eyebrow text-[0.66rem]">This week</div>
+          <div className="mt-0.5 font-display text-[1.4rem] font-semibold tabular-nums">{wk.targetHours}h</div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex border-t border-line-soft pt-3.5">
+        {legs.map((l) => (
+          <div key={l.label} className={`flex-1 ${l.align}`}>
+            <span className="eyebrow text-[0.72rem]" style={{ color: l.c }}>{l.label}</span>{" "}
+            <span className="tabular-nums text-sm text-foreground/80">{l.v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The signature: a chronograph minute-scale. The track runs from block start
  *  (left) to race day (right); the elapsed portion fills in champagne and a
  *  slim marker sits at today, sweeping into place on mount. */

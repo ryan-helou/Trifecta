@@ -125,7 +125,11 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   const finalProfile: Profile | null = useMemo(() => {
     // the account is created last, so a profile can be assembled before we have a
     // username — it's filled in at signup (see signupAndStart)
-    if (!draft.raceType || !draft.raceDateISO || !draft.level) return null;
+    const fitness = draft.raceType === "fitness";
+    if (!draft.raceType || !draft.level) return null;
+    if (!fitness && !draft.raceDateISO) return null; // a race needs a date; fitness doesn't
+    // real-event identity only applies to a bare race distance, never custom/fitness
+    const isRealRace = draft.raceType !== "custom" && !fitness;
     const ps = resolvePerSport(draft);
     const strengthDays = draft.strength.enabled ? draft.strength.daysPerWeek : 0;
     const wpw = Math.max(1, Math.min(21, ps.swim + ps.bike + ps.run + strengthDays));
@@ -133,10 +137,10 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
       username: username ?? "",
       raceType: draft.raceType,
       custom: draft.raceType === "custom" ? draft.custom : undefined,
-      raceName: draft.raceType === "custom" ? undefined : draft.raceName,
-      raceLocation: draft.raceType === "custom" ? undefined : draft.raceLocation,
-      raceId: draft.raceType === "custom" ? undefined : draft.raceId,
-      raceDateISO: draft.raceDateISO,
+      raceName: isRealRace ? draft.raceName : undefined,
+      raceLocation: isRealRace ? draft.raceLocation : undefined,
+      raceId: isRealRace ? draft.raceId : undefined,
+      raceDateISO: fitness ? "" : draft.raceDateISO ?? "",
       level: draft.level,
       workoutsPerWeek: wpw,
       perSport: { ...ps },
@@ -159,11 +163,13 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   }, [username, draft]);
 
   // Steps that don't apply are skipped: the custom-distance step (unless it's a
-  // custom race), and the race-day step when a real event was picked — the event
-  // already carries its date, so there's nothing to ask.
+  // custom race), and the race-day step when a real event was picked (it already
+  // carries its date) or when training for fitness (there's no race to date).
   const hasEventDate = !!(draft.raceId && draft.raceDateISO);
+  const isFitness = draft.raceType === "fitness";
+  const skipDate = hasEventDate || isFitness;
   const stepActive = (s: (typeof STEPS)[number]) =>
-    (s !== "custom" || isCustom) && (s !== "date" || !hasEventDate);
+    (s !== "custom" || isCustom) && (s !== "date" || !skipDate);
 
   function skip(dir: 1 | -1, from: number): number {
     let n = from + dir;
@@ -459,17 +465,25 @@ type StepProps = { draft: Draft; set: React.Dispatch<React.SetStateAction<Draft>
 
 function RaceStep({ draft, set }: StepProps) {
   const [mode, setMode] = useState<"distance" | "event">(draft.raceId ? "event" : "distance");
-  const races: { key: RaceType; name: string; legs?: [string, string, string] }[] = [
+  const races: { key: RaceType; name: string; legs?: [string, string, string]; sub?: string }[] = [
     { key: "olympic", name: "Olympic", legs: ["1.5 km swim", "40 km bike", "10 km run"] },
     { key: "half", name: "Ironman 70.3", legs: ["1.9 km swim", "90 km bike", "21.1 km run"] },
     { key: "full", name: "Full Ironman", legs: ["3.8 km swim", "180 km bike", "42.2 km run"] },
-    { key: "custom", name: "Custom distance" },
+    { key: "custom", name: "Custom distance", sub: "Set your own swim / bike / run" },
+    { key: "fitness", name: "Just get fitter", sub: "No race — build all-round triathlon fitness" },
   ];
   const legColor = ["--swim", "--bike", "--run"] as const;
 
-  // pick a bare distance → drop any real-event identity
+  // pick a bare distance → drop any real-event identity (and any date, for fitness)
   const pickDistance = (key: RaceType) =>
-    set((d) => ({ ...d, raceType: key, raceId: undefined, raceName: undefined, raceLocation: undefined }));
+    set((d) => ({
+      ...d,
+      raceType: key,
+      raceId: undefined,
+      raceName: undefined,
+      raceLocation: undefined,
+      raceDateISO: key === "fitness" ? undefined : d.raceDateISO,
+    }));
 
   // pick a real event → set its category + pre-fill the date
   const pickEvent = (r: CatalogRace) =>
@@ -484,7 +498,7 @@ function RaceStep({ draft, set }: StepProps) {
 
   return (
     <div>
-      <Head title="What are you training for?" sub="Pick your race — this shapes the whole plan." />
+      <Head title="What are you training for?" sub="Pick your race — or just train for general fitness. This shapes the whole plan." />
       <div className="mb-4 grid grid-cols-2 gap-2">
         {(["distance", "event"] as const).map((m) => (
           <button
@@ -514,7 +528,7 @@ function RaceStep({ draft, set }: StepProps) {
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-muted">Set your own swim / bike / run</div>
+                <div className="text-sm text-muted">{r.sub}</div>
               )}
             </Card>
           ))}
@@ -1144,19 +1158,21 @@ function InjuriesStep({ draft, set }: StepProps) {
 
 function ReviewStep({ draft, total, profile }: { draft: Draft; total: number; profile: Profile | null }) {
   const proj = profile ? projectRace(profile) : null;
-  const race =
-    draft.raceName ??
-    (draft.raceType === "custom"
-      ? draft.custom.name
-      : draft.raceType === "olympic"
-      ? "Olympic"
-      : draft.raceType === "half"
-      ? "Ironman 70.3"
-      : "Full Ironman");
+  const fitness = draft.raceType === "fitness";
+  const race = fitness
+    ? "General fitness"
+    : draft.raceName ??
+      (draft.raceType === "custom"
+        ? draft.custom.name
+        : draft.raceType === "olympic"
+        ? "Olympic"
+        : draft.raceType === "half"
+        ? "Ironman 70.3"
+        : "Full Ironman");
   const ps = resolvePerSport(draft);
   const rows: [string, string][] = [
-    ["Race", race],
-    ["Date", draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
+    [fitness ? "Goal" : "Race", race],
+    ["Date", fitness ? "No race — training for fitness" : draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
     ["Level", draft.level ?? "—"],
     [
       "Weekly sessions",

@@ -1,4 +1,4 @@
-import { generatePlan } from "../lib/planEngine";
+import { generatePlan, isFitnessGoal } from "../lib/planEngine";
 import { Profile } from "../lib/types";
 import { fmtDuration } from "../lib/format";
 import { addDays } from "../lib/dates";
@@ -57,6 +57,11 @@ const scenarios: { name: string; p: Profile }[] = [
   // ---- equipment scenarios ----
   { name: "No pool (dryland swim)", p: mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), perSport: { swim: 3, bike: 2, run: 2 }, equipment: { pool: false, trainer: true, gym: true } }) },
   { name: "No gym (home strength, PPL)", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, strength: { enabled: true, daysPerWeek: 3, split: "push-pull-legs" }, equipment: { pool: true, trainer: true, gym: false } }) },
+  // ---- fitness mode (no race) — routes through the rolling-block generator ----
+  { name: "Fitness explicit 6/wk", p: mk({ raceType: "fitness", raceDateISO: "", workoutsPerWeek: 6 }) },
+  { name: "Fitness beginner 4/wk", p: mk({ raceType: "fitness", raceDateISO: "", level: "beginner", workoutsPerWeek: 4 }) },
+  { name: "Fitness + injury (severe run)", p: mk({ raceType: "fitness", raceDateISO: "", perSport: { swim: 2, bike: 3, run: 3 }, injuries: [{ id: "if1", area: "achilles", disciplines: ["run"], severity: "severe" }] }) },
+  { name: "Distance picked, no date → fitness", p: mk({ raceType: "half", raceDateISO: "", perSport: { swim: 2, bike: 3, run: 3 } }) },
 ];
 
 let problems = 0;
@@ -164,6 +169,31 @@ console.log("\n=== projection ===");
   const near = projectRace({ ...p, raceDateISO: raceInWeeks(3) });
   check(near.gainFrac < proj.gainFrac, "fewer weeks to race → smaller modelled gain");
   console.log(`     current=${fmtDuration(proj.currentSec)} projected=${fmtDuration(proj.projectedSec)} gain=${fmtDuration(proj.gainSec)}`);
+}
+
+// ---- fitness mode: no race → a rolling base→build block, no peak/taper/race week ----
+console.log("\n=== fitness mode (no race) ===");
+{
+  const p = mk({ raceType: "fitness", raceDateISO: "", perSport: { swim: 2, bike: 3, run: 3 } });
+  check(isFitnessGoal(p), "raceType 'fitness' is a fitness goal");
+  const plan = generatePlan(p);
+  check(plan.raceDateISO === "", "fitness plan carries no race date");
+  check(plan.totalWeeks === 12, `fitness block is 12 weeks (got ${plan.totalWeeks})`);
+  const phases = new Set(plan.weeks.map((w) => w.phase));
+  check(!phases.has("peak") && !phases.has("taper"), "no peak/taper phases in a fitness block");
+  check(plan.weeks.every((w) => !w.isRaceWeek), "no race week in a fitness block");
+  check(phases.has("base") && phases.has("build"), "fitness block has both base and build phases");
+  check(!Object.values(plan.workouts).some((w) => w.type === "race_prep"), "no race_prep sessions in a fitness block");
+  check(plan.weeks.every((w) => w.workoutIds.length > 0), "every fitness week has sessions");
+  const proj = projectRace(p);
+  check(proj.projectedSec === 0 && proj.gainSec === 0, "projectRace returns zeros for a fitness goal");
+  // a distance picked but no date also routes to fitness
+  const p2 = mk({ raceType: "half", raceDateISO: "" });
+  check(isFitnessGoal(p2), "distance picked but no date → fitness goal");
+  check(generatePlan(p2).raceDateISO === "" && generatePlan(p2).totalWeeks === 12, "no-date half becomes a rolling fitness block");
+  // social card degrades gracefully (no daysOut, Fitness category)
+  const card = publicCard("fit", { profile: plan.profile, plan }, addDays(plan.startDateISO, 3));
+  check(card.race?.daysOut == null && card.race?.category === "Fitness", "fitness social card has no race countdown");
 }
 
 // ---- calibration: consistently-too-hard eases the run targets ----

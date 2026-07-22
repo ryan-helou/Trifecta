@@ -6,7 +6,7 @@ import { useUI } from "./ui";
 import { useToast } from "./Toast";
 import { fmtPace, fmtPace100, fmtDistance, fmtClock, fmtDuration } from "@/lib/format";
 import { fmtFullDate, daysBetween } from "@/lib/dates";
-import { raceDistances, raceCategoryName } from "@/lib/planEngine";
+import { raceDistances, raceCategoryName, isFitnessGoal } from "@/lib/planEngine";
 import { projectRace } from "@/lib/predict";
 import { InstallHint } from "./InstallHint";
 import { EditSettings } from "./EditSettings";
@@ -28,10 +28,11 @@ export function ProfileTab() {
     else toast({ text: "Not enough recent sessions yet — keep logging and check back.", tone: "default" });
   };
 
+  const fitness = isFitnessGoal(profile);
   const dist = raceDistances(profile);
   const paces = plan.paces;
   const unit = profile.unitPreference ?? "metric";
-  const daysOut = Math.max(0, daysBetween(today, profile.raceDateISO));
+  const daysOut = fitness ? null : Math.max(0, daysBetween(today, profile.raceDateISO));
   const proj = projectRace(profile, today);
   const calibrated = !!profile.calibration;
   const legs = [
@@ -55,29 +56,41 @@ export function ProfileTab() {
         </div>
       </div>
 
-      {/* race card — the target, discipline-coded (echoes Today's hero) */}
+      {/* goal card — the race target, or the fitness block (discipline-coded) */}
       <div className="card-glass relative overflow-hidden p-5">
-        <div className="flex items-start justify-between">
+        {fitness ? (
           <div>
-            <div className="eyebrow text-[0.72rem]">{profile.raceName ? `Your race · ${raceCategoryName(profile)}` : "Your race"}</div>
-            <div className="mt-1.5 font-display text-[1.4rem] font-semibold leading-tight">{profile.raceName ?? dist.name}</div>
+            <div className="eyebrow text-[0.72rem]">Your goal</div>
+            <div className="mt-1.5 font-display text-[1.4rem] font-semibold leading-tight">General fitness</div>
             <div className="mt-0.5 text-sm text-muted">
-              {profile.raceLocation ? `${profile.raceLocation} · ` : ""}{fmtFullDate(profile.raceDateISO)}
+              A rolling base → build block — no race on the calendar. Add one any time to periodise toward it.
             </div>
           </div>
-          <div className="text-right">
-            <div className="font-display text-[2.1rem] font-semibold leading-none tabular-nums text-accent">{daysOut}</div>
-            <div className="eyebrow text-[0.64rem]">days out</div>
-          </div>
-        </div>
-        <div className="mt-5 flex border-t border-line-soft pt-3.5">
-          {legs.map((l, i) => (
-            <div key={l.label} className={`flex-1 ${i === 1 ? "text-center" : i === 2 ? "text-right" : ""}`}>
-              <span className="eyebrow text-[0.72rem]" style={{ color: l.c }}>{l.label}</span>{" "}
-              <span className="tabular-nums text-sm text-foreground/80">{l.v}</span>
+        ) : (
+          <>
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="eyebrow text-[0.72rem]">{profile.raceName ? `Your race · ${raceCategoryName(profile)}` : "Your race"}</div>
+                <div className="mt-1.5 font-display text-[1.4rem] font-semibold leading-tight">{profile.raceName ?? dist.name}</div>
+                <div className="mt-0.5 text-sm text-muted">
+                  {profile.raceLocation ? `${profile.raceLocation} · ` : ""}{fmtFullDate(profile.raceDateISO)}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="font-display text-[2.1rem] font-semibold leading-none tabular-nums text-accent">{daysOut}</div>
+                <div className="eyebrow text-[0.64rem]">days out</div>
+              </div>
             </div>
-          ))}
-        </div>
+            <div className="mt-5 flex border-t border-line-soft pt-3.5">
+              {legs.map((l, i) => (
+                <div key={l.label} className={`flex-1 ${i === 1 ? "text-center" : i === 2 ? "text-right" : ""}`}>
+                  <span className="eyebrow text-[0.72rem]" style={{ color: l.c }}>{l.label}</span>{" "}
+                  <span className="tabular-nums text-sm text-foreground/80">{l.v}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {proj.projectedSec > 0 && (

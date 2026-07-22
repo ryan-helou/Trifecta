@@ -2,7 +2,9 @@
 // AmaTri domain model
 // ---------------------------------------------------------------------------
 
-export type RaceType = "olympic" | "half" | "full" | "custom";
+// "fitness" = no target race; the athlete just wants to get fitter. The engine
+// builds a rolling base→build block instead of periodising toward a date.
+export type RaceType = "olympic" | "half" | "full" | "custom" | "fitness";
 
 export type Level = "beginner" | "intermediate" | "advanced" | "elite";
 
@@ -218,7 +220,7 @@ export interface Profile {
   raceName?: string; // e.g. "IRONMAN 70.3 Mont-Tremblant"
   raceLocation?: string; // e.g. "Mont-Tremblant, QC, Canada"
   raceId?: string; // catalog id, so the picker can re-highlight the selection
-  raceDateISO: string; // yyyy-mm-dd
+  raceDateISO: string; // yyyy-mm-dd — "" in fitness mode (no target race)
   level: Level;
   // total workouts per week the athlete wants (1–21; the high end stacks doubles)
   workoutsPerWeek: number;
