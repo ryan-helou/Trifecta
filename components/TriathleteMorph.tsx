@@ -218,7 +218,7 @@ const L = {
   headGap: 12, // neck → head centre
   upperArm: 20,
   foreArm: 18,
-  hand: 8,
+  hand: 6,
   thigh: 27,
   shank: 25,
   foot: 13,
@@ -260,40 +260,54 @@ function ik(root: Vec, target: Vec, l1: number, l2: number, bend: number): Vec {
 // early-swing(.5) → mid-swing(.66) → late-swing/reach(.83). Knee flexes only
 // posteriorly (heel toward glute) so it never looks broken.
 
+// The run is authored as an FK cycle (real key poses) and then auto-grounded:
+// after posing both legs, the whole figure is dropped so the lowest foot rests
+// on the ground. That gives true running shapes — high knee drive, a reaching
+// front leg, an extended toe-off — while the support foot stays planted and the
+// vertical bob falls out for free. cc=0 is foot contact.
 const RUN = {
-  pelvisBob: [
-    [0.0, 0.5],
-    [0.25, 2.0], // slight dip at mid-stance (loading)
-    [0.5, -2.5], // rise through toe-off / float
-    [0.75, 2.0],
+  spine: -83, // slight athletic forward lean
+  neck: -85,
+  head: -87,
+  footFlex: -72, // toe direction relative to the shin
+  // thigh: absolute angle (90 = straight down, <90 forward, >90 back)
+  thigh: [
+    [0.0, 60], // contact — thigh forward, foot lands ahead
+    [0.15, 84], // recoil — thigh swings under the hip
+    [0.3, 103], // mid-stance → drive back
+    [0.45, 117], // toe-off — thigh extended behind
+    [0.55, 96], // lift off
+    [0.72, 66], // knee driving up and forward
+    [0.86, 55], // reach — thigh high in front
   ] as Track,
-  spine: -85, // pelvis→chest — nearly upright, only a slight athletic forward lean
-  neck: -87,
-  head: -89,
-  // legs are driven by IK ankle targets in buildRun (a real gait trajectory) —
-  // these knobs shape the stride:
-  strideX: 19, // forward/back foot reach
-  lift: 26, // swing-phase foot lift
-  groundRel: 51, // pelvis → ground in rig units (pelvis world y + this = 150)
-  // arms — bent ~80°, drive opposite the same-side leg. Six keys give the drive
-  // a crisp forward snap and a relaxed back-swing rather than a lazy sine.
+  // knee: posterior flex magnitude (0 = straight); only ever bends one way
+  knee: [
+    [0.0, 24], // contact — slight bend, shin ~vertical
+    [0.15, 46], // recoil — compress to absorb
+    [0.3, 34],
+    [0.45, 12], // toe-off — extends to push
+    [0.55, 104], // heel snaps up toward the glute
+    [0.72, 130], // max fold — high, tight knee
+    [0.86, 34], // extends to reach for the next contact
+  ] as Track,
+  // arms — driving opposite the same-side leg. The elbow OPENS when the arm is
+  // back (hand drops toward the hip) and CLOSES when it's forward (hand to the
+  // chest) — a real running arm carriage, not a stiff constant-angle point.
   shoulder: [
-    [0.0, 114], // near arm back at contact (near leg forward)
-    [0.18, 108],
-    [0.4, 74],
-    [0.5, 60], // hand drives up in front at float
-    [0.68, 82],
-    [0.85, 106],
+    [0.0, 116], // near arm back at contact (near leg forward)
+    [0.25, 102],
+    [0.5, 62], // hand drives up in front
+    [0.75, 100],
   ] as Track,
   elbow: [
-    [0.0, 88],
-    [0.18, 84],
-    [0.4, 78],
-    [0.5, 92], // opens slightly at the top of the drive
-    [0.68, 82],
-    [0.85, 84],
+    [0.0, 66], // arm back — open elbow, forearm angles down to the hip
+    [0.25, 90],
+    [0.5, 106], // arm forward — tight elbow, hand to the chest
+    [0.75, 90],
   ] as Track,
 };
+
+const RUN_GROUND_RIG = 50; // rig-space ground line (= 150 − PLACEMENT.run.at.y)
 
 // ---- BIKE ------------------------------------------------------------------
 // Aero tuck. Feet are locked to the pedal crank (IK); the tracks only carry the
@@ -429,42 +443,36 @@ function buildTorso(
 }
 
 function buildRun(c: number): Skeleton {
-  const pelvis = V(0, sampleTrack(RUN.pelvisBob, c));
-  // Gait trajectory. STANCE (cc 0→0.5): foot planted on the ground, travelling
-  // front → back under the body as the runner passes over it. SWING (cc 0.5→1):
-  // foot lifts and is whipped FORWARD with an ease-out so it leads the knee and
-  // is already ahead of the hip at the passing instant — that forward-leading
-  // knee is what makes a passing frame read as a stride instead of a squat.
-  const front = RUN.strideX;
-  const back = -RUN.strideX * 1.05;
-  const leg = (phase: number, bend: number) => {
-    const cc = ((phase % 1) + 1) % 1;
-    let fx: number;
-    let arc: number; // 0 on the ground, 1 at peak swing lift
-    if (cc < 0.5) {
-      fx = lerp(front, back, cc / 0.5); // planted, sliding backward
-      arc = 0;
-    } else {
-      const t = (cc - 0.5) / 0.5;
-      fx = lerp(back, front, ease.outCubic(t)); // whip forward, leading the knee
-      arc = Math.sin(Math.PI * t);
-    }
-    const ankle = V(fx, RUN.groundRel - RUN.lift * arc);
-    const knee = ik(pelvis, ankle, L.thigh, L.shank, bend);
-    const footDeg = arc > 0 ? -18 * arc - 2 : 8; // toe up in swing, planted in stance
+  // 1. pose each leg by forward kinematics from the pelvis origin (0,0)
+  const legRaw = (phase: number) => {
+    const tDeg = sampleTrack(RUN.thigh, phase);
+    const kFlex = sampleTrack(RUN.knee, phase);
+    const knee = polar(V(0, 0), tDeg, L.thigh);
+    const shankDeg = tDeg + kFlex; // knee only flexes posteriorly
+    const ankle = polar(knee, shankDeg, L.shank);
+    const footDeg = shankDeg + RUN.footFlex; // toe forward of the ankle
     const toe = polar(ankle, footDeg, L.foot);
     const heel = polar(ankle, footDeg + 180, L.heel);
     return { knee, ankle, toe, heel };
   };
-  const legN = leg(c, 1);
-  const legF = leg(c + 0.5, 1);
+  const rawN = legRaw(c);
+  const rawF = legRaw(c + 0.5);
+
+  // 2. auto-ground: drop the whole figure so the lowest foot point sits on the
+  //    rig ground line. The support foot plants, the airborne foot stays lifted,
+  //    and the vertical bob emerges from the changing pose — no IK, no float.
+  const lowest = Math.max(rawN.toe.y, rawN.heel.y, rawF.toe.y, rawF.heel.y);
+  const dy = RUN_GROUND_RIG - lowest;
+  const off = (p: Vec): Vec => ({ x: p.x, y: p.y + dy });
+  const pelvis = V(0, dy);
+
   const torso = buildTorso(pelvis, RUN.spine, RUN.neck, RUN.head, RUN.shoulder, RUN.elbow, c + 0.5, c, -1, -1);
   return {
     pelvis,
     hipN: pelvis,
     hipF: pelvis,
-    kneeN: legN.knee, ankleN: legN.ankle, toeN: legN.toe, heelN: legN.heel,
-    kneeF: legF.knee, ankleF: legF.ankle, toeF: legF.toe, heelF: legF.heel,
+    kneeN: off(rawN.knee), ankleN: off(rawN.ankle), toeN: off(rawN.toe), heelN: off(rawN.heel),
+    kneeF: off(rawF.knee), ankleF: off(rawF.ankle), toeF: off(rawF.toe), heelF: off(rawF.heel),
     ...torso,
   };
 }
@@ -548,7 +556,7 @@ const BUILDERS: Record<Discipline, (c: number) => Skeleton> = {
 const PLACEMENT: Record<Discipline, { at: Vec; lean: number; scale: number }> = {
   swim: { at: V(150, 108), lean: 0, scale: 1 },
   bike: { at: V(140, 92), lean: 0, scale: 1 },
-  run: { at: V(140, 99), lean: 0, scale: 1 }, // pelvis height so the stance leg extends (pelvis + groundRel = 150)
+  run: { at: V(140, 100), lean: 0, scale: 1 }, // at.y + RUN_GROUND_RIG(50) = 150 (the ground)
 };
 
 /** Rotate a rig-space point about the pelvis by `lean`, scale, then translate to
@@ -665,7 +673,7 @@ const P = (p: Vec) => `${round2(p.x)},${round2(p.y)}`;
 // half-widths (radii) at each joint — the taper is the drop from one to the next
 const RAD = {
   hip: 9.5, knee: 6.4, ankle: 4.4, toe: 2.6, heel: 3.2,
-  shoulder: 6.6, elbow: 4.9, wrist: 3.4, hand: 2.7,
+  shoulder: 6.6, elbow: 4.9, wrist: 3.6, hand: 3.4,
   pelvis: 11, chest: 12.5, neckLow: 8, neckTop: 5.4,
   headRx: 8.8, headRy: 10.6,
 };
