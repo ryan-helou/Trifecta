@@ -1,7 +1,9 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { Discipline, Feel, Unit } from "@/lib/types";
+import { Discipline, Feel, ReadinessInput, Unit } from "@/lib/types";
+import type { CalibrationResult } from "@/lib/calibrate";
+import type { AdaptationSuggestion } from "@/lib/adapt";
 
 export interface CheckinEntry {
   rpe?: number;
@@ -26,6 +28,12 @@ export interface UIActions {
   logCheckin(id: string, entry: CheckinEntry): void;
   rebuild(): void;
   ease(days: number): void;
+  /** record today's morning readiness (eases the day if low) */
+  logReadiness(dateISO: string, input: ReadinessInput): void;
+  /** re-tune pace targets from recent sessions; returns what moved, or null */
+  recalibrate(): CalibrationResult | null;
+  /** apply an adaptation suggestion (ease the upcoming week) */
+  adapt(suggestion: AdaptationSuggestion): void;
 }
 
 export type TabKey = "today" | "plan" | "progress" | "friends" | "profile";

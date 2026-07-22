@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
-import { fmtPace, fmtPace100, fmtDistance } from "@/lib/format";
+import { useToast } from "./Toast";
+import { fmtPace, fmtPace100, fmtDistance, fmtClock, fmtDuration } from "@/lib/format";
 import { fmtFullDate, daysBetween } from "@/lib/dates";
 import { raceDistances, raceCategoryName } from "@/lib/planEngine";
+import { projectRace } from "@/lib/predict";
 import { InstallHint } from "./InstallHint";
 import { EditSettings } from "./EditSettings";
 import { Connections } from "./Connections";
@@ -14,14 +16,23 @@ import { Wordmark } from "../Wordmark";
 export function ProfileTab() {
   const { plan, username, profile, logout, resetPlan } = useApp();
   const { actions, today } = useUI();
+  const toast = useToast();
   const [confirmReset, setConfirmReset] = useState(false);
   const [editing, setEditing] = useState(false);
   if (!plan || !profile) return null;
+
+  const recalibrate = () => {
+    const res = actions.recalibrate();
+    if (res && res.changed) toast({ text: res.notes[0] ?? "Paces updated from your sessions.", tone: "success" });
+    else toast({ text: "Not enough recent sessions yet — keep logging and check back.", tone: "default" });
+  };
 
   const dist = raceDistances(profile);
   const paces = plan.paces;
   const unit = profile.unitPreference ?? "metric";
   const daysOut = Math.max(0, daysBetween(today, profile.raceDateISO));
+  const proj = projectRace(profile, today);
+  const calibrated = !!profile.calibration;
   const legs = [
     { label: "Swim", v: fmtDistance(dist.swim, unit), c: "var(--swim)" },
     { label: "Bike", v: fmtDistance(dist.bike, unit), c: "var(--bike)" },
@@ -68,6 +79,31 @@ export function ProfileTab() {
         </div>
       </div>
 
+      {proj.projectedSec > 0 && (
+        <Section title="Race projection">
+          <div className="flex items-stretch">
+            <div className="flex-1 px-4 py-3.5">
+              <div className="eyebrow text-[0.66rem]">Projected finish</div>
+              <div className="mt-1 font-display text-[1.6rem] font-semibold leading-none tabular-nums text-accent">
+                {fmtClock(proj.projectedSec)}
+              </div>
+            </div>
+            <div className="flex-1 border-l border-line px-4 py-3.5">
+              <div className="eyebrow text-[0.66rem]">At today&apos;s fitness</div>
+              <div className="mt-1 font-display text-[1.6rem] font-semibold leading-none tabular-nums">
+                {fmtClock(proj.currentSec)}
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
+            {proj.gainSec > 60
+              ? `Your remaining training is worth about ${fmtDuration(proj.gainSec)}. `
+              : "You're close to your projected ceiling for this race. "}
+            {calibrated ? "Recalibrated from your recent sessions." : "Sharpens as we learn from your sessions."}
+          </div>
+        </Section>
+      )}
+
       <Section title="Training paces">
         <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm, unit)} first />
         <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} />
@@ -80,6 +116,7 @@ export function ProfileTab() {
 
       <Section title="Manage your plan">
         <ActionRow first onClick={() => setEditing(true)} label="Edit race & training settings" />
+        <ActionRow onClick={recalibrate} label="Recalibrate paces from my sessions" />
         <ActionRow onClick={() => actions.ease(7)} label="Not feeling 100% — ease this week" />
         <ActionRow onClick={() => actions.rebuild()} label="Rebuild plan around today" />
       </Section>

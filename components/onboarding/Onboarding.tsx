@@ -10,8 +10,9 @@ import { CatalogRace } from "@/lib/raceCatalog";
 import { planSummaryContext } from "@/lib/adapt";
 import { apiIntake, apiPlanSummary, ParsedInjury } from "@/lib/api";
 import { RUN_PR_OPTIONS, SWIM_PR_OPTIONS, BIKE_PR_OPTIONS, prLabel } from "@/lib/paces";
+import { projectRace } from "@/lib/predict";
 import { Icon, IconName } from "../app/icons";
-import { fmtClock } from "@/lib/format";
+import { fmtClock, fmtDuration } from "@/lib/format";
 import { todayISO, addDays, fmtFullDate } from "@/lib/dates";
 
 interface Draft {
@@ -224,7 +225,7 @@ export function Onboarding() {
           {step === "schedule" && <ScheduleStep draft={draft} set={setDraft} />}
           {step === "prs" && <PRStep draft={draft} set={setDraft} parseTime={parseTime} />}
           {step === "injuries" && <InjuriesStep draft={draft} set={setDraft} />}
-          {step === "review" && <ReviewStep draft={draft} total={totalSessions} />}
+          {step === "review" && <ReviewStep draft={draft} total={totalSessions} profile={finalProfile} />}
         </div>
 
         <div className="mt-6 flex items-center gap-3">
@@ -980,7 +981,8 @@ function InjuriesStep({ draft, set }: StepProps) {
   );
 }
 
-function ReviewStep({ draft, total }: { draft: Draft; total: number }) {
+function ReviewStep({ draft, total, profile }: { draft: Draft; total: number; profile: Profile | null }) {
+  const proj = profile ? projectRace(profile) : null;
   const race =
     draft.raceName ??
     (draft.raceType === "custom"
@@ -1019,6 +1021,25 @@ function ReviewStep({ draft, total }: { draft: Draft; total: number }) {
   return (
     <div>
       <Head title="Here's your plan setup" sub="We'll forge a full day-by-day plan from this — personalized to you." />
+
+      {proj && proj.projectedSec > 0 && (
+        <div className="mb-5 card-glass animate-fade-up rounded-2xl p-4">
+          <div className="eyebrow text-[0.72rem]">Your projected finish</div>
+          <div className="mt-1 flex items-end gap-2">
+            <span className="font-display text-[2.1rem] font-semibold leading-none tabular-nums text-accent">{fmtClock(proj.projectedSec)}</span>
+            <span className="mb-0.5 text-sm text-muted">with your plan</span>
+          </div>
+          {proj.gainSec > 60 ? (
+            <div className="mt-2 text-sm text-muted">
+              About <span className="font-semibold text-foreground">{fmtDuration(proj.gainSec)} faster</span>{" "}
+              than racing at today&apos;s fitness (<span className="tabular-nums">{fmtClock(proj.currentSec)}</span>). Do the work and this comes down.
+            </div>
+          ) : (
+            <div className="mt-2 text-sm text-muted">A realistic target for race day — we&apos;ll sharpen it as you train.</div>
+          )}
+        </div>
+      )}
+
       <div className="rounded-2xl border border-line bg-surface-2 p-1">
         {rows.map(([k, v], i) => (
           <div key={k} className={`flex items-center justify-between gap-4 px-4 py-3 ${i > 0 ? "border-t border-line" : ""}`}>

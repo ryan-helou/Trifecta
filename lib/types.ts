@@ -99,7 +99,39 @@ export interface WorkoutActuals {
   distanceM?: number;
   durationSec?: number;
   avgHr?: number;
+  /** average power (watts) — bike sessions with a power meter; drives FTP calibration */
+  avgWatts?: number;
   startedAtISO?: string;
+}
+
+// ---- daily readiness (morning check-in that regulates the day) ----
+
+// Each dimension is 1 (poor) · 2 (ok) · 3 (good/fresh).
+export interface ReadinessInput {
+  sleep: 1 | 2 | 3;
+  legs: 1 | 2 | 3; // muscle soreness / freshness
+  energy: 1 | 2 | 3; // motivation / life stress
+  restingHr?: number; // optional; not required
+  note?: string;
+}
+
+export interface ReadinessEntry extends ReadinessInput {
+  dateISO: string;
+  score: number; // 0–100 (higher = fresher)
+  /** true once the plan eased the day off a low score, so we don't re-ease */
+  eased?: boolean;
+}
+
+// ---- pace calibration (auto-tuned from real performance & feedback) ----
+// Signed fitness adjustments per discipline. 0 = neutral (use the athlete's
+// declared paces). Positive = fitter than declared (targets sharpen); negative
+// = targets were too aggressive (ease them). Applied by derivePaces, so it flows
+// through generation, rebuild, and display alike.
+export interface PaceCalibration {
+  run: number; // −0.15 … +0.15
+  swim: number;
+  bike: number;
+  updatedISO: string;
 }
 
 export type Phase = "base" | "build" | "peak" | "taper";
@@ -208,6 +240,8 @@ export interface Profile {
   blackouts?: DateRange[]; // days off (vacation, work travel)
   equipment?: EquipmentAccess; // what the athlete can actually access
   intakeNotes?: string; // free-text "anything else" the athlete told us
+  /** auto-tuned pace adjustments from real performance (see lib/calibrate.ts) */
+  calibration?: PaceCalibration;
   createdAtISO: string;
 }
 
@@ -253,6 +287,10 @@ export interface Plan {
   coachSummary?: string;
   /** optional AI-written per-phase coaching notes (same cheap call; degrades away) */
   phaseNotes?: Partial<Record<Phase, string>>;
+  /** daily readiness check-ins, keyed by ISO date (survives rebuilds) */
+  readiness?: Record<string, ReadinessEntry>;
+  /** week indices already auto-eased by adaptation, so the banner doesn't re-nag */
+  easedWeeks?: number[];
 }
 
 // what we persist per user
