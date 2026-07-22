@@ -225,17 +225,7 @@ const L = {
   heel: 6,
 };
 
-// silhouette widths (stroke thickness of each filled bone; taper is implied by
-// stepping the widths down toward the extremities)
-const W = {
-  trunk: 26,
-  upperArm: 13,
-  foreArm: 10,
-  thigh: 17,
-  shank: 12,
-  foot: 9,
-  neck: 12,
-};
+// (silhouette half-widths live in RAD, next to the renderer that consumes them)
 
 /* -----------------------------------------------------------------------------
  * 5. Forward kinematics — build a limb chain from absolute angles
@@ -440,16 +430,28 @@ function buildTorso(
 
 function buildRun(c: number): Skeleton {
   const pelvis = V(0, sampleTrack(RUN.pelvisBob, c));
-  // gait trajectory: the ankle plants on the ground through stance, then lifts
-  // and swings forward through the air — foot-locking is what stops the figure
-  // looking floaty and makes the stride actually open up.
+  // Gait trajectory. STANCE (cc 0→0.5): foot planted on the ground, travelling
+  // front → back under the body as the runner passes over it. SWING (cc 0.5→1):
+  // foot lifts and is whipped FORWARD with an ease-out so it leads the knee and
+  // is already ahead of the hip at the passing instant — that forward-leading
+  // knee is what makes a passing frame read as a stride instead of a squat.
+  const front = RUN.strideX;
+  const back = -RUN.strideX * 1.05;
   const leg = (phase: number, bend: number) => {
     const cc = ((phase % 1) + 1) % 1;
-    const fx = RUN.strideX * Math.cos(2 * Math.PI * cc); // +front at c=0, back at c=0.5
-    const swing = cc < 0.5 ? 0 : Math.sin(Math.PI * (cc - 0.5) / 0.5); // 0→1→0 over the swing
-    const ankle = V(fx, RUN.groundRel - RUN.lift * swing);
+    let fx: number;
+    let arc: number; // 0 on the ground, 1 at peak swing lift
+    if (cc < 0.5) {
+      fx = lerp(front, back, cc / 0.5); // planted, sliding backward
+      arc = 0;
+    } else {
+      const t = (cc - 0.5) / 0.5;
+      fx = lerp(back, front, ease.outCubic(t)); // whip forward, leading the knee
+      arc = Math.sin(Math.PI * t);
+    }
+    const ankle = V(fx, RUN.groundRel - RUN.lift * arc);
     const knee = ik(pelvis, ankle, L.thigh, L.shank, bend);
-    const footDeg = cc < 0.5 ? 8 : -20 * swing - 2; // toe up in swing, planted in stance
+    const footDeg = arc > 0 ? -18 * arc - 2 : 8; // toe up in swing, planted in stance
     const toe = polar(ankle, footDeg, L.foot);
     const heel = polar(ankle, footDeg + 180, L.heel);
     return { knee, ankle, toe, heel };
@@ -650,63 +652,76 @@ const lighten = (c: RGB, t: number): RGB => [
 /* -----------------------------------------------------------------------------
  * 9. Silhouette renderer
  *
- * Every bone is a thick, round-capped stroke; joints are filled with a disc so
- * the strokes union into one seamless solid body. Widths step down toward the
- * extremities to imply taper. Two passes (far then near) give depth without any
- * outline — pure Paper.
+ * Each bone is a TAPERED capsule: a trapezoid whose two ends have different
+ * half-widths, capped by a filled disc at each joint. Because adjoining segments
+ * share the same joint radius (thigh's knee-radius == shank's knee-radius) the
+ * discs union seamlessly into one smooth, anatomically-tapered silhouette — thick
+ * at the hip/shoulder, slim at the ankle/wrist — the way a real pictogram reads,
+ * with no bare joints and no outline. Two passes (far then near) give depth.
  * -------------------------------------------------------------------------- */
 
 const P = (p: Vec) => `${round2(p.x)},${round2(p.y)}`;
 
-function Bone({ a, b, w, color }: { a: Vec; b: Vec; w: number; color: string }) {
-  return <line x1={round2(a.x)} y1={round2(a.y)} x2={round2(b.x)} y2={round2(b.y)} stroke={color} strokeWidth={w} strokeLinecap="round" />;
-}
-function Joint({ p, r, color }: { p: Vec; r: number; color: string }) {
-  return <circle cx={round2(p.x)} cy={round2(p.y)} r={round2(r)} fill={color} />;
+// half-widths (radii) at each joint — the taper is the drop from one to the next
+const RAD = {
+  hip: 9.5, knee: 6.4, ankle: 4.4, toe: 2.6, heel: 3.2,
+  shoulder: 6.6, elbow: 4.9, wrist: 3.4, hand: 2.7,
+  pelvis: 11, chest: 12.5, neckLow: 8, neckTop: 5.4,
+  headRx: 8.8, headRy: 10.6,
+};
+
+/** A tapered limb segment: filled trapezoid body + a disc at each end so the
+ *  joint is round and unions with the neighbouring segment. */
+function Capsule({ a, b, ra, rb, color }: { a: Vec; b: Vec; ra: number; rb: number; color: string }) {
+  const dv = vsub(b, a);
+  const len = vlen(dv) || 0.001;
+  const n = { x: -dv.y / len, y: dv.x / len };
+  const A1 = vadd(a, vscale(n, ra));
+  const A2 = vsub(a, vscale(n, ra));
+  const B1 = vadd(b, vscale(n, rb));
+  const B2 = vsub(b, vscale(n, rb));
+  return (
+    <>
+      <path d={`M ${P(A1)} L ${P(B1)} L ${P(B2)} L ${P(A2)} Z`} fill={color} />
+      <circle cx={round2(a.x)} cy={round2(a.y)} r={round2(ra)} fill={color} />
+      <circle cx={round2(b.x)} cy={round2(b.y)} r={round2(rb)} fill={color} />
+    </>
+  );
 }
 
 function Athlete({ sk, color, farColor }: { sk: Skeleton; color: string; farColor: string }) {
-  // head geometry: an ellipse oriented along the neck
-  const headRx = 9.5;
-  const headRy = 11.5;
+  const FAR = 0.86; // far-side radius multiplier (recede)
 
-  const Arm = ({ shoulder, elbow, wrist, hand, c, wm = 1 }: { shoulder: Vec; elbow: Vec; wrist: Vec; hand: Vec; c: string; wm?: number }) => (
+  const Arm = ({ shoulder, elbow, wrist, hand, c, m = 1 }: { shoulder: Vec; elbow: Vec; wrist: Vec; hand: Vec; c: string; m?: number }) => (
     <g>
-      <Bone a={shoulder} b={elbow} w={W.upperArm * wm} color={c} />
-      <Joint p={elbow} r={(W.foreArm / 2 + 0.5) * wm} color={c} />
-      <Bone a={elbow} b={wrist} w={W.foreArm * wm} color={c} />
-      <Joint p={hand} r={(W.foreArm / 2 + 1) * wm} color={c} />
-      <Bone a={wrist} b={hand} w={(W.foreArm - 2) * wm} color={c} />
+      <Capsule a={shoulder} b={elbow} ra={RAD.shoulder * m} rb={RAD.elbow * m} color={c} />
+      <Capsule a={elbow} b={wrist} ra={RAD.elbow * m} rb={RAD.wrist * m} color={c} />
+      <Capsule a={wrist} b={hand} ra={RAD.wrist * m} rb={RAD.hand * m} color={c} />
     </g>
   );
 
-  const Leg = ({ hip, knee, ankle, toe, heel, c, wm = 1 }: { hip: Vec; knee: Vec; ankle: Vec; toe: Vec; heel: Vec; c: string; wm?: number }) => (
+  const Leg = ({ hip, knee, ankle, toe, heel, c, m = 1 }: { hip: Vec; knee: Vec; ankle: Vec; toe: Vec; heel: Vec; c: string; m?: number }) => (
     <g>
-      <Bone a={hip} b={knee} w={W.thigh * wm} color={c} />
-      <Joint p={knee} r={(W.shank / 2 + 1) * wm} color={c} />
-      <Bone a={knee} b={ankle} w={W.shank * wm} color={c} />
-      <Joint p={ankle} r={(W.foot / 2 + 0.5) * wm} color={c} />
-      {/* foot: heel → toe */}
-      <Bone a={heel} b={toe} w={W.foot * wm} color={c} />
+      <Capsule a={hip} b={knee} ra={RAD.hip * m} rb={RAD.knee * m} color={c} />
+      <Capsule a={knee} b={ankle} ra={RAD.knee * m} rb={RAD.ankle * m} color={c} />
+      {/* foot: heel → toe, anchored at the ankle */}
+      <Capsule a={heel} b={toe} ra={RAD.heel * m} rb={RAD.toe * m} color={c} />
     </g>
   );
 
-  const FAR_WM = 0.85;
   return (
     <g>
-      {/* far side (behind, lighter + thinner so it recedes) */}
-      <Arm shoulder={sk.shoulderF} elbow={sk.elbowF} wrist={sk.wristF} hand={sk.handF} c={farColor} wm={FAR_WM} />
-      <Leg hip={sk.hipF} knee={sk.kneeF} ankle={sk.ankleF} toe={sk.toeF} heel={sk.heelF} c={farColor} wm={FAR_WM} />
+      {/* far side (behind, lighter + slimmer so it recedes) */}
+      <Arm shoulder={sk.shoulderF} elbow={sk.elbowF} wrist={sk.wristF} hand={sk.handF} c={farColor} m={FAR} />
+      <Leg hip={sk.hipF} knee={sk.kneeF} ankle={sk.ankleF} toe={sk.toeF} heel={sk.heelF} c={farColor} m={FAR} />
 
-      {/* torso mass — trunk stroke + hip & shoulder discs give body volume */}
-      <Joint p={sk.pelvis} r={W.trunk / 2} color={color} />
-      <Bone a={sk.pelvis} b={sk.chest} w={W.trunk} color={color} />
-      <Joint p={sk.chest} r={W.trunk / 2 - 1} color={color} />
-      <Bone a={sk.chest} b={sk.neck} w={W.neck} color={color} />
+      {/* torso mass — a wide trunk tapering up to the shoulders, then the neck */}
+      <Capsule a={sk.pelvis} b={sk.chest} ra={RAD.pelvis} rb={RAD.chest} color={color} />
+      <Capsule a={sk.chest} b={sk.neck} ra={RAD.neckLow} rb={RAD.neckTop} color={color} />
 
       {/* head */}
       <g transform={`rotate(${round2(sk.headTilt)} ${round2(sk.head.x)} ${round2(sk.head.y)})`}>
-        <ellipse cx={round2(sk.head.x)} cy={round2(sk.head.y)} rx={headRx} ry={headRy} fill={color} />
+        <ellipse cx={round2(sk.head.x)} cy={round2(sk.head.y)} rx={RAD.headRx} ry={RAD.headRy} fill={color} />
       </g>
 
       {/* near side (in front, solid) */}
