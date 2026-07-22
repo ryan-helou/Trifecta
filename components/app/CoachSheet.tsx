@@ -9,6 +9,7 @@ import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
 import { Reactor } from "../Reactor";
 import { Wordmark } from "../Wordmark";
+import { workoutsOn } from "./widgets";
 
 export function CoachSheet({
   plan,
@@ -33,8 +34,8 @@ export function CoachSheet({
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, busy]);
 
-  async function send() {
-    const q = input.trim();
+  async function send(preset?: string) {
+    const q = (preset ?? input).trim();
     if (!q || busy) return;
     haptic("light");
     setInput("");
@@ -53,6 +54,17 @@ export function CoachSheet({
       setBusy(false);
     }
   }
+
+  // starter prompts for the empty chat — a coach's opening beats a blank box.
+  // The first one is anchored to today's actual session when there is one.
+  const todayW = workoutsOn(plan, today)[0];
+  const suggestions = [
+    todayW ? `How should I pace my ${todayW.title}?` : "What should I focus on this week?",
+    "What should I eat before and after a session?",
+    "I'm feeling tired — should I adjust today?",
+    "Am I on track for race day?",
+  ];
+  const fresh = messages.length <= 1 && !input.trim();
 
   return (
     <Sheet
@@ -78,7 +90,7 @@ export function CoachSheet({
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="Ask your coach…"
           />
-          <button onClick={send} disabled={busy || !input.trim()} className="btn btn-primary px-4 py-3">Send</button>
+          <button onClick={() => send()} disabled={busy || !input.trim()} className="btn btn-primary px-4 py-3">Send</button>
         </div>
       }
     >
@@ -94,6 +106,20 @@ export function CoachSheet({
             </div>
           </div>
         ))}
+        {fresh && (
+          <div className="animate-fade-up space-y-2 pt-1">
+            <div className="eyebrow text-[0.72rem]">Try asking</div>
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                onClick={() => send(s)}
+                className="block w-full rounded-2xl border border-line bg-surface-2 px-3.5 py-2.5 text-left text-sm transition hover:bg-surface-3 active:scale-[0.99]"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
         {busy && (
           <div className="flex justify-start">
             <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-sm text-muted">Thinking…</div>

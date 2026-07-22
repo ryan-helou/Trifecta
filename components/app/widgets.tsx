@@ -1,9 +1,9 @@
 "use client";
 
 import { Phase, Plan, Week, Workout } from "@/lib/types";
-import { daysBetween, fromISO, mondayOf } from "@/lib/dates";
+import { daysBetween, fromISO, mondayOf, fmtShortDate } from "@/lib/dates";
 import { fmtClock, fmtDistance } from "@/lib/format";
-import { raceDistances, estimateRaceSeconds, categoryOf } from "@/lib/planEngine";
+import { raceDistances, estimateRaceSeconds, categoryOf, raceCategoryName } from "@/lib/planEngine";
 import { CountUp, useMounted } from "./motion";
 
 export function weekOfDate(plan: Plan, iso: string): Week {
@@ -21,6 +21,15 @@ export function workoutsOn(plan: Plan, iso: string): Workout[] {
   return Object.values(plan.workouts)
     .filter((w) => w.date === iso)
     .sort((a, b) => b.estDurationSec - a.estDurationSec);
+}
+
+/** The next real sessions after `iso` (soonest first) — powers Today's "Up next"
+ *  peek so the home screen answers "what's coming?", not just "what's today". */
+export function upcomingAfter(plan: Plan, iso: string, n = 1): Workout[] {
+  return Object.values(plan.workouts)
+    .filter((w) => w.date > iso && w.discipline !== "rest" && w.status !== "skipped")
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : b.estDurationSec - a.estDurationSec))
+    .slice(0, n);
 }
 
 const PHASE_COLOR: Record<Phase, string> = {
@@ -48,9 +57,14 @@ export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
     { label: "Run", v: fmtDistance(dist.run, unit), c: "var(--run)", align: "text-right" },
   ];
 
+  const raceName = plan.profile.raceName;
   return (
     <div className="card-glass relative overflow-hidden p-5">
-      <div className="eyebrow text-[0.72rem]">{dist.name} · Race day</div>
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="eyebrow text-[0.72rem]">{raceCategoryName(plan.profile)} · Race day</div>
+        <div className="eyebrow text-[0.72rem] text-muted">{fmtShortDate(plan.raceDateISO)}</div>
+      </div>
+      {raceName && <div className="mt-1 truncate font-display text-[0.98rem] font-semibold leading-tight">{raceName}</div>}
 
       <div className="mt-4 flex items-end justify-between gap-4">
         <div className="flex items-baseline gap-3">

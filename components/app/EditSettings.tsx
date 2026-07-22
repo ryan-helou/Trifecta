@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthPref, StrengthSplit } from "@/lib/types";
+import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthPref, StrengthSplit, Unit } from "@/lib/types";
 import { generatePlan, defaultSportSplit } from "@/lib/planEngine";
 import { rebuildFromToday } from "@/lib/adapt";
 import { apiIntake, ParsedInjury } from "@/lib/api";
@@ -82,6 +82,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [raceLocation, setRaceLocation] = useState<string | undefined>(profile.raceLocation);
   const [showCatalog, setShowCatalog] = useState(false);
   const [level, setLevel] = useState<Level>(profile.level);
+  const [unit, setUnit] = useState<Unit>(profile.unitPreference ?? "metric");
   // Seed from the engine's derived split when the athlete has no explicit per-sport
   // counts — otherwise opening + saving silently rewrites their weekly volume to 2/2/2.
   const [perSport, setPerSport] = useState(profile.perSport ?? defaultSportSplit(profile));
@@ -161,6 +162,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       raceId: raceType === "custom" ? undefined : raceId,
       raceDateISO,
       level,
+      unitPreference: unit,
       workoutsPerWeek: wpwClamped,
       perSport,
       strength,
@@ -295,6 +297,14 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               {LEVELS.map((l) => (
                 <Pill key={l} on={level === l} onClick={() => setLevel(l)}><span className="capitalize">{l}</span></Pill>
               ))}
+            </div>
+          </Field>
+
+          {/* units */}
+          <Field label="Units">
+            <div className="grid grid-cols-2 gap-2">
+              <Pill on={unit === "metric"} onClick={() => setUnit("metric")}>Kilometres</Pill>
+              <Pill on={unit === "imperial"} onClick={() => setUnit("imperial")}>Miles</Pill>
             </div>
           </Field>
 

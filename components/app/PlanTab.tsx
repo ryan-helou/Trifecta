@@ -50,7 +50,16 @@ export function PlanTab() {
                 on ? "bg-accent text-white" : "border border-line bg-surface-2 text-muted"
               } ${isCur && !on ? "ring-1 ring-accent/45" : ""}`}
             >
-              {w.isRaceWeek ? (<span className="inline-flex items-center gap-1"><Icon name="flag" size={14} />Race</span>) : w.label.replace(" · Recovery", "*")}
+              {w.isRaceWeek ? (
+                <span className="inline-flex items-center gap-1"><Icon name="flag" size={14} />Race</span>
+              ) : w.isRecovery ? (
+                <span className="inline-flex items-center gap-1" title="Recovery week">
+                  {w.label.replace(" · Recovery", "")}
+                  <Icon name="rest" size={13} />
+                </span>
+              ) : (
+                w.label
+              )}
             </button>
           );
         })}
