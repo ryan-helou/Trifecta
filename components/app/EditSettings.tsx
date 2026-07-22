@@ -501,7 +501,7 @@ function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; chi
     <button
       onClick={onClick}
       className={`rounded-full py-2.5 text-center text-sm font-semibold transition ${
-        on ? "bg-accent text-[#17130a]" : "border border-line bg-surface-2 text-muted"
+        on ? "bg-accent text-white" : "border border-line bg-surface-2 text-muted"
       }`}
     >
       {children}

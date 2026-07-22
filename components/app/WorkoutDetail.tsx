@@ -15,11 +15,11 @@ import { useUI } from "./ui";
 function ZoneChip({ zone }: { zone?: Zone }) {
   if (!zone) return null;
   const m = ZONES[zone];
-  const onLight = zone === 3 || zone === 4;
+  const onLight = zone <= 2; // light gray zone bg → dark text
   return (
     <span
       className="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"
-      style={{ background: `var(${m.colorVar})`, color: onLight ? "#141a24" : "#fff" }}
+      style={{ background: `var(${m.colorVar})`, color: onLight ? "#0f0f0f" : "#fff" }}
     >
       Z{zone}
     </span>

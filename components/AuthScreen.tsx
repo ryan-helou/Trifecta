@@ -74,13 +74,13 @@ export function AuthScreen() {
           <div className="flex rounded-full border border-line bg-surface-2 p-1 text-sm font-semibold">
             <button
               onClick={() => { setMode("signup"); setError(null); }}
-              className={`flex-1 rounded-full py-2 transition ${mode === "signup" ? "bg-accent text-[#17130a]" : "text-muted"}`}
+              className={`flex-1 rounded-full py-2 transition ${mode === "signup" ? "bg-accent text-white" : "text-muted"}`}
             >
               Create account
             </button>
             <button
               onClick={() => { setMode("login"); setError(null); }}
-              className={`flex-1 rounded-full py-2 transition ${mode === "login" ? "bg-accent text-[#17130a]" : "text-muted"}`}
+              className={`flex-1 rounded-full py-2 transition ${mode === "login" ? "bg-accent text-white" : "text-muted"}`}
             >
               Sign in
             </button>

@@ -352,7 +352,7 @@ function RaceStep({ draft, set }: StepProps) {
             key={m}
             onClick={() => setMode(m)}
             className={`rounded-full py-2.5 text-center font-display text-sm font-semibold transition ${
-              mode === m ? "accent-gradient text-[#1a0d06]" : "border border-line bg-surface-2 text-muted"
+              mode === m ? "accent-gradient text-white" : "border border-line bg-surface-2 text-muted"
             }`}
           >
             {m === "distance" ? "By distance" : "Real race"}
@@ -486,7 +486,7 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
             key={label}
             onClick={() => set((d) => ({ ...d, autoFrequency: val }))}
             className={`rounded-full py-2.5 text-center font-display text-sm font-semibold transition ${
-              auto === val ? "accent-gradient text-[#1a0d06]" : "border border-line bg-surface-2 text-muted"
+              auto === val ? "accent-gradient text-white" : "border border-line bg-surface-2 text-muted"
             }`}
           >
             {label}

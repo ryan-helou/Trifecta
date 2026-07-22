@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { apiStravaDisconnect, apiStravaStatus, apiStravaSync, StravaStatus } from "@/lib/api";
 import { useToast } from "./Toast";
 
-const STRAVA_ORANGE = "#FC4C02";
+// Monochrome to fit the Paper (black & white) theme. Swap back to "#FC4C02" for Strava brand orange.
+const STRAVA_ORANGE = "#111111";
 
 function timeAgo(iso?: string | null): string {
   if (!iso) return "just now";

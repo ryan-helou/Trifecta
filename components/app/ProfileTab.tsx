@@ -31,7 +31,7 @@ export function ProfileTab() {
     <div className="space-y-5 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
       {/* identity */}
       <div className="animate-fade-up flex items-center gap-3.5">
-        <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl accent-gradient font-display text-2xl font-bold text-[#1a0d06]">
+        <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl accent-gradient font-display text-2xl font-bold text-white">
           {username?.[0]?.toUpperCase()}
         </div>
         <div>
