@@ -31,23 +31,26 @@
   --sun: #6e6e6b;
   --tide: #6e6e6b;
 
-  /* disciplines — monochrome ink; told apart by icon + label, not colour */
-  --swim: #1a1a1a;
-  --bike: #1a1a1a;
-  --run: #1a1a1a;
-  --strength: #1a1a1a;
-  --rest: #9a9a96;
+  /* disciplines — the paper look stays, but each sport earns a restrained,
+     editorial colour so a day/week reads at a glance instead of by squinting.
+     Tuned for legibility on white (used as both text labels and fills). */
+  --swim: #1c7aa2; /* water blue */
+  --bike: #b06f10; /* amber / ochre */
+  --run: #c5372f; /* brick red */
+  --strength: #6b4fbe; /* violet */
+  --rest: #9a9a96; /* gray — a rest day should recede */
 
-  /* intensity zones Z1..Z5 — a light→dark gray ramp (easy → max) */
-  --z1: #d0d0cc;
-  --z2: #a9a9a4;
-  --z3: #7e7e7a;
-  --z4: #4d4d4a;
-  --z5: #191919;
+  /* intensity zones Z1..Z5 — the field-standard easy→hard ramp, tuned for paper
+     so you read effort by colour, not by five near-identical grays */
+  --z1: #5aa0cf; /* recovery — blue */
+  --z2: #3f9e63; /* endurance — green */
+  --z3: #d3a12b; /* tempo — amber */
+  --z4: #d67a32; /* threshold — orange */
+  --z5: #c93f3f; /* VO2 / max — red */
 
-  --success: #1a1a1a;
-  --warning: #6e6e6b;
-  --danger: #1a1a1a;
+  --success: #3f9a5c; /* done — green */
+  --warning: #c8871f; /* eased / caution — amber */
+  --danger: #c5372f; /* skipped / missed — red */
 }
 
 @theme inline {
