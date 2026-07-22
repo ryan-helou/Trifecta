@@ -20,7 +20,7 @@ export function Reactor({
   return (
     // eslint-disable-next-line @next/next/no-img-element -- static local icon, sized explicitly
     <img
-      src="/icons/icon-192.png"
+      src="/icons/icon-192.png?v=2"
       width={size}
       height={size}
       alt=""
