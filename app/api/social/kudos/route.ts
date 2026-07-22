@@ -1,0 +1,28 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getStore } from "@/lib/db";
+import { getUserIdFromRequest } from "@/lib/auth-server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// POST { ownerUsername, workoutId, on } → add/remove a kudos on someone's session.
+export async function POST(req: NextRequest) {
+  const uid = getUserIdFromRequest(req);
+  if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const ownerUsername = typeof body.ownerUsername === "string" ? body.ownerUsername.trim() : "";
+  const workoutId = typeof body.workoutId === "string" ? body.workoutId : "";
+  const on = body.on !== false; // default to giving kudos
+  if (!ownerUsername || !workoutId) return NextResponse.json({ error: "Missing fields." }, { status: 400 });
+
+  const store = getStore();
+  const owner = await store.getUserByUsername(ownerUsername);
+  if (!owner) return NextResponse.json({ error: "No such athlete." }, { status: 404 });
+
+  if (on) await store.addKudos(uid, owner.id, workoutId);
+  else await store.removeKudos(uid, owner.id, workoutId);
+
+  const kudos = (await store.getKudosForOwner(owner.id)).filter((k) => k.workoutId === workoutId).length;
+  return NextResponse.json({ ok: true, on, kudos });
+}

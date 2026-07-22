@@ -11,6 +11,7 @@ import { projectRace } from "@/lib/predict";
 import { InstallHint } from "./InstallHint";
 import { EditSettings } from "./EditSettings";
 import { Connections } from "./Connections";
+import { Notifications } from "./Notifications";
 import { Wordmark } from "../Wordmark";
 
 export function ProfileTab() {
@@ -122,6 +123,8 @@ export function ProfileTab() {
       </Section>
 
       <Connections />
+
+      <Notifications />
 
       <InstallHint />
 

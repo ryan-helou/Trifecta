@@ -30,6 +30,7 @@ import {
 import { logReadiness } from "@/lib/readiness";
 import { calibratePaces } from "@/lib/calibrate";
 import { derivePaces } from "@/lib/paces";
+import { loadNotifPrefs, refreshReminders } from "@/lib/notify";
 
 const COACH_GREETING: CoachMsg = {
   role: "coach",
@@ -60,6 +61,12 @@ export function AppShell() {
       clearInterval(iv);
     };
   }, []);
+
+  // keep training reminders scheduled as the plan changes / the day rolls over
+  useEffect(() => {
+    const prefs = loadNotifPrefs();
+    if (prefs.enabled && plan) refreshReminders(plan, today, prefs);
+  }, [plan, today]);
 
   if (!plan) return null;
 

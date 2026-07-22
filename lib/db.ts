@@ -46,6 +46,25 @@ export interface Store {
   updateStravaTokens(userId: string, t: { accessToken: string; refreshToken: string; expiresAt: number }): Promise<void>;
   deleteStrava(userId: string): Promise<void>;
   touchStravaSync(userId: string): Promise<void>;
+  // Social — follows + kudos
+  listUsersLite(limit?: number): Promise<UserLite[]>;
+  follow(followerId: string, followingId: string): Promise<void>;
+  unfollow(followerId: string, followingId: string): Promise<void>;
+  getFollowingIds(userId: string): Promise<string[]>;
+  addKudos(fromId: string, ownerId: string, workoutId: string): Promise<void>;
+  removeKudos(fromId: string, ownerId: string, workoutId: string): Promise<void>;
+  getKudosForOwner(ownerId: string): Promise<KudosRow[]>;
+}
+
+export interface UserLite {
+  id: string;
+  username: string;
+  data: AppState;
+}
+
+export interface KudosRow {
+  fromId: string;
+  workoutId: string;
 }
 
 function newId(): string {
@@ -92,9 +111,75 @@ class PgStore implements Store {
              )`,
           ),
         )
+        .then(() =>
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS follows (
+               follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               following_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+               PRIMARY KEY (follower_id, following_id)
+             )`,
+          ),
+        )
+        .then(() =>
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS kudos (
+               from_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               workout_id TEXT NOT NULL,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+               PRIMARY KEY (from_id, owner_id, workout_id)
+             )`,
+          ),
+        )
         .then(() => undefined);
     }
     return this.ready;
+  }
+
+  async listUsersLite(limit = 500): Promise<UserLite[]> {
+    await this.init();
+    const r = await this.pool.query("SELECT id, username, data FROM users ORDER BY created_at DESC LIMIT $1", [limit]);
+    return r.rows.map((row) => ({ id: row.id, username: row.username, data: row.data ?? {} }));
+  }
+
+  async follow(followerId: string, followingId: string): Promise<void> {
+    await this.init();
+    if (followerId === followingId) return;
+    await this.pool.query(
+      "INSERT INTO follows (follower_id, following_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+      [followerId, followingId],
+    );
+  }
+
+  async unfollow(followerId: string, followingId: string): Promise<void> {
+    await this.init();
+    await this.pool.query("DELETE FROM follows WHERE follower_id = $1 AND following_id = $2", [followerId, followingId]);
+  }
+
+  async getFollowingIds(userId: string): Promise<string[]> {
+    await this.init();
+    const r = await this.pool.query("SELECT following_id FROM follows WHERE follower_id = $1", [userId]);
+    return r.rows.map((row) => row.following_id as string);
+  }
+
+  async addKudos(fromId: string, ownerId: string, workoutId: string): Promise<void> {
+    await this.init();
+    await this.pool.query(
+      "INSERT INTO kudos (from_id, owner_id, workout_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+      [fromId, ownerId, workoutId],
+    );
+  }
+
+  async removeKudos(fromId: string, ownerId: string, workoutId: string): Promise<void> {
+    await this.init();
+    await this.pool.query("DELETE FROM kudos WHERE from_id = $1 AND owner_id = $2 AND workout_id = $3", [fromId, ownerId, workoutId]);
+  }
+
+  async getKudosForOwner(ownerId: string): Promise<KudosRow[]> {
+    await this.init();
+    const r = await this.pool.query("SELECT from_id, workout_id FROM kudos WHERE owner_id = $1", [ownerId]);
+    return r.rows.map((row) => ({ fromId: row.from_id as string, workoutId: row.workout_id as string }));
   }
 
   private mapStrava(row: Record<string, unknown>): StravaConn {
@@ -204,6 +289,8 @@ class MemoryStore implements Store {
   private users = new Map<string, UserRow>(); // keyed by id
   private byName = new Map<string, string>(); // lower -> id
   private strava = new Map<string, StravaConn>(); // keyed by userId
+  private follows = new Set<string>(); // "followerId::followingId"
+  private kudos = new Set<string>(); // "fromId::ownerId::workoutId"
 
   async init(): Promise<void> {}
   async getUserByUsername(username: string): Promise<UserRow | null> {
@@ -247,6 +334,37 @@ class MemoryStore implements Store {
   async touchStravaSync(userId: string): Promise<void> {
     const c = this.strava.get(userId);
     if (c) c.lastSyncAtISO = new Date().toISOString();
+  }
+  async listUsersLite(limit = 500): Promise<UserLite[]> {
+    return [...this.users.values()].slice(0, limit).map((u) => ({ id: u.id, username: u.username, data: u.data }));
+  }
+  async follow(followerId: string, followingId: string): Promise<void> {
+    if (followerId !== followingId) this.follows.add(`${followerId}::${followingId}`);
+  }
+  async unfollow(followerId: string, followingId: string): Promise<void> {
+    this.follows.delete(`${followerId}::${followingId}`);
+  }
+  async getFollowingIds(userId: string): Promise<string[]> {
+    const out: string[] = [];
+    for (const k of this.follows) {
+      const [f, g] = k.split("::");
+      if (f === userId) out.push(g);
+    }
+    return out;
+  }
+  async addKudos(fromId: string, ownerId: string, workoutId: string): Promise<void> {
+    this.kudos.add(`${fromId}::${ownerId}::${workoutId}`);
+  }
+  async removeKudos(fromId: string, ownerId: string, workoutId: string): Promise<void> {
+    this.kudos.delete(`${fromId}::${ownerId}::${workoutId}`);
+  }
+  async getKudosForOwner(ownerId: string): Promise<KudosRow[]> {
+    const out: KudosRow[] = [];
+    for (const k of this.kudos) {
+      const [fromId, owner, workoutId] = k.split("::");
+      if (owner === ownerId) out.push({ fromId, workoutId });
+    }
+    return out;
   }
 }
 
