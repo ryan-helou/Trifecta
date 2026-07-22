@@ -1,161 +1,627 @@
 "use client";
 
-/**
- * TriathleteMorph — the plan-generation loading centrepiece.
+/* =============================================================================
+ * TriathleteMorph — the plan-generation loading centrepiece (v2)
+ * =============================================================================
  *
- * One articulated line-figure that MORPHS through the three legs of a triathlon
- * as `progress` (0–100) climbs: a swimmer rises out of the water, folds onto a
- * bike, then stands up and runs into a finish tape. There are no sprite frames —
- * every pose is defined by a handful of joint TARGETS (hands, feet, hip,
- * shoulder, head) and the elbows/knees are solved with 2-bone IK, so blending
- * two poses is just a weighted average of their targets. Limbs also cycle on
- * their own clock (windmill / pedal / stride) independent of progress, so the
- * athlete is always alive even while the bar barely moves.
+ * ONE solid-ink athlete that transforms through the three legs of a triathlon
+ * as `progress` (0–100) climbs:
  *
- * Paper aesthetic: ink on white, hairline scene, the single stroke colour
- * cross-fades swim-blue → bike-ochre → run-brick (the discipline tokens).
- */
+ *      swimmer  ──▶  cyclist  ──▶  runner  ──▶  finish tape
+ *
+ * This is deliberately NOT a stick figure. The athlete is rendered as a filled
+ * silhouette in the spirit of an Olympic pictogram — tapered limbs with volume,
+ * a real torso mass, a head — so there are no bare "joints" on show. Motion is
+ * driven by a small skeletal rig whose pose comes from hand-authored KEYFRAME
+ * TRACKS (contact / down / passing / flight for the run; a full pedal stroke for
+ * the bike; catch–pull–recovery for the swim) sampled with a periodic
+ * Catmull-Rom spline, the way an animator keys a cycle rather than a naive sine.
+ *
+ * Pipeline every frame:
+ *   1. for each active discipline, sample its tracks at its own cadence,
+ *      run forward kinematics → a full set of joint POINTS (a "Skeleton").
+ *   2. blend the three skeletons by discipline weight (point-space blend, so
+ *      angle wrap-around is never an issue) → the morph.
+ *   3. render the blended skeleton as a filled silhouette + the per-leg scene
+ *      (water, bike, road, finish) cross-faded on the same weights.
+ *
+ * Paper aesthetic: ink on white. The single fill colour cross-fades
+ * swim-blue → bike-ochre → run-brick, read live from the --swim/--bike/--run
+ * design tokens. Far-side limbs are drawn a touch lighter for depth. Honours
+ * prefers-reduced-motion (limbs hold, progress still advances).
+ * ============================================================================= */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-type P = { x: number; y: number };
-const dir = (deg: number): P => {
-  const r = (deg * Math.PI) / 180;
-  return { x: Math.cos(r), y: Math.sin(r) };
+/* =============================================================================
+ * TUNING NOTES (read this before changing the motion)
+ * =============================================================================
+ *
+ * COORDINATES. Everything is authored in an SVG viewBox of 0 0 300 200, y-down.
+ * The athlete faces +x (moves left → right). Angles are ABSOLUTE screen degrees:
+ *   0   = pointing right (+x)
+ *   90  = pointing down  (+y)
+ *   -90 = pointing up
+ * `polar(origin, deg, len)` walks `len` from `origin` along `deg`.
+ *
+ * RIG SPACE vs WORLD SPACE. Each `build<Discipline>(c)` assembles the figure in
+ * RIG space with the pelvis at (0,0). `place()` then scales, (optionally) leans
+ * and translates the whole rig to the discipline's world anchor in PLACEMENT.
+ * Keeping authoring pelvis-relative is what lets the three poses blend cleanly.
+ *
+ * WHY POINT-SPACE BLENDING. The morph averages joint POSITIONS, never angles —
+ * averaging angles wraps badly (350° and 10° average to 180°, not 0°). Build
+ * each active discipline's skeleton, then `blendSkeletons` takes the weighted
+ * mean of every joint. Result: limbs glide from stroke → pedal → stride.
+ *
+ * KEYFRAME TRACKS. A `Track` is [phase, value] pairs, phase in [0,1), first key
+ * at 0. `sampleTrack` wraps around the loop with a Catmull-Rom spline so a cycle
+ * eases naturally through every key (this is the difference between "keyframed"
+ * and "a sine wave"). To make a motion snappier add keys; to calm it, remove
+ * them or reduce the value spread.
+ *
+ * FK vs IK. Arms and the swim/flutter legs are forward-kinematic (author the
+ * joint angles directly). The bike legs and the run legs are inverse-kinematic:
+ * we author the ANKLE target (crank circle / gait trajectory) and solve the
+ * knee. IK is what keeps the cyclist's feet on the pedals and the runner's feet
+ * on the ground — the single biggest driver of "this looks real".
+ *
+ * TO RETUNE THE RUN quickly: RUN.strideX (reach), RUN.lift (swing height),
+ * RUN.groundRel + PLACEMENT.run.at.y (hip height / how bent the stance leg is),
+ * RUN.spine/neck/head (torso lean). Keep pelvis.y + groundRel = 150 (the ground).
+ * ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+ * 1. Vector + scalar math
+ * -------------------------------------------------------------------------- */
+
+type Vec = { x: number; y: number };
+
+const V = (x: number, y: number): Vec => ({ x, y });
+const vadd = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y });
+const vsub = (a: Vec, b: Vec): Vec => ({ x: a.x - b.x, y: a.y - b.y });
+const vscale = (a: Vec, s: number): Vec => ({ x: a.x * s, y: a.y * s });
+const vlen = (a: Vec): number => Math.hypot(a.x, a.y);
+const vlerp = (a: Vec, b: Vec, t: number): Vec => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+const vperp = (a: Vec): Vec => ({ x: -a.y, y: a.x });
+const vunit = (a: Vec): Vec => {
+  const l = vlen(a) || 1;
+  return { x: a.x / l, y: a.y / l };
 };
-const add = (a: P, b: P): P => ({ x: a.x + b.x, y: a.y + b.y });
-const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-/** 2-bone IK: given a root and a target within reach, return the middle joint.
- *  `bend` (+1/-1) chooses which side the joint bows to. */
-function ik(root: P, target: P, l1: number, l2: number, bend: number): P {
-  const dx = target.x - root.x;
-  const dy = target.y - root.y;
-  const d = clamp(Math.hypot(dx, dy), Math.abs(l1 - l2) + 0.01, l1 + l2 - 0.01);
-  const base = Math.atan2(dy, dx);
-  const cosA = clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1);
+const DEG = Math.PI / 180;
+/** Point at `len` from `origin` along screen angle `deg` (0 = +x / right, 90 = down). */
+const polar = (origin: Vec, deg: number, len: number): Vec => ({
+  x: origin.x + Math.cos(deg * DEG) * len,
+  y: origin.y + Math.sin(deg * DEG) * len,
+});
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const smoothstep = (t: number) => {
+  const k = clamp(t, 0, 1);
+  return k * k * (3 - 2 * k);
+};
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/* -----------------------------------------------------------------------------
+ * 2. Easing library (used for scene fades + a little organic timing warp)
+ * -------------------------------------------------------------------------- */
+
+const ease = {
+  linear: (t: number) => t,
+  inQuad: (t: number) => t * t,
+  outQuad: (t: number) => 1 - (1 - t) * (1 - t),
+  inOutQuad: (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
+  outCubic: (t: number) => 1 - Math.pow(1 - t, 3),
+  inOutCubic: (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
+  outBack: (t: number) => {
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  },
+};
+
+/* -----------------------------------------------------------------------------
+ * 3. Periodic Catmull-Rom keyframe sampler
+ *
+ * A "track" is a list of [phase, value] keys with phase in [0,1) (must start at
+ * 0). Sampling wraps around the loop and uses a Catmull-Rom spline through the
+ * neighbouring four keys, so a hand-keyed cycle reads smoothly with natural
+ * ease in/out at every key — this is what makes the joints look considered
+ * rather than mechanically sinusoidal.
+ * -------------------------------------------------------------------------- */
+
+type Key = readonly [number, number];
+type Track = readonly Key[];
+
+function catmull(v0: number, v1: number, v2: number, v3: number, t: number): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return (
+    0.5 *
+    (2 * v1 +
+      (-v0 + v2) * t +
+      (2 * v0 - 5 * v1 + 4 * v2 - v3) * t2 +
+      (-v0 + 3 * v1 - 3 * v2 + v3) * t3)
+  );
+}
+
+function sampleTrack(track: Track, phase: number): number {
+  const n = track.length;
+  if (n === 0) return 0;
+  if (n === 1) return track[0][1];
+  const c = ((phase % 1) + 1) % 1;
+
+  // find segment i such that track[i].phase <= c < track[i+1].phase (with wrap)
+  let i = n - 1;
+  for (let k = 0; k < n; k++) {
+    const cur = track[k][0];
+    const nxtRaw = k + 1 < n ? track[k + 1][0] : track[0][0] + 1;
+    if (c >= cur && c < nxtRaw) {
+      i = k;
+      break;
+    }
+  }
+
+  const p1 = track[i];
+  const p2 = track[(i + 1) % n];
+  const p0 = track[(i - 1 + n) % n];
+  const p3 = track[(i + 2) % n];
+
+  let t0 = p1[0];
+  let t1 = p2[0];
+  if (t1 <= t0) t1 += 1;
+  let cc = c;
+  if (cc < t0) cc += 1;
+  const t = clamp((cc - t0) / (t1 - t0 || 1), 0, 1);
+
+  return catmull(p0[1], p1[1], p2[1], p3[1], t);
+}
+
+/* -----------------------------------------------------------------------------
+ * 4. Skeleton — the set of joint POINTS the renderer draws from
+ * -------------------------------------------------------------------------- */
+
+type Skeleton = {
+  pelvis: Vec;
+  chest: Vec;
+  neck: Vec;
+  head: Vec; // head CENTRE
+  headTilt: number; // degrees, for the head ellipse orientation
+  // near side (facing the viewer — drawn solid)
+  shoulderN: Vec;
+  elbowN: Vec;
+  wristN: Vec;
+  handN: Vec;
+  hipN: Vec;
+  kneeN: Vec;
+  ankleN: Vec;
+  toeN: Vec;
+  heelN: Vec;
+  // far side (drawn lighter, behind)
+  shoulderF: Vec;
+  elbowF: Vec;
+  wristF: Vec;
+  handF: Vec;
+  hipF: Vec;
+  kneeF: Vec;
+  ankleF: Vec;
+  toeF: Vec;
+  heelF: Vec;
+};
+
+// bone lengths (rig units — the whole rig is scaled into the scene once)
+const L = {
+  spine: 32, // pelvis → chest
+  neck: 9, // chest → neck base
+  headGap: 12, // neck → head centre
+  upperArm: 20,
+  foreArm: 18,
+  hand: 8,
+  thigh: 27,
+  shank: 25,
+  foot: 13,
+  heel: 6,
+};
+
+// silhouette widths (stroke thickness of each filled bone; taper is implied by
+// stepping the widths down toward the extremities)
+const W = {
+  trunk: 26,
+  upperArm: 13,
+  foreArm: 10,
+  thigh: 17,
+  shank: 12,
+  foot: 9,
+  neck: 12,
+};
+
+/* -----------------------------------------------------------------------------
+ * 5. Forward kinematics — build a limb chain from absolute angles
+ * -------------------------------------------------------------------------- */
+
+/** Solve the middle joint of a 2-bone chain by inverse kinematics (used to lock
+ *  the cyclist's feet to the pedal crank). `bend` picks the knee/elbow side. */
+function ik(root: Vec, target: Vec, l1: number, l2: number, bend: number): Vec {
+  const to = vsub(target, root);
+  const dist = clamp(vlen(to), Math.abs(l1 - l2) + 0.001, l1 + l2 - 0.001);
+  const base = Math.atan2(to.y, to.x);
+  const cosA = clamp((l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist), -1, 1);
   const a = base + bend * Math.acos(cosA);
   return { x: root.x + Math.cos(a) * l1, y: root.y + Math.sin(a) * l1 };
 }
 
-// segment lengths — shared across every pose so IK stays consistent through a morph
-const UP_ARM = 17, FORE_ARM = 17;
-const THIGH = 22, SHANK = 20, FOOT = 10;
-const GROUND = 137;
+/* -----------------------------------------------------------------------------
+ * 6. Discipline pose definitions
+ *
+ * Each discipline exposes a `build(c)` that returns a fully-resolved Skeleton in
+ * rig space (pelvis-relative), where `c` is the discipline's own cycle phase in
+ * [0,1). World placement + morph blending happen afterwards.
+ *
+ * Angle convention: absolute screen degrees (0 = +x/right, 90 = down), athlete
+ * faces +x (moves left → right across the loader). Near-leg tracks are sampled
+ * at `c`; the far leg re-samples at `c + 0.5` for the natural contralateral
+ * gait. Arms swing opposite the same-side leg.
+ * -------------------------------------------------------------------------- */
 
-type Pose = {
-  hip: P; shoulder: P; head: P; headR: number;
-  wristN: P; wristF: P;      // arm end-effectors (near / far)
-  ankleN: P; ankleF: P;      // leg end-effectors
-  toeN: number; toeF: number; // foot direction (deg)
-  elbowBend: number; kneeBend: number;
+// ---- RUN -------------------------------------------------------------------
+// A real run cycle keyed at contact(0) → mid-stance(.17) → toe-off(.33) →
+// early-swing(.5) → mid-swing(.66) → late-swing/reach(.83). Knee flexes only
+// posteriorly (heel toward glute) so it never looks broken.
+
+const RUN = {
+  pelvisBob: [
+    [0.0, 0.5],
+    [0.25, 2.0], // slight dip at mid-stance (loading)
+    [0.5, -2.5], // rise through toe-off / float
+    [0.75, 2.0],
+  ] as Track,
+  spine: -85, // pelvis→chest — nearly upright, only a slight athletic forward lean
+  neck: -87,
+  head: -89,
+  // legs are driven by IK ankle targets in buildRun (a real gait trajectory) —
+  // these knobs shape the stride:
+  strideX: 19, // forward/back foot reach
+  lift: 26, // swing-phase foot lift
+  groundRel: 51, // pelvis → ground in rig units (pelvis world y + this = 150)
+  // arms — bent ~80°, drive opposite the same-side leg. Six keys give the drive
+  // a crisp forward snap and a relaxed back-swing rather than a lazy sine.
+  shoulder: [
+    [0.0, 114], // near arm back at contact (near leg forward)
+    [0.18, 108],
+    [0.4, 74],
+    [0.5, 60], // hand drives up in front at float
+    [0.68, 82],
+    [0.85, 106],
+  ] as Track,
+  elbow: [
+    [0.0, 88],
+    [0.18, 84],
+    [0.4, 78],
+    [0.5, 92], // opens slightly at the top of the drive
+    [0.68, 82],
+    [0.85, 84],
+  ] as Track,
 };
 
-const TAU = Math.PI * 2;
+// ---- BIKE ------------------------------------------------------------------
+// Aero tuck. Feet are locked to the pedal crank (IK); the tracks only carry the
+// torso/arm/ankle character. Crank centre + radius live in build().
 
-/** SWIM — prone, freestyle windmill just under the surface. */
-function swimPose(c: number): Pose {
-  const hip = { x: 150, y: 104 };
-  const shoulder = { x: 116, y: 101 };
-  const reach = 29;
+const BIKE = {
+  pelvisBob: [
+    [0.0, 0.0],
+    [0.5, 1.4],
+  ] as Track,
+  lean: 0,
+  spine: -24, // torso low over the bars
+  neck: -26,
+  head: -20,
+  // arms reach down-forward to the bars (near/far both, tiny bob)
+  shoulder: [
+    [0.0, 22],
+    [0.5, 24],
+  ] as Track,
+  elbow: [
+    [0.0, 20],
+    [0.5, 18],
+  ] as Track,
+  ankleTweak: [
+    // extra ankle articulation across the stroke (added to the auto foot angle)
+    [0.0, -14], // top of stroke — toe up
+    [0.25, 6], // power phase — drive through
+    [0.5, 20], // bottom — toe pointed
+    [0.75, 2],
+  ] as Track,
+  crank: 12,
+};
+
+// ---- SWIM ------------------------------------------------------------------
+// Prone freestyle. Body roughly horizontal (pelvis→chest points forward +x).
+// Near arm does a full catch → pull → recovery windmill; legs flutter.
+
+const SWIM = {
+  pelvisBob: [
+    [0.0, 0.0],
+    [0.5, 1.2],
+  ] as Track,
+  lean: 0,
+  spine: -6, // nearly flat, chest a touch high (head out of water on breath)
+  neck: -4,
+  head: 2,
+  // near arm windmill — absolute shoulder angle sweeps a full turn
+  shoulder: [
+    [0.0, -70], // recovery, arm up & forward
+    [0.2, 10], // hand enters ahead
+    [0.4, 90], // catch, pressing down
+    [0.6, 150], // pull through under body
+    [0.8, 210], // exit at hip, begin recovery
+  ] as Track,
+  elbow: [
+    // high-elbow catch then straighten on push
+    [0.0, 40],
+    [0.2, 20],
+    [0.4, 70], // high-elbow catch
+    [0.6, 30],
+    [0.8, 20],
+  ] as Track,
+  // flutter kick — small thigh oscillation about horizontal (180° = pointing -x)
+  thigh: [
+    [0.0, 184],
+    [0.5, 176],
+  ] as Track,
+  knee: [
+    [0.0, 10],
+    [0.25, 22],
+    [0.5, 8],
+    [0.75, 20],
+  ] as Track,
+  ankle: [
+    [0.0, 6],
+    [0.5, -6],
+  ] as Track,
+};
+
+/* -- builders ---------------------------------------------------------------- */
+
+/** Common torso/head/arm assembly shared by the disciplines. `armPhaseN` and
+ *  `armPhaseF` let each discipline choose the arm cadence relative to the legs. */
+function buildTorso(
+  pelvis: Vec,
+  spineDeg: number,
+  neckDeg: number,
+  headDeg: number,
+  shoulderTrack: Track,
+  elbowTrack: Track,
+  armPhaseN: number,
+  armPhaseF: number,
+  bendN: number,
+  bendF: number,
+): Pick<
+  Skeleton,
+  | "chest" | "neck" | "head" | "headTilt"
+  | "shoulderN" | "elbowN" | "wristN" | "handN"
+  | "shoulderF" | "elbowF" | "wristF" | "handF"
+> {
+  const chest = polar(pelvis, spineDeg, L.spine);
+  const neck = polar(chest, neckDeg, L.neck);
+  const head = polar(neck, headDeg, L.headGap);
+
+  const shoulder = vlerp(chest, neck, 0.25); // shoulders sit just below the neck
+
+  const arm = (phase: number, bend: number) => {
+    const sDeg = sampleTrack(shoulderTrack, phase);
+    const eFlex = sampleTrack(elbowTrack, phase);
+    const elbow = polar(shoulder, sDeg, L.upperArm);
+    const wrist = polar(elbow, sDeg + bend * eFlex, L.foreArm);
+    const hand = polar(wrist, sDeg + bend * eFlex, L.hand);
+    return { elbow, wrist, hand };
+  };
+
+  const aN = arm(armPhaseN, bendN);
+  const aF = arm(armPhaseF, bendF);
+
   return {
-    hip, shoulder,
-    head: { x: 101, y: 99 }, headR: 8,
-    wristN: add(shoulder, { x: reach * Math.cos(TAU * c), y: reach * Math.sin(TAU * c) }),
-    wristF: add(shoulder, { x: reach * Math.cos(TAU * c + Math.PI), y: reach * Math.sin(TAU * c + Math.PI) }),
-    ankleN: { x: hip.x + 40, y: hip.y + 7 * Math.sin(TAU * c * 2) },
-    ankleF: { x: hip.x + 40, y: hip.y - 7 * Math.sin(TAU * c * 2) },
-    toeN: 4, toeF: 4,
-    elbowBend: -1, kneeBend: 1,
+    chest,
+    neck,
+    head,
+    headTilt: headDeg + 90,
+    shoulderN: shoulder,
+    elbowN: aN.elbow,
+    wristN: aN.wrist,
+    handN: aN.hand,
+    shoulderF: shoulder,
+    elbowF: aF.elbow,
+    wristF: aF.wrist,
+    handF: aF.hand,
   };
 }
 
-/** BIKE — crouched over the bars, feet circling the crank. */
-function bikePose(c: number): Pose {
-  const hip = { x: 120, y: 96 };
-  const shoulder = { x: 147, y: 82 };
-  const bb = { x: 129, y: 117 };      // bottom bracket
-  const crank = 11;
-  const bar = { x: 173, y: 99 };      // handlebar
+function buildRun(c: number): Skeleton {
+  const pelvis = V(0, sampleTrack(RUN.pelvisBob, c));
+  // gait trajectory: the ankle plants on the ground through stance, then lifts
+  // and swings forward through the air — foot-locking is what stops the figure
+  // looking floaty and makes the stride actually open up.
+  const leg = (phase: number, bend: number) => {
+    const cc = ((phase % 1) + 1) % 1;
+    const fx = RUN.strideX * Math.cos(2 * Math.PI * cc); // +front at c=0, back at c=0.5
+    const swing = cc < 0.5 ? 0 : Math.sin(Math.PI * (cc - 0.5) / 0.5); // 0→1→0 over the swing
+    const ankle = V(fx, RUN.groundRel - RUN.lift * swing);
+    const knee = ik(pelvis, ankle, L.thigh, L.shank, bend);
+    const footDeg = cc < 0.5 ? 8 : -20 * swing - 2; // toe up in swing, planted in stance
+    const toe = polar(ankle, footDeg, L.foot);
+    const heel = polar(ankle, footDeg + 180, L.heel);
+    return { knee, ankle, toe, heel };
+  };
+  const legN = leg(c, 1);
+  const legF = leg(c + 0.5, 1);
+  const torso = buildTorso(pelvis, RUN.spine, RUN.neck, RUN.head, RUN.shoulder, RUN.elbow, c + 0.5, c, -1, -1);
   return {
-    hip, shoulder,
-    head: { x: 160, y: 75 }, headR: 9,
-    wristN: add(bar, { x: 0, y: 1 * Math.sin(TAU * c) }),
-    wristF: { ...bar },
-    ankleN: add(bb, { x: crank * Math.cos(TAU * c), y: crank * Math.sin(TAU * c) }),
-    ankleF: add(bb, { x: crank * Math.cos(TAU * c + Math.PI), y: crank * Math.sin(TAU * c + Math.PI) }),
-    toeN: 18, toeF: 18,
-    elbowBend: 1, kneeBend: 1,
+    pelvis,
+    hipN: pelvis,
+    hipF: pelvis,
+    kneeN: legN.knee, ankleN: legN.ankle, toeN: legN.toe, heelN: legN.heel,
+    kneeF: legF.knee, ankleF: legF.ankle, toeF: legF.toe, heelF: legF.heel,
+    ...torso,
   };
 }
 
-/** RUN — upright, driving into a stride. */
-function runPose(c: number): Pose {
-  const bob = -2.5 * (0.5 - 0.5 * Math.cos(TAU * c * 2));
-  const hip = { x: 125, y: 96 + bob };
-  const shoulder = { x: 133, y: 62 + bob };   // driving forward lean
-  const ang = TAU * c;
-  const foot = (a: number): P => ({
-    x: hip.x + 21 * Math.sin(a),
-    y: GROUND - 24 * Math.max(0, Math.sin(a)),
+function buildBike(c: number): Skeleton {
+  const pelvis = V(0, sampleTrack(BIKE.pelvisBob, c));
+  const crankCentre = V(6, 34); // forward + below the saddle
+  const R = BIKE.crank;
+  const leg = (phase: number, bend: number) => {
+    const ang = phase * 360;
+    const ankle = vadd(crankCentre, V(Math.cos(ang * DEG) * R, Math.sin(ang * DEG) * R));
+    const knee = ik(pelvis, ankle, L.thigh, L.shank, bend);
+    // foot roughly horizontal, with per-stroke ankle articulation
+    const footDeg = -6 + sampleTrack(BIKE.ankleTweak, phase);
+    const toe = polar(ankle, footDeg, L.foot);
+    const heel = polar(ankle, footDeg + 180, L.heel);
+    return { knee, ankle, toe, heel };
+  };
+  const legN = leg(c, -1);
+  const legF = leg(c + 0.5, -1);
+  const torso = buildTorso(pelvis, BIKE.spine, BIKE.neck, BIKE.head, BIKE.shoulder, BIKE.elbow, c, c + 0.5, 1, 1);
+  return {
+    pelvis,
+    hipN: pelvis,
+    hipF: pelvis,
+    kneeN: legN.knee, ankleN: legN.ankle, toeN: legN.toe, heelN: legN.heel,
+    kneeF: legF.knee, ankleF: legF.ankle, toeF: legF.toe, heelF: legF.heel,
+    ...torso,
+  };
+}
+
+function buildSwim(c: number): Skeleton {
+  const pelvis = V(0, sampleTrack(SWIM.pelvisBob, c));
+  const leg = (phase: number, bend: number) => {
+    const tDeg = sampleTrack(SWIM.thigh, phase);
+    const kFlex = sampleTrack(SWIM.knee, phase);
+    const aFlex = sampleTrack(SWIM.ankle, phase);
+    const knee = polar(pelvis, tDeg, L.thigh);
+    const shankDeg = tDeg + bend * kFlex;
+    const ankle = polar(knee, shankDeg, L.shank);
+    const footDeg = shankDeg + bend * aFlex;
+    const toe = polar(ankle, footDeg, L.foot);
+    const heel = polar(ankle, footDeg + 180, L.heel);
+    return { knee, ankle, toe, heel };
+  };
+  const legN = leg(c, 1);
+  const legF = leg(c + 0.5, 1);
+  const torso = buildTorso(pelvis, SWIM.spine, SWIM.neck, SWIM.head, SWIM.shoulder, SWIM.elbow, c, c + 0.5, -1, -1);
+
+  // Breathing: as the near arm exits and recovers (around c≈0.85) the head rolls
+  // up to the side to grab a breath, then settles back into the water. A small
+  // but hugely characteristic freestyle tell.
+  const breath = Math.max(0, Math.sin((c - 0.72) * Math.PI / 0.28)) * (c > 0.72 && c < 1 ? 1 : 0);
+  const head = vadd(torso.head, V(-1.5 * breath, -3.2 * breath));
+  const headTilt = torso.headTilt - 26 * breath;
+
+  return {
+    pelvis,
+    hipN: pelvis,
+    hipF: pelvis,
+    kneeN: legN.knee, ankleN: legN.ankle, toeN: legN.toe, heelN: legN.heel,
+    kneeF: legF.knee, ankleF: legF.ankle, toeF: legF.toe, heelF: legF.heel,
+    ...torso,
+    head,
+    headTilt,
+  };
+}
+
+type Discipline = "swim" | "bike" | "run";
+const BUILDERS: Record<Discipline, (c: number) => Skeleton> = {
+  swim: buildSwim,
+  bike: buildBike,
+  run: buildRun,
+};
+
+/* -----------------------------------------------------------------------------
+ * 7. World placement + morph blend
+ * -------------------------------------------------------------------------- */
+
+// where each discipline's pelvis sits in scene space, plus the whole-body lean
+const PLACEMENT: Record<Discipline, { at: Vec; lean: number; scale: number }> = {
+  swim: { at: V(150, 108), lean: 0, scale: 1 },
+  bike: { at: V(140, 92), lean: 0, scale: 1 },
+  run: { at: V(140, 99), lean: 0, scale: 1 }, // pelvis height so the stance leg extends (pelvis + groundRel = 150)
+};
+
+/** Rotate a rig-space point about the pelvis by `lean`, scale, then translate to
+ *  the discipline's world anchor. */
+function place(sk: Skeleton, disc: Discipline): Skeleton {
+  const { at, lean, scale } = PLACEMENT[disc];
+  const cosL = Math.cos(lean * DEG);
+  const sinL = Math.sin(lean * DEG);
+  const tf = (p: Vec): Vec => {
+    const x = p.x * scale;
+    const y = p.y * scale;
+    return { x: at.x + (x * cosL - y * sinL), y: at.y + (x * sinL + y * cosL) };
+  };
+  const out: Record<string, unknown> = {};
+  (Object.keys(sk) as (keyof Skeleton)[]).forEach((k) => {
+    if (k === "headTilt") out[k] = sk.headTilt + lean;
+    else out[k] = tf(sk[k] as Vec);
   });
-  const armAng = ang + Math.PI;
-  const wrist = (a: number): P => ({
-    x: shoulder.x + 5 + 14 * Math.sin(a),
-    y: shoulder.y + 17 + 6 * Math.sin(a),
+  return out as unknown as Skeleton;
+}
+
+const SKEL_KEYS: (keyof Skeleton)[] = [
+  "pelvis", "chest", "neck", "head",
+  "shoulderN", "elbowN", "wristN", "handN", "hipN", "kneeN", "ankleN", "toeN", "heelN",
+  "shoulderF", "elbowF", "wristF", "handF", "hipF", "kneeF", "ankleF", "toeF", "heelF",
+];
+
+function blendSkeletons(items: { sk: Skeleton; w: number }[]): Skeleton {
+  const out: Record<string, unknown> = {};
+  SKEL_KEYS.forEach((k) => {
+    let x = 0;
+    let y = 0;
+    items.forEach(({ sk, w }) => {
+      const p = sk[k] as Vec;
+      x += p.x * w;
+      y += p.y * w;
+    });
+    out[k] = { x, y };
   });
-  return {
-    hip, shoulder,
-    head: { x: 137, y: 49 + bob }, headR: 9,
-    wristN: wrist(armAng),
-    wristF: wrist(armAng + Math.PI),
-    ankleN: foot(ang),
-    ankleF: foot(ang + Math.PI),
-    toeN: 20, toeF: 20,
-    elbowBend: -1, kneeBend: 1,
-  };
+  out.headTilt = items.reduce((s, { sk, w }) => s + sk.headTilt * w, 0);
+  return out as unknown as Skeleton;
 }
 
-const blend2 = (a: P, b: P, k: number): P => ({ x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) });
-
-/** Weighted blend of the three poses. Weights sum to 1. Bend signs snap to the
- *  dominant discipline so the joints never flip mid-morph. */
-function blendPose(poses: Pose[], w: number[]): Pose {
-  const acc = (pick: (p: Pose) => P): P =>
-    poses.reduce((s, p, i) => add(s, { x: pick(p).x * w[i], y: pick(p).y * w[i] }), { x: 0, y: 0 });
-  const num = (pick: (p: Pose) => number) => poses.reduce((s, p, i) => s + pick(p) * w[i], 0);
-  const dom = w.indexOf(Math.max(...w));
-  return {
-    hip: acc((p) => p.hip), shoulder: acc((p) => p.shoulder), head: acc((p) => p.head),
-    headR: num((p) => p.headR),
-    wristN: acc((p) => p.wristN), wristF: acc((p) => p.wristF),
-    ankleN: acc((p) => p.ankleN), ankleF: acc((p) => p.ankleF),
-    toeN: num((p) => p.toeN), toeF: num((p) => p.toeF),
-    elbowBend: poses[dom].elbowBend, kneeBend: poses[dom].kneeBend,
-  };
-}
-
-/** progress (0-100) → discipline weights [swim, bike, run], with smooth morph bands. */
-function weights(progress: number): number[] {
+/** progress (0-100) → discipline weights, with smooth morph bands. */
+function disciplineWeights(progress: number): Record<Discipline, number> {
   const t = clamp(progress / 100, 0, 1);
-  const smooth = (k: number) => k * k * (3 - 2 * k);
-  if (t < 0.3) return [1, 0, 0];
-  if (t < 0.42) { const k = smooth((t - 0.3) / 0.12); return [1 - k, k, 0]; }
-  if (t < 0.64) return [0, 1, 0];
-  if (t < 0.76) { const k = smooth((t - 0.64) / 0.12); return [0, 1 - k, k]; }
-  return [0, 0, 1];
+  let swim = 0;
+  let bike = 0;
+  let run = 0;
+  if (t < 0.3) swim = 1;
+  else if (t < 0.42) {
+    const k = smoothstep((t - 0.3) / 0.12);
+    swim = 1 - k;
+    bike = k;
+  } else if (t < 0.64) bike = 1;
+  else if (t < 0.76) {
+    const k = smoothstep((t - 0.64) / 0.12);
+    bike = 1 - k;
+    run = k;
+  } else run = 1;
+  return { swim, bike, run };
 }
 
-// discipline stroke colours (fallbacks mirror the --swim/--bike/--run tokens)
+/* -----------------------------------------------------------------------------
+ * 8. Colour — blend the discipline tokens
+ * -------------------------------------------------------------------------- */
+
 type RGB = [number, number, number];
-const FALLBACK: RGB[] = [[28, 122, 162], [176, 111, 16], [197, 55, 47]];
-const mixColor = (cols: RGB[], w: number[]): string => {
-  const c = [0, 1, 2].map((ch) => Math.round(cols.reduce((s, col, i) => s + col[ch] * w[i], 0)));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+const FALLBACK: Record<Discipline, RGB> = {
+  swim: [28, 122, 162], // --swim
+  bike: [176, 111, 16], // --bike
+  run: [197, 55, 47], // --run
 };
 
-function readTokens(): RGB[] {
+function readTokens(): Record<Discipline, RGB> {
   if (typeof window === "undefined") return FALLBACK;
   const cs = getComputedStyle(document.documentElement);
   const parse = (name: string, fb: RGB): RGB => {
@@ -165,12 +631,303 @@ function readTokens(): RGB[] {
     const n = parseInt(m[1], 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   };
-  return [parse("--swim", FALLBACK[0]), parse("--bike", FALLBACK[1]), parse("--run", FALLBACK[2])];
+  return {
+    swim: parse("--swim", FALLBACK.swim),
+    bike: parse("--bike", FALLBACK.bike),
+    run: parse("--run", FALLBACK.run),
+  };
 }
+
+const rgb = (c: RGB) => `rgb(${Math.round(c[0])}, ${Math.round(c[1])}, ${Math.round(c[2])})`;
+const mix = (cols: { c: RGB; w: number }[]): RGB =>
+  [0, 1, 2].map((ch) => cols.reduce((s, { c, w }) => s + c[ch] * w, 0)) as RGB;
+const lighten = (c: RGB, t: number): RGB => [
+  lerp(c[0], 255, t),
+  lerp(c[1], 255, t),
+  lerp(c[2], 255, t),
+];
+
+/* -----------------------------------------------------------------------------
+ * 9. Silhouette renderer
+ *
+ * Every bone is a thick, round-capped stroke; joints are filled with a disc so
+ * the strokes union into one seamless solid body. Widths step down toward the
+ * extremities to imply taper. Two passes (far then near) give depth without any
+ * outline — pure Paper.
+ * -------------------------------------------------------------------------- */
+
+const P = (p: Vec) => `${round2(p.x)},${round2(p.y)}`;
+
+function Bone({ a, b, w, color }: { a: Vec; b: Vec; w: number; color: string }) {
+  return <line x1={round2(a.x)} y1={round2(a.y)} x2={round2(b.x)} y2={round2(b.y)} stroke={color} strokeWidth={w} strokeLinecap="round" />;
+}
+function Joint({ p, r, color }: { p: Vec; r: number; color: string }) {
+  return <circle cx={round2(p.x)} cy={round2(p.y)} r={round2(r)} fill={color} />;
+}
+
+function Athlete({ sk, color, farColor }: { sk: Skeleton; color: string; farColor: string }) {
+  // head geometry: an ellipse oriented along the neck
+  const headRx = 9.5;
+  const headRy = 11.5;
+
+  const Arm = ({ shoulder, elbow, wrist, hand, c, wm = 1 }: { shoulder: Vec; elbow: Vec; wrist: Vec; hand: Vec; c: string; wm?: number }) => (
+    <g>
+      <Bone a={shoulder} b={elbow} w={W.upperArm * wm} color={c} />
+      <Joint p={elbow} r={(W.foreArm / 2 + 0.5) * wm} color={c} />
+      <Bone a={elbow} b={wrist} w={W.foreArm * wm} color={c} />
+      <Joint p={hand} r={(W.foreArm / 2 + 1) * wm} color={c} />
+      <Bone a={wrist} b={hand} w={(W.foreArm - 2) * wm} color={c} />
+    </g>
+  );
+
+  const Leg = ({ hip, knee, ankle, toe, heel, c, wm = 1 }: { hip: Vec; knee: Vec; ankle: Vec; toe: Vec; heel: Vec; c: string; wm?: number }) => (
+    <g>
+      <Bone a={hip} b={knee} w={W.thigh * wm} color={c} />
+      <Joint p={knee} r={(W.shank / 2 + 1) * wm} color={c} />
+      <Bone a={knee} b={ankle} w={W.shank * wm} color={c} />
+      <Joint p={ankle} r={(W.foot / 2 + 0.5) * wm} color={c} />
+      {/* foot: heel → toe */}
+      <Bone a={heel} b={toe} w={W.foot * wm} color={c} />
+    </g>
+  );
+
+  const FAR_WM = 0.85;
+  return (
+    <g>
+      {/* far side (behind, lighter + thinner so it recedes) */}
+      <Arm shoulder={sk.shoulderF} elbow={sk.elbowF} wrist={sk.wristF} hand={sk.handF} c={farColor} wm={FAR_WM} />
+      <Leg hip={sk.hipF} knee={sk.kneeF} ankle={sk.ankleF} toe={sk.toeF} heel={sk.heelF} c={farColor} wm={FAR_WM} />
+
+      {/* torso mass — trunk stroke + hip & shoulder discs give body volume */}
+      <Joint p={sk.pelvis} r={W.trunk / 2} color={color} />
+      <Bone a={sk.pelvis} b={sk.chest} w={W.trunk} color={color} />
+      <Joint p={sk.chest} r={W.trunk / 2 - 1} color={color} />
+      <Bone a={sk.chest} b={sk.neck} w={W.neck} color={color} />
+
+      {/* head */}
+      <g transform={`rotate(${round2(sk.headTilt)} ${round2(sk.head.x)} ${round2(sk.head.y)})`}>
+        <ellipse cx={round2(sk.head.x)} cy={round2(sk.head.y)} rx={headRx} ry={headRy} fill={color} />
+      </g>
+
+      {/* near side (in front, solid) */}
+      <Leg hip={sk.hipN} knee={sk.kneeN} ankle={sk.ankleN} toe={sk.toeN} heel={sk.heelN} c={color} />
+      <Arm shoulder={sk.shoulderN} elbow={sk.elbowN} wrist={sk.wristN} hand={sk.handN} c={color} />
+    </g>
+  );
+}
+
+/* -----------------------------------------------------------------------------
+ * 10. Scene layers (water / bike / road / finish) — cross-faded on weights
+ *
+ * Every scene layer takes an `opacity` derived from the discipline weights, so
+ * the water dissolves exactly as the bike fades in and the road ticks arrive.
+ * Draw order (back → front): baseline, course ticks, contact shadow, transition
+ * marker, speed lines, water, bubbles, bike, finish tape, THEN the athlete, then
+ * the splash on top of the pulling hand. The athlete is always drawn last of the
+ * "live" figure layers so the solid silhouette reads cleanly over the scenery.
+ * -------------------------------------------------------------------------- */
+
+const GROUND = 150;
+
+function Water({ opacity, clock, color }: { opacity: number; clock: number; color: string }) {
+  if (opacity < 0.01) return null;
+  const line = (y: number, amp: number, ph: number, w: number, op: number) => {
+    const pts = Array.from({ length: 16 }, (_, i) => {
+      const x = i * 20;
+      const yy = y + amp * Math.sin(i * 0.9 + clock * 2.4 + ph);
+      return `${x} ${round2(yy)}`;
+    });
+    return <path d={`M0 ${y} L${pts.join(" L")}`} fill="none" stroke={color} strokeWidth={w} strokeLinecap="round" opacity={op} />;
+  };
+  return (
+    <g opacity={opacity}>
+      {line(122, 2.6, 0, 1.6, 0.55)}
+      {line(129, 2.0, 1.4, 1.2, 0.32)}
+      {line(136, 1.6, 3.0, 1.0, 0.2)}
+    </g>
+  );
+}
+
+function Splash({ opacity, clock, at, color }: { opacity: number; clock: number; at: Vec; color: string }) {
+  if (opacity < 0.01) return null;
+  const drops = Array.from({ length: 5 }, (_, i) => {
+    const a = (i / 5) * Math.PI - Math.PI * 0.15;
+    const t = (clock * 1.6 + i * 0.3) % 1;
+    const d = 6 + t * 14;
+    const p = { x: at.x + Math.cos(a) * d, y: at.y - Math.sin(a) * d - t * 4 };
+    return <circle key={i} cx={round2(p.x)} cy={round2(p.y)} r={round2(1.6 * (1 - t))} fill={color} opacity={(1 - t) * 0.7} />;
+  });
+  return <g opacity={opacity}>{drops}</g>;
+}
+
+/** A trail of little bubbles rising off the swimmer — cheap, but it sells the
+ *  "under water" read and gives the swim leg some life beyond the stroke. */
+function Bubbles({ opacity, clock, at, color }: { opacity: number; clock: number; at: Vec; color: string }) {
+  if (opacity < 0.02) return null;
+  const bubbles = Array.from({ length: 7 }, (_, i) => {
+    const seed = i * 0.618;
+    const t = (clock * 0.5 + seed) % 1;
+    const x = at.x - 6 - i * 3 + Math.sin((t + seed) * 6.283) * 2.4;
+    const y = 116 - t * 20; // rise toward the surface
+    const r = (0.8 + (i % 3) * 0.5) * (1 - t * 0.6);
+    return <circle key={i} cx={round2(x)} cy={round2(y)} r={round2(Math.max(0.2, r))} fill="none" stroke={color} strokeWidth={0.8} opacity={(1 - t) * 0.4} />;
+  });
+  return <g opacity={opacity}>{bubbles}</g>;
+}
+
+/** T1 / T2 transition markers — a hairline post + small pennant that drifts past
+ *  during a discipline change, the way a real transition zone flags the switch.
+ *  Only visible mid-morph so it never clutters a settled leg. */
+function Transition({ progress }: { progress: number }) {
+  // T1 sits in the swim→bike band (0.30–0.42), T2 in the bike→run band (0.64–0.76)
+  const bands: { lo: number; hi: number; label: string }[] = [
+    { lo: 30, hi: 42, label: "T1" },
+    { lo: 64, hi: 76, label: "T2" },
+  ];
+  const active = bands.find((b) => progress > b.lo && progress < b.hi);
+  if (!active) return null;
+  const k = (progress - active.lo) / (active.hi - active.lo); // 0→1 across the band
+  const x = lerp(250, 40, ease.inOutQuad(k)); // drifts leftward as we pass it
+  const op = Math.sin(k * Math.PI) * 0.5; // fade in then out
+  return (
+    <g opacity={op}>
+      <line x1={round2(x)} y1={GROUND} x2={round2(x)} y2={GROUND - 34} stroke="var(--text-faint)" strokeWidth={1.4} />
+      <path d={`M${round2(x)} ${GROUND - 34} L${round2(x + 12)} ${GROUND - 30} L${round2(x)} ${GROUND - 26} Z`} fill="var(--text-faint)" opacity={0.8} />
+      <text x={round2(x + 2)} y={GROUND - 6} fontSize={7} fill="var(--text-faint)" fontWeight={600} letterSpacing={0.5}>
+        {active.label}
+      </text>
+    </g>
+  );
+}
+
+function Bike({ opacity, clock, color }: { opacity: number; clock: number; color: string }) {
+  if (opacity < 0.01) return null;
+  // scene-space geometry roughly matching the cyclist rig placement
+  const rear = V(110, GROUND - 16);
+  const front = V(182, GROUND - 16);
+  const bb = V(146, GROUND - 16); // bottom bracket (crank centre in scene)
+  const seat = V(140, 96);
+  const bar = V(178, 96);
+  const wheelR = 16;
+  const spin = clock * 1.05 * 360;
+  const spoke = (wc: Vec, off: number) => {
+    const d1 = polar(wc, off + spin, wheelR);
+    const d2 = polar(wc, off + spin + 180, wheelR);
+    return <line x1={round2(d1.x)} y1={round2(d1.y)} x2={round2(d2.x)} y2={round2(d2.y)} stroke={color} strokeWidth={0.9} opacity={0.45} />;
+  };
+  return (
+    <g opacity={opacity} fill="none" stroke={color} strokeLinecap="round">
+      <circle cx={rear.x} cy={rear.y} r={wheelR} strokeWidth={2.4} />
+      <circle cx={front.x} cy={front.y} r={wheelR} strokeWidth={2.4} />
+      {[0, 45, 90, 135].map((o) => (
+        <g key={`r${o}`}>{spoke(rear, o)}</g>
+      ))}
+      {[0, 45, 90, 135].map((o) => (
+        <g key={`f${o}`}>{spoke(front, o)}</g>
+      ))}
+      <circle cx={rear.x} cy={rear.y} r={2} fill={color} />
+      <circle cx={front.x} cy={front.y} r={2} fill={color} />
+      {/* frame */}
+      <polyline points={`${P(rear)} ${P(bb)} ${P(seat)} ${P(rear)}`} strokeWidth={2.4} />
+      <polyline points={`${P(bb)} ${P(seat)}`} strokeWidth={2.4} />
+      <polyline points={`${P(seat)} ${P(bar)} ${P(front)}`} strokeWidth={2.4} />
+      <polyline points={`${P(bb)} ${P(bar)}`} strokeWidth={2.4} />
+      {/* handlebar + saddle caps */}
+      <line x1={bar.x} y1={bar.y} x2={bar.x + 7} y2={bar.y - 5} strokeWidth={2.4} />
+      <line x1={seat.x - 4} y1={seat.y} x2={seat.x + 4} y2={seat.y - 1} strokeWidth={2.6} />
+      {/* drivetrain: chainring at the bottom bracket + a chain loop back to the
+          rear cassette, and cranks that turn with the wheels */}
+      <circle cx={bb.x} cy={bb.y} r={4.5} strokeWidth={1.4} />
+      <circle cx={rear.x} cy={rear.y} r={4} strokeWidth={1.2} />
+      <line x1={round2(bb.x)} y1={round2(bb.y - 4.5)} x2={round2(rear.x)} y2={round2(rear.y - 4)} strokeWidth={1} opacity={0.7} />
+      <line x1={round2(bb.x)} y1={round2(bb.y + 4.5)} x2={round2(rear.x)} y2={round2(rear.y + 4)} strokeWidth={1} opacity={0.7} />
+      {(() => {
+        const c1 = polar(bb, spin, 8);
+        const c2 = polar(bb, spin + 180, 8);
+        return (
+          <>
+            <line x1={round2(bb.x)} y1={round2(bb.y)} x2={round2(c1.x)} y2={round2(c1.y)} strokeWidth={1.8} />
+            <line x1={round2(bb.x)} y1={round2(bb.y)} x2={round2(c2.x)} y2={round2(c2.y)} strokeWidth={1.8} />
+          </>
+        );
+      })()}
+      <circle cx={bb.x} cy={bb.y} r={2.4} fill={color} />
+    </g>
+  );
+}
+
+function SpeedLines({ opacity, clock, color }: { opacity: number; clock: number; color: string }) {
+  if (opacity < 0.01) return null;
+  return (
+    <g opacity={opacity}>
+      {[0, 1, 2].map((i) => {
+        const x = 84 - i * 30 - ((clock * 130) % 30);
+        return <line key={i} x1={round2(x)} y1={GROUND - 20 - i * 8} x2={round2(x - 20)} y2={GROUND - 20 - i * 8} stroke={color} strokeWidth={2.2} strokeLinecap="round" opacity={0.32 - i * 0.08} />;
+      })}
+    </g>
+  );
+}
+
+/** Soft ground-contact shadow — grounds the athlete so it doesn't float. Wide &
+ *  flat under the bike, tighter under the runner; cross-fades between the two. */
+function Shadow({ wBike, wRun, athleteX }: { wBike: number; wRun: number; athleteX: number }) {
+  const op = wBike + wRun;
+  if (op < 0.02) return null;
+  const cx = (146 * wBike + athleteX * wRun) / (op || 1);
+  const rx = (46 * wBike + 26 * wRun) / (op || 1);
+  return <ellipse cx={round2(cx)} cy={GROUND + 2.5} rx={round2(rx)} ry={3.4} fill="var(--text)" opacity={op * 0.09} />;
+}
+
+/** Scrolling ground ticks — a quiet metronome of distance sliding past, so the
+ *  bike/run legs read as forward travel rather than a treadmill in place. */
+function Course({ opacity, clock }: { opacity: number; clock: number }) {
+  if (opacity < 0.02) return null;
+  const spacing = 46;
+  const shift = ((clock * 118) % spacing + spacing) % spacing;
+  const ticks = [];
+  for (let i = -1; i < 8; i++) {
+    const x = i * spacing - shift + 14;
+    ticks.push(
+      <line key={i} x1={round2(x)} y1={GROUND + 1} x2={round2(x - 9)} y2={GROUND + 1} stroke="var(--line)" strokeWidth={1.6} strokeLinecap="round" />,
+    );
+  }
+  return <g opacity={opacity}>{ticks}</g>;
+}
+
+function Finish({ progress }: { progress: number }) {
+  if (progress <= 76) return null;
+  const k = clamp((progress - 76) / 24, 0, 1);
+  const x = lerp(320, 196, ease.outCubic(k));
+  const op = clamp((progress - 76) / 12, 0, 1);
+  return (
+    <g opacity={op}>
+      <line x1={round2(x)} y1={GROUND} x2={round2(x)} y2={GROUND - 96} stroke="var(--text)" strokeWidth={2.4} />
+      {Array.from({ length: 8 }).map((_, i) => (
+        <rect key={i} x={round2(x - 7)} y={GROUND - 96 + i * 10} width={7} height={10} fill={i % 2 ? "var(--text)" : "#fff"} stroke="var(--text)" strokeWidth={0.5} />
+      ))}
+      <line x1={round2(x)} y1={GROUND - 52} x2={round2(x - 60)} y2={GROUND - 52} stroke="var(--text)" strokeWidth={1.5} opacity={0.5} strokeDasharray="1 4" />
+      {/* small small-caps FINISH tag at the top of the post, in the Paper voice */}
+      <text
+        x={round2(x + 4)}
+        y={GROUND - 92}
+        fontSize={7}
+        fontWeight={700}
+        letterSpacing={1.2}
+        fill="var(--text)"
+      >
+        FINISH
+      </text>
+    </g>
+  );
+}
+
+/* -----------------------------------------------------------------------------
+ * 11. The component
+ * -------------------------------------------------------------------------- */
 
 export function TriathleteMorph({
   progress,
-  width = 280,
+  width = 300,
   frozenClock,
 }: {
   progress: number;
@@ -178,16 +935,19 @@ export function TriathleteMorph({
   frozenClock?: number;
 }) {
   const [clock, setClock] = useState(frozenClock ?? 0);
-  const cols = useRef<RGB[]>(FALLBACK);
+  const tokens = useRef<Record<Discipline, RGB>>(FALLBACK);
 
   useEffect(() => {
-    cols.current = readTokens();
+    tokens.current = readTokens();
   }, []);
 
   useEffect(() => {
-    if (frozenClock != null) { setClock(frozenClock); return; }
-    const reduce = typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (frozenClock != null) {
+      setClock(frozenClock);
+      return;
+    }
+    const reduce =
+      typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduce) return;
     let raf = 0;
     let start = 0;
@@ -200,127 +960,50 @@ export function TriathleteMorph({
     return () => cancelAnimationFrame(raf);
   }, [frozenClock]);
 
-  const w = weights(progress);
-  // per-discipline limb cadences (cycles/sec)
-  const poses = [swimPose(clock * 0.55), bikePose(clock * 1.05), runPose(clock * 1.45)];
-  const pose = blendPose(poses, w);
+  const w = disciplineWeights(progress);
 
-  const elbowN = ik(pose.shoulder, pose.wristN, UP_ARM, FORE_ARM, pose.elbowBend);
-  const elbowF = ik(pose.shoulder, pose.wristF, UP_ARM, FORE_ARM, pose.elbowBend);
-  const kneeN = ik(pose.hip, pose.ankleN, THIGH, SHANK, pose.kneeBend);
-  const kneeF = ik(pose.hip, pose.ankleF, THIGH, SHANK, pose.kneeBend);
-  const toeN = add(pose.ankleN, { x: FOOT * dir(pose.toeN).x, y: FOOT * dir(pose.toeN).y });
-  const toeF = add(pose.ankleF, { x: FOOT * dir(pose.toeF).x, y: FOOT * dir(pose.toeF).y });
+  // per-discipline cadences (cycles / second)
+  const cad: Record<Discipline, number> = { swim: 0.5, bike: 1.0, run: 1.5 };
 
-  const color = mixColor(cols.current, w);
-  const [wSwim, wBike, wRun] = w;
-  const groundOp = wBike + wRun;
+  // build + place only the active skeletons, then blend
+  const active = (Object.keys(w) as Discipline[]).filter((d) => w[d] > 0.001);
+  const sk = useMemo(() => {
+    const items = active.map((d) => ({ sk: place(BUILDERS[d](clock * cad[d]), d), w: w[d] }));
+    return blendSkeletons(items);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clock, progress]);
 
-  // bike geometry (fades with wBike)
-  const bb = { x: 129, y: 117 };
-  const rearW = { x: 100, y: GROUND - 2 };
-  const frontW = { x: 176, y: GROUND - 2 };
-  const seat = { x: 118, y: 98 };
-  const bar = { x: 173, y: 99 };
-  const wheelR = 15;
-  const spin = clock * 1.05 * 360;
+  // colour
+  const colItems = active.map((d) => ({ c: tokens.current[d], w: w[d] }));
+  const base = colItems.length ? mix(colItems) : FALLBACK.run;
+  const color = rgb(base);
+  const farColor = rgb(lighten(base, 0.6));
 
-  // finish tape — slides in from the right during the run and meets the athlete at 100%
-  const finishX = lerp(300, 168, clamp((progress - 76) / 24, 0, 1));
-
-  // round every dynamic SVG coordinate to 2dp so server + client render byte-identical
-  // strings (raw floats differ by an ULP between environments → hydration mismatch)
-  const R = (n: number) => Math.round(n * 100) / 100;
-  const P = (p: P) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
-  const line = (a: P, b: P, sw = 3.4) => (
-    <line x1={R(a.x)} y1={R(a.y)} x2={R(b.x)} y2={R(b.y)} stroke={color} strokeWidth={sw} strokeLinecap="round" />
-  );
+  const handN = sk.handN;
 
   return (
-    <svg viewBox="0 0 260 170" width={width} height={width * (170 / 260)} style={{ display: "block", overflow: "visible" }} aria-hidden>
-      {/* ground line — for bike + run */}
-      <line x1="16" y1={GROUND} x2="244" y2={GROUND} stroke="var(--line)" strokeWidth="1.5" opacity={groundOp} />
+    <svg
+      viewBox="0 0 300 200"
+      width={width}
+      height={width * (200 / 300)}
+      style={{ display: "block", overflow: "visible" }}
+      aria-hidden
+    >
+      {/* baseline for bike + run */}
+      <line x1={12} y1={GROUND} x2={288} y2={GROUND} stroke="var(--line)" strokeWidth={1.5} opacity={w.bike + w.run} />
+      <Course opacity={w.bike + w.run} clock={clock} />
 
-      {/* run speed ticks */}
-      {wRun > 0.01 && [0, 1, 2].map((i) => {
-        const x = 70 - i * 26 - ((clock * 120) % 26);
-        return <line key={i} x1={R(x)} y1={GROUND - 14 - i * 6} x2={R(x - 16)} y2={GROUND - 14 - i * 6}
-          stroke={color} strokeWidth="2" strokeLinecap="round" opacity={wRun * (0.28 - i * 0.06)} />;
-      })}
+      <Shadow wBike={w.bike} wRun={w.run} athleteX={sk.pelvis.x} />
+      <Transition progress={progress} />
+      <SpeedLines opacity={w.run} clock={clock} color={color} />
+      <Water opacity={w.swim} clock={clock} color={color} />
+      <Bubbles opacity={w.swim} clock={clock} at={sk.head} color={color} />
+      <Bike opacity={w.bike} clock={clock} color={color} />
+      <Finish progress={progress} />
 
-      {/* water — swim surface + ripple */}
-      {wSwim > 0.01 && (
-        <g opacity={wSwim}>
-          <path
-            d={`M8 112 ${Array.from({ length: 12 }).map((_, i) => {
-              const x = 8 + i * 22;
-              const y = 112 + 2.5 * Math.sin(i * 1.1 + clock * 3);
-              return `L${x.toFixed(1)} ${y.toFixed(1)}`;
-            }).join(" ")}`}
-            fill="none" stroke={color} strokeWidth="1.5" opacity={0.5}
-          />
-          <path
-            d={`M8 118 ${Array.from({ length: 12 }).map((_, i) => {
-              const x = 8 + i * 22;
-              const y = 118 + 2 * Math.sin(i * 1.1 + clock * 3 + 1.5);
-              return `L${x.toFixed(1)} ${y.toFixed(1)}`;
-            }).join(" ")}`}
-            fill="none" stroke={color} strokeWidth="1" opacity={0.28}
-          />
-        </g>
-      )}
+      <Athlete sk={sk} color={color} farColor={farColor} />
 
-      {/* bike — line-art, fades in under the cyclist */}
-      {wBike > 0.01 && (
-        <g opacity={wBike} stroke={color} fill="none" strokeLinecap="round">
-          <circle cx={rearW.x} cy={rearW.y} r={wheelR} strokeWidth="2.4" />
-          <circle cx={frontW.x} cy={frontW.y} r={wheelR} strokeWidth="2.4" />
-          {/* spokes */}
-          {[rearW, frontW].map((wc, wi) =>
-            [0, 60, 120].map((a) => {
-              const d1 = dir(a + spin), d2 = dir(a + spin + 180);
-              return <line key={`${wi}-${a}`} x1={R(wc.x + d1.x * wheelR)} y1={R(wc.y + d1.y * wheelR)}
-                x2={R(wc.x + d2.x * wheelR)} y2={R(wc.y + d2.y * wheelR)} strokeWidth="0.8" opacity={0.5} />;
-            })
-          )}
-          {/* frame */}
-          <polyline points={`${P(rearW)} ${P(bb)} ${P(seat)} ${P(rearW)}`} strokeWidth="2" />
-          <polyline points={`${P(bb)} ${P(seat)} ${P(bar)} ${P(frontW)}`} strokeWidth="2" />
-          <line x1={bar.x} y1={bar.y} x2={bar.x + 6} y2={bar.y - 4} strokeWidth="2" />
-        </g>
-      )}
-
-      {/* finish tape */}
-      {progress > 76 && (
-        <g opacity={clamp((progress - 76) / 12, 0, 1)}>
-          <line x1={R(finishX)} y1={GROUND} x2={R(finishX)} y2={GROUND - 74} stroke="var(--text)" strokeWidth="2" />
-          {Array.from({ length: 7 }).map((_, i) => (
-            <rect key={i} x={R(finishX - 6)} y={GROUND - 74 + i * 9} width="6" height="9"
-              fill={i % 2 ? "var(--text)" : "#fff"} stroke="var(--text)" strokeWidth="0.5" />
-          ))}
-          <line x1={R(finishX)} y1={GROUND - 40} x2={R(pose.shoulder.x)} y2={GROUND - 40}
-            stroke="var(--text)" strokeWidth="1.5" opacity={0.55} strokeDasharray="1 4" />
-        </g>
-      )}
-
-      {/* ---- the athlete (drawn last, on top) ---- */}
-      {/* far limbs first (behind torso), slightly lighter for depth */}
-      <g opacity={0.72}>
-        {line(pose.shoulder, elbowF, 3)}
-        {line(elbowF, pose.wristF, 3)}
-        {line(pose.hip, kneeF, 3.2)}
-        {line(kneeF, pose.ankleF, 3.2)}
-        {line(pose.ankleF, toeF, 3)}
-      </g>
-      {/* torso + head */}
-      {line(pose.shoulder, pose.hip, 4.4)}
-      <circle cx={R(pose.head.x)} cy={R(pose.head.y)} r={R(pose.headR)} fill={color} />
-      {/* near limbs */}
-      {line(pose.shoulder, elbowN, 3.4)}
-      {line(elbowN, pose.wristN, 3.4)}
-      {line(pose.hip, kneeN, 3.6)}
-      {line(kneeN, pose.ankleN, 3.6)}
-      {line(pose.ankleN, toeN, 3.2)}
+      <Splash opacity={w.swim} clock={clock} at={handN} color={color} />
     </svg>
   );
 }
