@@ -88,6 +88,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [perSport, setPerSport] = useState(profile.perSport ?? defaultSportSplit(profile));
   const [strength, setStrength] = useState<StrengthPref>(profile.strength ?? { enabled: false, daysPerWeek: 2, split: "full" });
   const [restDay, setRestDay] = useState<number | undefined>(profile.restDayPreference);
+  const [longDay, setLongDay] = useState<number>(profile.longSessionDay ?? 5);
   const [ftp, setFtp] = useState(profile.ftp);
   const [maxHR, setMaxHR] = useState(profile.maxHR);
   const [hoursCap, setHoursCap] = useState(profile.weeklyHoursCap);
@@ -169,6 +170,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       perSport,
       strength,
       restDayPreference: restDay,
+      longSessionDay: longDay,
       runPR,
       swimPR,
       bikePR,
@@ -339,6 +341,12 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               <span className="eyebrow mr-1 self-center text-[0.66rem]">Rest day</span>
               {WD.map((w, i) => (
                 <button key={w} onClick={() => setRestDay(restDay === i ? undefined : i)} className={`chip ${restDay === i ? "border-accent bg-accent/10 text-foreground" : ""}`}>{w}</button>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="eyebrow mr-1 self-center text-[0.66rem]">Long day</span>
+              {WD.map((w, i) => (
+                <button key={w} onClick={() => setLongDay(i)} className={`chip ${longDay === i ? "border-accent bg-accent/10 text-foreground" : ""}`}>{w}</button>
               ))}
             </div>
           </Field>

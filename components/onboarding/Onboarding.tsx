@@ -31,6 +31,7 @@ interface Draft {
   focusDiscipline?: Discipline;
   strength: { enabled: boolean; daysPerWeek: number; split: StrengthSplit; customSplit?: string };
   restDayPreference?: number;
+  longSessionDay?: number;
   weeklyHoursCap?: number;
   equipment: { pool: boolean; trainer: boolean; gym: boolean };
   blackouts: DateRange[];
@@ -146,6 +147,7 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
       perSport: { ...ps },
       strength: draft.strength,
       restDayPreference: draft.restDayPreference,
+      longSessionDay: draft.longSessionDay ?? 5, // default Saturday
       runPR: draft.runPR,
       swimPR: draft.swimPR,
       bikePR: draft.bikePR,
@@ -819,6 +821,22 @@ function ScheduleStep({ draft, set }: StepProps) {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="mb-5">
+        <div className="mb-2 eyebrow text-[0.72rem]">Long-workout day</div>
+        <div className="flex flex-wrap gap-2">
+          {WD.map((w, i) => (
+            <button
+              key={w}
+              onClick={() => set((d) => ({ ...d, longSessionDay: i }))}
+              className={`chip ${(draft.longSessionDay ?? 5) === i ? "is-selected" : ""}`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">The day you have the most time — we&apos;ll anchor your long ride here and the long run the day after.</p>
       </div>
 
       <div className="mb-5">
