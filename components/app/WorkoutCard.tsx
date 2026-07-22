@@ -16,6 +16,7 @@ export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; on
   const isRace = /race day/i.test(workout.title);
   const dc = isRace ? "var(--accent)" : `var(${meta.colorVar})`;
   const zc = `var(--z${workout.primaryZone})`;
+  const zoneDark = workout.primaryZone >= 3; // darker zone bg → white text
 
   return (
     <button
@@ -72,7 +73,7 @@ export function WorkoutCard({ workout, onOpen, compact }: { workout: Workout; on
       ) : (
         <span
           className="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[0.68rem] font-semibold tabular-nums"
-          style={{ background: zc, color: "#14140f" }}
+          style={{ background: zc, color: zoneDark ? "#ffffff" : "#0f0f0f" }}
         >
           Z{workout.primaryZone}
         </span>
