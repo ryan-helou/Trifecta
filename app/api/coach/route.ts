@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth-server";
+import { aiEnabled, aiText } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Cheap, optional AI coach. Uses Claude Haiku 4.5 with a tight output cap so
-// cost stays a fraction of a cent per call. The whole app works without it.
+// Cheap, optional AI coach. Runs on the provider configured in lib/ai (Gemini
+// flash-lite by default) with a tight output cap so cost stays a fraction of a
+// cent per call. The whole app works without it.
 
 const SYSTEM = `You are the AmaTri Coach — an expert, encouraging triathlon coach.
 Rules:
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
   const uid = getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!aiEnabled()) {
     return NextResponse.json({
       enabled: false,
       text: "The AI coach isn't switched on yet. Your plan is fully built and ready — everything works without it.",
@@ -52,28 +54,15 @@ export async function POST(req: NextRequest) {
   const question = String(body.question ?? "").slice(0, 600);
 
   try {
-    // dynamic import keeps the SDK out of the client bundle
-    const Anthropic = (await import("@anthropic-ai/sdk")).default;
-    const client = new Anthropic();
-    const msg = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 400,
-      system: SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: `Athlete context:\n${context}\n\n${
-            question ? `Question: ${question}` : "Give a short, motivating note for today."
-          }`,
-        },
-      ],
-    });
-    const text = msg.content
-      .map((b) => (b.type === "text" ? b.text : ""))
-      .join("")
-      .trim();
+    const text = await aiText(
+      SYSTEM,
+      `Athlete context:\n${context}\n\n${
+        question ? `Question: ${question}` : "Give a short, motivating note for today."
+      }`,
+      400,
+    );
     return NextResponse.json({ enabled: true, text: text || "Stay consistent — the work adds up." });
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { enabled: true, text: "The coach is catching its breath. Your plan is ready to go regardless." },
       { status: 200 },

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../AppProvider";
 import { LoadingAnimation } from "../LoadingAnimation";
+import { Wordmark } from "../Wordmark";
 import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit, Unit } from "@/lib/types";
 import { generatePlan } from "@/lib/planEngine";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
@@ -98,10 +99,13 @@ function newInjuries(parsed: ParsedInjury[]): Injury[] {
     .filter((i) => i.disciplines.length > 0);
 }
 
-export function Onboarding() {
-  const { username, startPlan, applyPlan } = useApp();
+export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
+  const { username, startPlan, applyPlan, signupAndStart } = useApp();
   const [idx, setIdx] = useState(0);
   const [generating, setGenerating] = useState(false);
+  // for anon athletes: the plan is built and held here while they create their
+  // account — the account is the last step, after they've watched it forge.
+  const [built, setBuilt] = useState<{ profile: Profile; plan: ReturnType<typeof generatePlan> } | null>(null);
   const [draft, setDraft] = useState<Draft>({
     custom: { swimM: 1500, bikeM: 40000, runM: 10000, name: "My Race" },
     perSport: { swim: 2, bike: 2, run: 2 },
@@ -119,12 +123,14 @@ export function Onboarding() {
     perSport.swim + perSport.bike + perSport.run + (draft.strength.enabled ? draft.strength.daysPerWeek : 0);
 
   const finalProfile: Profile | null = useMemo(() => {
-    if (!username || !draft.raceType || !draft.raceDateISO || !draft.level) return null;
+    // the account is created last, so a profile can be assembled before we have a
+    // username — it's filled in at signup (see signupAndStart)
+    if (!draft.raceType || !draft.raceDateISO || !draft.level) return null;
     const ps = resolvePerSport(draft);
     const strengthDays = draft.strength.enabled ? draft.strength.daysPerWeek : 0;
     const wpw = Math.max(1, Math.min(21, ps.swim + ps.bike + ps.run + strengthDays));
     return {
-      username,
+      username: username ?? "",
       raceType: draft.raceType,
       custom: draft.raceType === "custom" ? draft.custom : undefined,
       raceName: draft.raceType === "custom" ? undefined : draft.raceName,
@@ -194,24 +200,54 @@ export function Onboarding() {
         profile={finalProfile}
         onDone={() => {
           const plan = generatePlan(finalProfile);
-          startPlan(finalProfile, plan);
           // fire-and-forget: attach cheap AI "why this plan" + per-phase notes if enabled
-          apiPlanSummary(planSummaryContext(plan))
-            .then((r) => {
-              if (r.enabled && (r.text || (r.phases && Object.keys(r.phases).length))) {
-                applyPlan({ ...plan, coachSummary: r.text || plan.coachSummary, phaseNotes: r.phases });
-              }
-            })
-            .catch(() => {});
+          const enrich = (base: typeof plan, commit: (p: typeof plan) => void) => {
+            apiPlanSummary(planSummaryContext(base))
+              .then((r) => {
+                if (r.enabled && (r.text || (r.phases && Object.keys(r.phases).length))) {
+                  commit({ ...base, coachSummary: r.text || base.coachSummary, phaseNotes: r.phases });
+                }
+              })
+              .catch(() => {});
+          };
+          if (username) {
+            // returning athlete already has an account — commit straight to the app
+            startPlan(finalProfile, plan);
+            enrich(plan, applyPlan);
+          } else {
+            // anon athlete: hold the built plan and move to the final step — the
+            // account. enrich in the background so the AI note is ready if it lands.
+            setBuilt({ profile: finalProfile, plan });
+            setGenerating(false);
+            enrich(plan, (p) => setBuilt((b) => (b ? { ...b, plan: p } : b)));
+          }
         }}
       />
     );
   }
 
+  // final onboarding step for anon athletes: create the account, then their plan
+  // (already built above) is committed and persisted in one atomic move.
+  if (built) {
+    return <AccountStep built={built} onCreate={signupAndStart} onBack={() => setBuilt(null)} onLogin={onLogin} />;
+  }
+
   return (
     <div className="flex flex-1 flex-col safe-t">
+      {/* header: brand + a quiet log-in door for returning athletes */}
+      {!username && onLogin && (
+        <div className="mx-auto flex w-full max-w-md items-center justify-between px-6 pt-5">
+          <span className="font-display text-base font-semibold tracking-tight">
+            <Wordmark />
+          </span>
+          <button onClick={onLogin} className="text-sm font-semibold text-muted transition hover:text-foreground">
+            Log in
+          </button>
+        </div>
+      )}
+
       {/* progress bar */}
-      <div className="px-6 pt-6">
+      <div className="px-6 pt-4">
         <div className="mx-auto flex max-w-md gap-1.5">
           {Array.from({ length: visibleCount }).map((_, i) => (
             <div
@@ -249,6 +285,97 @@ export function Onboarding() {
           ) : (
             <button onClick={next} disabled={!canNext} className="btn btn-primary flex-1 py-3.5 text-base">
               Continue
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- account (final step) ----------------
+
+/** The last thing an anon athlete does: their plan is already built and waiting;
+ *  creating the account commits + persists it and drops them into the app. */
+function AccountStep({
+  built,
+  onCreate,
+  onBack,
+  onLogin,
+}: {
+  built: { profile: Profile; plan: ReturnType<typeof generatePlan> };
+  onCreate: (u: string, p: string, profile: Profile, plan: ReturnType<typeof generatePlan>) => Promise<string | null>;
+  onBack: () => void;
+  onLogin?: () => void;
+}) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy || !username.trim() || !password) return;
+    setBusy(true);
+    setError(null);
+    const err = await onCreate(username.trim(), password, built.profile, built.plan);
+    if (err) {
+      setError(err);
+      setBusy(false);
+    }
+    // on success the app takes over — no need to reset busy
+  }
+
+  return (
+    <div className="flex flex-1 flex-col safe-t">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-6 py-8">
+        <div className="animate-fade-up">
+          <div className="eyebrow text-[0.78rem] text-accent">Your plan is ready</div>
+          <h2 className="mt-2 font-display text-3xl font-semibold leading-tight tracking-tight">
+            Save it to your account
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            {built.plan.totalWeeks}
+            {" "}weeks to the start line. Pick a username and password — that&apos;s all it takes to keep your
+            plan and log every session with <Wordmark />.
+          </p>
+        </div>
+
+        <form onSubmit={submit} className="mt-7 flex flex-col gap-3">
+          <label className="eyebrow text-[0.78rem]">Username</label>
+          <input
+            className="input"
+            value={username}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="ironmike"
+          />
+          <label className="eyebrow mt-1 text-[0.78rem]">Password</label>
+          <input
+            className="input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+          {error && (
+            <div className="mt-1 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>
+          )}
+          <button type="submit" disabled={busy || !username.trim() || !password} className="btn btn-primary mt-4 py-3.5 text-base">
+            {busy ? "Saving your plan…" : "Create account & start"}
+            {!busy && <span aria-hidden className="text-lg leading-none">→</span>}
+          </button>
+        </form>
+
+        <div className="mt-auto flex items-center justify-between pt-8 text-sm">
+          <button onClick={onBack} className="font-semibold text-muted transition hover:text-foreground">
+            ← Back
+          </button>
+          {onLogin && (
+            <button onClick={onLogin} className="text-muted transition hover:text-foreground">
+              Have an account? <span className="font-semibold text-foreground">Log in</span>
             </button>
           )}
         </div>
