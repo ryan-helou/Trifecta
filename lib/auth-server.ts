@@ -10,11 +10,23 @@ export const SESSION_COOKIE = "ip_session";
 const SESSION_TTL_SEC = 60 * 60 * 24 * 60; // 60 days
 
 function secret(): string {
-  return (
-    process.env.SESSION_SECRET ||
-    process.env.DATABASE_URL || // stable-ish fallback in prod
-    "trifecta-dev-secret-change-me"
-  );
+  const s = process.env.SESSION_SECRET;
+  if (s && s.length >= 16) return s;
+  // P0 (docs/knowledge/08 §3.6): never sign sessions with the hardcoded dev secret
+  // in production — it lives in the repo, so anyone could forge a token for any
+  // userId (full account takeover). Fall back to DATABASE_URL (not publicly known)
+  // only as a last resort + warn; a dedicated SESSION_SECRET should be set. Throw
+  // if neither exists rather than sign with a guessable value.
+  if (process.env.NODE_ENV === "production") {
+    if (process.env.DATABASE_URL) {
+      console.warn(
+        "[auth] SESSION_SECRET not set — using DATABASE_URL as a fallback. Set a dedicated SESSION_SECRET (>=16 chars).",
+      );
+      return process.env.DATABASE_URL;
+    }
+    throw new Error("SESSION_SECRET (>=16 chars) is required in production.");
+  }
+  return "trifecta-dev-secret-change-me-please";
 }
 
 // ---- passwords ----
@@ -74,8 +86,14 @@ export function verifySessionToken(token: string | undefined | null): string | n
 }
 
 export function getUserIdFromRequest(req: NextRequest): string | null {
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  return verifySessionToken(token);
+  // Native (bundled) app: Bearer token in the Authorization header — no cookie
+  // survives the capacitor://localhost origin. Web PWA: the httpOnly session cookie.
+  const auth = req.headers.get("authorization");
+  if (auth && auth.startsWith("Bearer ")) {
+    const uid = verifySessionToken(auth.slice(7).trim());
+    if (uid) return uid;
+  }
+  return verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
 }
 
 export function sessionCookie(userId: string) {

@@ -12,12 +12,17 @@
     "start": "next start -H 0.0.0.0",
     "lint": "eslint",
     "icons": "node scripts/gen-icons.mjs",
-    "assets:native": "node scripts/gen-native-assets.mjs"
+    "assets:native": "node scripts/gen-native-assets.mjs",
+    "build:static": "node scripts/build-static.mjs",
+    "ota": "npm run build:static && npx @capgo/cli bundle upload --path out --channel production"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",
+    "@aparajita/capacitor-secure-storage": "^8.0.0",
     "@capacitor/core": "^8.4.2",
     "@capacitor/ios": "^8.4.2",
+    "@capgo/capacitor-health": "^8.9.4",
+    "@capgo/capacitor-updater": "^8.51.2",
     "next": "16.2.10",
     "openai": "^6.48.0",
     "pg": "^8.22.0",

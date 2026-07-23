@@ -14,10 +14,12 @@ import { Notifications } from "./Notifications";
 import { Wordmark } from "../Wordmark";
 
 export function ProfileTab() {
-  const { plan, username, profile, logout, resetPlan } = useApp();
+  const { plan, username, profile, logout, deleteAccount, resetPlan } = useApp();
   const { actions, today, openSettings } = useUI();
   const toast = useToast();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   if (!plan || !profile) return null;
 
   const recalibrate = () => {
@@ -153,6 +155,39 @@ export function ProfileTab() {
           </div>
         )}
         <button onClick={logout} className="btn btn-ghost w-full py-3">Log out</button>
+
+        {!confirmDelete ? (
+          <button onClick={() => setConfirmDelete(true)} className="btn btn-ghost w-full py-3 text-danger">Delete account</button>
+        ) : (
+          <div className="rounded-2xl border border-danger/40 bg-danger/5 p-3">
+            <div className="mb-2 text-sm">This permanently erases your account and all your data. This can’t be undone.</div>
+            <div className="flex gap-2">
+              <button
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  const err = await deleteAccount();
+                  if (err) {
+                    toast({ text: err, tone: "warning" });
+                    setDeleting(false);
+                    setConfirmDelete(false);
+                  }
+                }}
+                className="btn flex-1 py-2.5"
+                style={{ background: "var(--danger)", color: "#fff" }}
+              >
+                {deleting ? "Deleting…" : "Delete everything"}
+              </button>
+              <button onClick={() => setConfirmDelete(false)} className="btn btn-ghost flex-1 py-2.5">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        <div className="pt-1 text-center text-xs text-muted">
+          <a href="/privacy" className="underline">Privacy</a>
+          <span className="px-2">·</span>
+          <a href="/terms" className="underline">Terms</a>
+        </div>
       </div>
 
       <div className="eyebrow pb-4 text-center text-[0.66rem]">

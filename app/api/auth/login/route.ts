@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
-import { sessionCookie, verifyPassword } from "@/lib/auth-server";
+import { createSessionToken, sessionCookie, verifyPassword } from "@/lib/auth-server";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
@@ -36,7 +36,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Wrong username or password." }, { status: 401 });
   }
 
-  const res = NextResponse.json({ user: { username: user.username }, state: user.data ?? {} });
+  // token in the body for the native/bundled app (Bearer); cookie for the web PWA.
+  const res = NextResponse.json({
+    user: { username: user.username },
+    state: user.data ?? {},
+    token: createSessionToken(user.id),
+  });
   res.cookies.set(sessionCookie(user.id));
   return res;
 }
