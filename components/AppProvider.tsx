@@ -103,7 +103,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       writeCache(uname, prof, pl);
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        apiSaveState(prof, pl).catch(() => setOffline(true));
+        apiSaveState(prof, pl)
+          .then(() => setOffline(false)) // a save that lands means we're back online — clear the banner
+          .catch(() => setOffline(true));
       }, 700);
     },
     [],
