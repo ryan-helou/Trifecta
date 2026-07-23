@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Plan, Profile } from "@/lib/types";
 import { apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
+import { clearToken, loadToken, setToken } from "@/lib/tokenStore";
 
 type Screen = "loading" | "anon" | "onboarding" | "app";
 
@@ -70,6 +71,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
+        await loadToken(); // native: read the Bearer token from the Keychain before the first API call
         const me = await apiMe();
         if (cancelled) return;
         if (me.authenticated && me.user) {
@@ -114,6 +116,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const signup = useCallback(async (u: string, p: string): Promise<string | null> => {
     const { ok, data } = await apiSignup(u, p);
     if (!ok) return data.error || "Could not sign up.";
+    if (data.token) await setToken(data.token); // native: persist the Bearer token
     setUsername(data.user.username);
     setProfile(null);
     setPlan(null);
@@ -125,6 +128,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (u: string, p: string): Promise<string | null> => {
     const { ok, data } = await apiLogin(u, p);
     if (!ok) return data.error || "Could not sign in.";
+    if (data.token) await setToken(data.token); // native: persist the Bearer token
     const st = data.state ?? {};
     setUsername(data.user.username);
     setProfile((st.profile as Profile) ?? null);
@@ -142,6 +146,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async (u: string, p: string, prof: Profile, pl: Plan): Promise<string | null> => {
       const { ok, data } = await apiSignup(u, p);
       if (!ok) return data.error || "Could not create your account.";
+      if (data.token) await setToken(data.token); // native: persist the Bearer token
       const uname = data.user.username;
       const profNamed: Profile = { ...prof, username: uname };
       const planNamed: Plan = { ...pl, profile: profNamed };
@@ -158,6 +163,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await apiLogout().catch(() => {});
+    await clearToken(); // native: drop the Keychain token
     try {
       localStorage.removeItem(CACHE_KEY);
     } catch {}

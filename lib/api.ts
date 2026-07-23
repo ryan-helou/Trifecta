@@ -1,11 +1,25 @@
 import { Plan, Profile } from "./types";
+import { API_BASE, IS_NATIVE } from "./runtime";
+import { getTokenSync } from "./tokenStore";
 
 // Client-side fetch wrappers for the API routes.
+//
+// Web PWA: relative URLs + same-origin httpOnly cookie.
+// Native (bundled) app: absolute URL to the Railway API + Bearer token, no cookies.
 
 async function jsonFetch(url: string, opts?: RequestInit) {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((opts?.headers as Record<string, string>) ?? {}),
+  };
+  if (IS_NATIVE) {
+    const token = getTokenSync();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+  const res = await fetch(API_BASE + url, {
     ...opts,
+    headers,
+    credentials: IS_NATIVE ? "omit" : "same-origin",
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
