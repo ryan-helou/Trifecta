@@ -39,6 +39,8 @@ export interface Store {
   createUser(username: string, passwordHash: string): Promise<UserRow>;
   getData(userId: string): Promise<AppState>;
   setData(userId: string, data: AppState): Promise<void>;
+  /** Erase the user and all their data (GDPR right to erasure). */
+  deleteUser(userId: string): Promise<void>;
   // Strava
   getStravaByUser(userId: string): Promise<StravaConn | null>;
   getStravaByAthlete(athleteId: number): Promise<StravaConn | null>;
@@ -287,6 +289,12 @@ class PgStore implements Store {
     await this.init();
     await this.pool.query("UPDATE users SET data = $1, updated_at = now() WHERE id = $2", [data, userId]);
   }
+
+  async deleteUser(userId: string): Promise<void> {
+    await this.init();
+    // FK ON DELETE CASCADE removes strava_connections, follows, and kudos too.
+    await this.pool.query("DELETE FROM users WHERE id = $1", [userId]);
+  }
 }
 
 /** Thrown by a Store's createUser when the username is already taken (for a race-safe 409). */
@@ -329,6 +337,20 @@ class MemoryStore implements Store {
   async setData(userId: string, data: AppState): Promise<void> {
     const u = this.users.get(userId);
     if (u) u.data = data;
+  }
+  async deleteUser(userId: string): Promise<void> {
+    const u = this.users.get(userId);
+    if (u) this.byName.delete(u.username.toLowerCase());
+    this.users.delete(userId);
+    this.strava.delete(userId);
+    for (const f of [...this.follows]) {
+      const [a, b] = f.split("::");
+      if (a === userId || b === userId) this.follows.delete(f);
+    }
+    for (const k of [...this.kudos]) {
+      const [from, owner] = k.split("::");
+      if (from === userId || owner === userId) this.kudos.delete(k);
+    }
   }
   async getStravaByUser(userId: string): Promise<StravaConn | null> {
     return this.strava.get(userId) ?? null;

@@ -54,6 +54,10 @@ export async function apiLogout() {
   return jsonFetch("/api/auth/logout", { method: "POST" });
 }
 
+export async function apiDeleteAccount() {
+  return jsonFetch("/api/account", { method: "DELETE" });
+}
+
 export async function apiSaveState(profile: Profile | null, plan: Plan | null) {
   return jsonFetch("/api/state", {
     method: "PUT",
