@@ -24,9 +24,11 @@ interface Draft {
   raceLocation?: string;
   raceId?: string;
   raceDateISO?: string;
+  // when the athlete wants the plan to begin — default (undefined) is today.
+  startDateISO?: string;
   level?: Level;
   perSport: { swim: number; bike: number; run: number };
-  // when true, AmaTri picks the per-sport mix from level + race distance
+  // when true, Trifecta picks the per-sport mix from level + race distance
   autoFrequency?: boolean;
   focusDiscipline?: Discipline;
   strength: { enabled: boolean; daysPerWeek: number; split: StrengthSplit; customSplit?: string };
@@ -209,7 +211,7 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
       <LoadingAnimation
         profile={finalProfile}
         onDone={() => {
-          const plan = generatePlan(finalProfile);
+          const plan = generatePlan(finalProfile, draft.startDateISO);
           // fire-and-forget: attach cheap AI "why this plan" + per-phase notes if enabled
           const enrich = (base: typeof plan, commit: (p: typeof plan) => void) => {
             apiPlanSummary(planSummaryContext(base))
@@ -650,7 +652,7 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
 
       <div className="mb-4 grid grid-cols-2 gap-2">
         {([
-          [true, "Let AmaTri decide"],
+          [true, "Let Trifecta decide"],
           [false, "I'll choose"],
         ] as const).map(([val, label]) => (
           <button
@@ -809,6 +811,23 @@ function ScheduleStep({ draft, set }: StepProps) {
   return (
     <div>
       <Head title="Your schedule & life" sub="All optional — tell us how your week and calendar really look." />
+
+      <div className="mb-5">
+        <div className="mb-2 eyebrow text-[0.72rem]">When do you want to start?</div>
+        <input
+          className="input"
+          type="date"
+          min={todayISO()}
+          max={draft.raceDateISO || undefined}
+          value={draft.startDateISO ?? todayISO()}
+          onChange={(e) =>
+            set((d) => ({ ...d, startDateISO: e.target.value && e.target.value > todayISO() ? e.target.value : undefined }))
+          }
+        />
+        <p className="mt-2 text-xs text-muted">
+          Defaults to today — your plan begins now. Pick a later date if you&apos;d rather start then (after a trip, next Monday…).
+        </p>
+      </div>
 
       <div className="mb-5">
         <div className="mb-2 eyebrow text-[0.72rem]">Preferred rest day</div>
@@ -1171,7 +1190,7 @@ function InjuriesStep({ draft, set }: StepProps) {
       )}
 
       <p className="mt-5 text-xs text-muted">
-        Nothing bothering you? Just leave it blank and continue. AmaTri isn’t a medical service — see a professional for real pain.
+        Nothing bothering you? Just leave it blank and continue. Trifecta isn’t a medical service — see a professional for real pain.
       </p>
     </div>
   );
@@ -1195,6 +1214,7 @@ function ReviewStep({ draft, total, profile }: { draft: Draft; total: number; pr
   const rows: [string, string][] = [
     [fitness ? "Goal" : "Race", race],
     ["Date", fitness ? "No race — training for fitness" : draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
+    ["Starts", draft.startDateISO && draft.startDateISO > todayISO() ? fmtFullDate(draft.startDateISO) : "Today"],
     ["Level", draft.level ?? "intermediate"],
     [
       "Weekly sessions",

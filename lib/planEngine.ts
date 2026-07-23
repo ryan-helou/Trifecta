@@ -586,16 +586,19 @@ function assignDays(roles: Role[], restDay?: number): Slot[] {
 
 // ---- assemble the whole plan --------------------------------------------
 
-export function generatePlan(profile: Profile): Plan {
+export function generatePlan(profile: Profile, anchorISO?: string): Plan {
   // No race on the calendar → a rolling fitness block instead of a countdown.
-  if (isFitnessGoal(profile)) return generateFitnessPlan(profile);
+  if (isFitnessGoal(profile)) return generateFitnessPlan(profile, anchorISO);
 
   const cat = categoryOf(profile);
   const paces = derivePaces(profile);
   const ctx: BuildCtx = { paces, level: profile.level };
 
-  // plan length from race date
-  const start0 = mondayOf(todayISO());
+  // plan length from race date. Day 0 is the athlete's chosen start date — onboarding lets
+  // them pick one (default: today), so the plan can begin now or on a later date they choose.
+  // We never start in the past: anything today-or-earlier (and rebuilds, which pass nothing)
+  // anchors to today. Race day stays fixed, so a later start just means fewer weeks to train.
+  const start0 = mondayOf(anchorISO && anchorISO > todayISO() ? anchorISO : todayISO());
   const raceMonday = mondayOf(profile.raceDateISO);
   const weeksUntil = weeksBetween(start0, raceMonday) + 1; // include race week
   const min = PLAN_MIN[cat];
@@ -730,12 +733,13 @@ export function generatePlan(profile: Profile): Plan {
  *  peak/taper/race week. Reuses the same per-week builder as a race plan, so all the
  *  personalisation (per-sport counts, injuries, equipment, strength, blackouts,
  *  long-session day) still applies. */
-function generateFitnessPlan(profile: Profile): Plan {
+function generateFitnessPlan(profile: Profile, anchorISO?: string): Plan {
   const cat = categoryOf(profile); // "olympic" volumes by default; honours a chosen distance
   const paces = derivePaces(profile);
   const ctx: BuildCtx = { paces, level: profile.level };
 
-  const startMonday = mondayOf(todayISO());
+  // day 0 = the athlete's chosen start date (default today); never the past. See generatePlan.
+  const startMonday = mondayOf(anchorISO && anchorISO > todayISO() ? anchorISO : todayISO());
   const totalWeeks = FITNESS_BLOCK_WEEKS;
   const cycleLen = profile.level === "beginner" ? 3 : 4; // 2:1 vs 3:1 load:deload
 
