@@ -43,7 +43,14 @@ moveAside();
 try {
   execSync("next build", {
     stdio: "inherit",
-    env: { ...process.env, NEXT_OUTPUT_EXPORT: "1" },
+    env: {
+      ...process.env,
+      NEXT_OUTPUT_EXPORT: "1",
+      // The bundled app runs from capacitor://localhost, so API calls need the
+      // absolute Railway origin (+ Bearer auth). This also flips the client into
+      // "native mode" (see lib/runtime.ts). Override with NEXT_PUBLIC_API_BASE if set.
+      NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE || "https://amatri-production.up.railway.app",
+    },
   });
 } finally {
   restore();
