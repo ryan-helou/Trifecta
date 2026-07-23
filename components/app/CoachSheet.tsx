@@ -43,7 +43,7 @@ export function CoachSheet({
     setBusy(true);
     try {
       const ctx = summarizeForCoach(plan, today);
-      const res = await apiCoach(ctx, q);
+      const res = await apiCoach(ctx, q, plan.profile.coachName);
       setMessages((m) => [...m, { role: "coach", text: res.text || "…" }]);
     } catch {
       setMessages((m) => [
@@ -66,17 +66,21 @@ export function CoachSheet({
   ];
   const fresh = messages.length <= 1 && !input.trim();
 
+  // The athlete can name their coach (Profile.coachName); default identity is "AmaTri Coach".
+  const coachName = plan.profile.coachName?.trim() || "Coach";
+  const isNamed = coachName.toLowerCase() !== "coach";
+
   return (
     <Sheet
       onClose={onClose}
-      label="AmaTri coach chat"
+      label={isNamed ? `${coachName} — coach chat` : "AmaTri coach chat"}
       panelClassName="h-[82vh]"
       header={
         <div className="flex items-center gap-2 border-b border-line px-5 py-3">
           <Reactor size={30} spinning={false} />
           <div className="flex-1">
-            <div className="font-display font-bold"><Wordmark /> Coach</div>
-            <div className="text-xs text-muted">Powered by Claude · Haiku</div>
+            <div className="font-display font-bold">{isNamed ? coachName : (<><Wordmark /> Coach</>)}</div>
+            <div className="text-xs text-muted">{isNamed ? "Your AmaTri coach" : "Your AI triathlon coach"}</div>
           </div>
           <button onClick={onClose} aria-label="Close coach" className="text-muted hover:text-foreground">✕</button>
         </div>
@@ -88,7 +92,7 @@ export function CoachSheet({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder="Ask your coach…"
+            placeholder={isNamed ? `Ask ${coachName}…` : "Ask your coach…"}
           />
           <button onClick={() => send()} disabled={busy || !input.trim()} className="btn btn-primary px-4 py-3">Send</button>
         </div>
