@@ -105,6 +105,7 @@
 
 html {
   color-scheme: light;
+  background: var(--background); /* fill the full document (incl. safe areas) on native */
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
 }

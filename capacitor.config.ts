@@ -24,6 +24,9 @@ const config: CapacitorConfig = {
   appId: "app.trifecta.mobile",
   appName: "Trifecta",
 
+  // white WebView background so the safe areas (status bar / home indicator) aren't black
+  backgroundColor: "#ffffff",
+
   webDir: PATH_B ? "out" : "mobile-shell",
 
   ...(PATH_B
