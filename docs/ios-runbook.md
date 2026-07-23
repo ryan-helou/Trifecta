@@ -5,74 +5,60 @@ TestFlight beta. This is **Path A** (the test + update loop) from
 [app-store-epic.md](app-store-epic.md): the app loads the live Railway site, so **a Railway
 deploy is an app update** — no static export, no OTA service, no auth refactor.
 
-> **Where things run.** The repo scaffolding (`capacitor.config.ts`, `mobile-shell/`) is done
-> and committed. **Everything below must run on a Mac with full Xcode** — it can't be done from
-> the dev sandbox (Command Line Tools only, Node 20). Do these on your primary Mac.
+> **What's already done (by the agent, committed to `feat/ios-app-store`).** Capacitor 8.4.2
+> is installed, the **`ios/` native project is generated** (SwiftPM — no CocoaPods), the config
+> points at Railway, and the **real brand icon + light/dark splash** are baked into the asset
+> catalog. Node 22 is available via nvm. **All that's left is the stuff that physically needs you:
+> accept the Xcode license, sign with your Apple ID, and run on your iPhone.** Steps 0, 3, 4 below.
 
 ---
 
-## 0. Prerequisites (the two current blockers)
+## 0. Activate Xcode (needs your password — the agent can't sudo)
 
-- [ ] **Full Xcode.app** — install from the Mac App Store (~10 GB, this is the big one), then:
-  ```sh
-  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-  sudo xcodebuild -license accept
-  ```
-  (This box only has Command Line Tools, so `xcodebuild` is missing — that's why native builds
-  can't happen here.)
-- [ ] **Node 22+** — Capacitor 8 requires it (you're on Node 20). With nvm:
-  ```sh
-  nvm install 22 && nvm use 22
-  ```
-- [ ] **An iPhone + its USB cable**, and the Apple ID you'll use signed into Xcode.
-
-*You do NOT need the paid Apple Developer account for step 3 (running on your own device with a
-free Apple ID). You DO need it for step 4 (TestFlight).*
-
----
-
-## 1. (Parallel, do now) Enroll in the Apple Developer Program
-
-- [ ] Enroll **Individual** at <https://developer.apple.com/programs/enroll/> — **$99/yr**.
-- [ ] Complete identity verification in the **Apple Developer** app (gov ID + selfie).
-- [ ] Realistic wait: **~1–3 days**. This is the longest-latency, lowest-effort item and it
-  gates TestFlight + HealthKit — so start it before anything else. It runs off the critical path.
-
----
-
-## 2. Add Capacitor + generate the iOS project
-
-From the repo root (`~/Developer/AmaTri`), on Node 22:
+Once `Xcode_26.6_Apple_silicon.xip` finishes expanding:
 
 ```sh
-# install the Capacitor runtime + CLI + iOS platform
-npm install @capacitor/core @capacitor/cli @capacitor/ios
+# move Xcode into place (adjust the source path if it expanded elsewhere)
+mv ~/Downloads/Xcode.app /Applications/        # or ~/Downloads/Xcode_26.6_Apple_silicon/Xcode.app
 
-# generate the native iOS project (reads capacitor.config.ts — already in the repo)
-npx cap add ios
+open -a Xcode                                    # first launch → installs components (admin password)
 
-# copy web assets (the mobile-shell/ offline fallback) + config into the native project
-npx cap sync ios
-
-# generate the real app icon + splash into the native project from resources/
-# (resources/icon.png + splash*.png are already committed; regenerate with `npm run assets:native`)
-npm install --save-dev @capacitor/assets
-npx @capacitor/assets generate --ios
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept                  # ← until you do this, even `git` is blocked by the xcrun shim
 ```
 
-This creates an `ios/` folder (the native Xcode project). Commit it — it's part of the repo now.
-The icon/splash come from `resources/` (Trifecta brand mark, opaque 1024², App-Store-valid).
+Then in **Xcode ▸ Settings ▸ Accounts**, add your **Apple ID** (needed to sign the app).
 
-> **Bundle ID decision:** `capacitor.config.ts` sets `appId: "app.trifecta.mobile"`. This is
-> hard to change once on the App Store. If you own a domain you'd rather use as the
-> reverse-domain (e.g. `com.<you>.trifecta`), change it **before** the first TestFlight upload.
+*Have an iPhone + USB cable ready. You do NOT need the paid account to run on your own device
+(free Apple ID works); you DO need it for TestFlight (step 4).*
+
+---
+
+## 1. Apple Developer Program — ✅ PURCHASED
+
+Bought 2026-07-23 (C$119/yr, Enrollment ID **C9543JM5Z7**). Approval pending ~1–3 days; you'll
+get an email. Gates TestFlight + HealthKit, **not** running on your own device — so step 3 works now.
+
+---
+
+## 2. Capacitor + the iOS project — ✅ DONE (by the agent)
+
+Already installed and committed, so you skip this entirely. For reference, what was run:
+`npm i @capacitor/core @capacitor/ios` + `-D @capacitor/cli @capacitor/assets` → `npx cap add ios`
+→ `npx cap sync ios` → `npx @capacitor/assets generate --ios`. The `ios/` folder is in the repo.
+
+- **After any web/native change** you only need `npx cap sync ios` (regenerates the copied web
+  assets + config). Regenerate icons with `npm run assets:native && npx @capacitor/assets generate --ios`.
+- **Bundle ID** is `app.trifecta.mobile` (in `capacitor.config.ts` and the Xcode project). It's
+  hard to change once on the App Store — tell me before your first TestFlight upload if you want a
+  reverse-domain you own (e.g. `com.<you>.trifecta`) and I'll rename it everywhere.
 
 ---
 
 ## 3. Run it on your iPhone (free Apple ID — no $99 needed yet)
 
 ```sh
-npx cap open ios          # opens ios/App/App.xcworkspace in Xcode
+npx cap open ios          # opens ios/App/App.xcodeproj in Xcode (SwiftPM — no .xcworkspace)
 ```
 
 In Xcode:
