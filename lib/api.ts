@@ -16,13 +16,19 @@ async function jsonFetch(url: string, opts?: RequestInit) {
     const token = getTokenSync();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
-  const res = await fetch(API_BASE + url, {
-    ...opts,
-    headers,
-    credentials: IS_NATIVE ? "omit" : "same-origin",
-  });
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, data };
+  try {
+    const res = await fetch(API_BASE + url, {
+      ...opts,
+      headers,
+      credentials: IS_NATIVE ? "omit" : "same-origin",
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    // Never throw — surface a readable error so the UI shows it instead of hanging.
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, status: 0, data: { error: `Can't reach the server (${msg}).` } };
+  }
 }
 
 export interface MeResponse {

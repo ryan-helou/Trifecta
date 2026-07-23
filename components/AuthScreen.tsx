@@ -22,9 +22,14 @@ export function AuthScreen({ onBack }: { onBack?: () => void }) {
     if (busy) return;
     setBusy(true);
     setError(null);
-    const err = await login(username.trim(), password);
-    setBusy(false);
-    if (err) setError(err);
+    try {
+      const err = await login(username.trim(), password);
+      if (err) setError(err);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
