@@ -132,7 +132,7 @@ Profile
   ── plan length & phase split ──────────────────────────────────────────────
   weeksUntil = weeksBetween(mondayOf(today), mondayOf(raceDate)) + 1
   totalWeeks = weeksUntil, starting the sign-up week   (< PLAN_MIN[cat] ⇒ compressed;
-              > MAX_PLAN_WEEKS(52), i.e. race >1 yr out ⇒ delayedStart — the only delay case)
+              > MAX_PLAN_WEEKS(104), i.e. a mistyped date >2 yr out ⇒ delayedStart — the only delay case)
   taperWeeks = min(TAPER_WEEKS[cat], floor(totalWeeks·0.18))
   buildWeeks = bounded specific-prep block (≤ BUILD_MAX[cat], ~6–12 wk); peakWeeks ∈ {0,1,2};
               baseWeeks = the rest  ⇒ surplus lead time lengthens BASE, never the near-peak build
@@ -635,14 +635,14 @@ valuable adaptivity investment.
 ### 7.1 The deterministic plan costs approximately nothing
 
 `generatePlan` is pure CPU: a few hundred lines of arithmetic and one O(sessions×7) greedy loop over
-~8–52 weeks. Runtime is sub-millisecond; it runs client-side in onboarding
+~8 weeks to ~2 years. Runtime is sub-millisecond; it runs client-side in onboarding
 (`components/onboarding/Onboarding.tsx`) and on rebuild with no server round-trip and no per-plan
 variable cost. **Marginal cost per plan ≈ $0.** Every rebuild, every "what-if" in settings, every
 adaptation re-run is also free. At 10k or 10M users the plan-generation line item is the same: zero.
 
 ### 7.2 What an LLM-per-plan competitor pays
 
-A full multisport plan is large: 12–52 weeks × ~6–12 sessions × structured segments with cues. To
+A full multisport plan is large: 12+ weeks (up to ~2 years) × ~6–12 sessions × structured segments with cues. To
 *author* that with an LLM you're emitting well north of 15–30k output tokens per plan (structured
 workouts are token-heavy), plus a few thousand input tokens of context. Concrete rates (2025–26):
 
