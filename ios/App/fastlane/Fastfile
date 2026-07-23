@@ -131,4 +131,48 @@ platform :ios do
     build
     upload
   end
+
+  desc "Add an internal TestFlight tester by email. Usage: fastlane add_tester email:foo@bar.com name:'First Last'"
+  lane :add_tester do |opts|
+    asc_key
+    email = opts[:email] || UI.user_error!("pass email:you@example.com")
+    parts = (opts[:name] || "").strip.split(" ", 2)
+    first = (parts[0] && !parts[0].empty?) ? parts[0] : email.split("@").first
+    last  = parts[1] || "Tester"
+
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    group = app.get_beta_groups.find(&:is_internal_group) || UI.user_error!("no internal group found")
+    UI.message("internal group '#{group.name}' (#{group.id})")
+
+    existing = (Spaceship::ConnectAPI::BetaTester.find(email: email) rescue nil)
+    if existing
+      Spaceship::ConnectAPI.add_beta_tester_to_group(beta_group_id: group.id, beta_tester_ids: [existing.id])
+      UI.success("Attached existing tester #{email} to '#{group.name}'")
+    else
+      Spaceship::ConnectAPI.post_beta_tester_assignment(
+        beta_group_ids: [group.id],
+        attributes: { email: email, firstName: first, lastName: last }
+      )
+      UI.success("Created + assigned tester #{email} to '#{group.name}'")
+    end
+  end
+
+  desc "Add Ryan (ryan.helou@gmail.com) as an internal tester on the latest build."
+  lane :invite_me do
+    add_tester(email: "ryan.helou@gmail.com", name: "Ryan Helou")
+  end
+
+  desc "Show a tester's current group/app assignments. Usage: fastlane tester_status email:foo@bar.com"
+  lane :tester_status do |opts|
+    asc_key
+    email = opts[:email] || "ryan.helou@gmail.com"
+    t = (Spaceship::ConnectAPI::BetaTester.find(email: email, includes: "betaGroups,apps") rescue nil)
+    if t.nil?
+      UI.important("No tester record for #{email}")
+    else
+      groups = (t.beta_groups || []).map { |g| "#{g.name}(internal=#{g.is_internal_group})" }
+      apps = (t.apps || []).map { |a| a.bundle_id }
+      UI.success("tester #{email} id=#{t.id} state=#{t.state.inspect} groups=#{groups.inspect} apps=#{apps.inspect}")
+    end
+  end
 end
