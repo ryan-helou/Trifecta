@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/ios": "^8.4.2",
     "next": "16.2.10",
     "openai": "^6.48.0",
     "pg": "^8.22.0",
@@ -23,6 +25,8 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.4.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
