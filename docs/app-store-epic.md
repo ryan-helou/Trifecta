@@ -38,18 +38,31 @@ So the answer to "a way to test and update" is concretely: **TestFlight for the 
 
 ## 2. Milestones
 
+> **Execution decision (2026-07-23): Path A first.** We're not building the shippable
+> architecture up front. We ship the **remote-URL** shell (loads the live Railway site) to
+> TestFlight *first* — because it needs **no static export, no Bearer-auth refactor, and no OTA
+> service** (a Railway deploy *is* the update). The M1 refactor below (static split + Bearer +
+> Capgo) is **deferred to Path B**, done only when heading for the public App Store. Nothing is
+> thrown away — the `ios/` project is reused; Path B just flips `server.url` off and *adds* the
+> refactor. **Execution steps live in [ios-runbook.md](ios-runbook.md).**
+>
+> Order: **M0 (remote-URL shell → device) → TestFlight internal → [ship/iterate via Railway] →**
+> then, when going public: **static split + Bearer auth → Capgo OTA → HealthKit → compliance → submit.**
+
 Estimates are **focused build-days**. Enrollment/review **latencies run in parallel** and are called out separately.
 
 ### M0 — Apple account + first run on a real iPhone · **~0.5 d** (+ enrollment latency, parallel)
 The unblock-everything milestone. Two things in parallel:
 - **Enroll in the Apple Developer Program — Individual, $99/yr.** Identity verification via the Apple Developer app (ID + selfie); realistic approval **~1–3 days**. *Start this first; it's the longest-latency, lowest-effort item and it gates TestFlight + HealthKit.*
-- **Smoke-test the shell on device — no enrollment needed.** Add Capacitor, point it at the live Railway PWA (`server.url`) or your LAN dev server, and do a **free-Apple-ID Xcode direct install** to your own iPhone. This proves the native plumbing in **minutes**.
-  - *This remote-URL build is a throwaway dev harness — Apple rejects `server.url` production builds under Guideline 4.2. Do not try to ship it; it exists only to see the app on glass today.*
+- **Stand up the remote-URL shell — no enrollment needed.** Add Capacitor, point it at the live Railway PWA (`server.url`), and do a **free-Apple-ID Xcode direct install** to your own iPhone. Proves the native plumbing in **minutes**.
+  - *This same remote-URL build is what goes to TestFlight (internal + external) for the whole Path-A test loop — it's not throwaway. It's only unshippable to the **public** App Store (Guideline 4.2 rejects remote-URL wrappers at full review); Path B's bundled build fixes that later.*
 
 **Acceptance:** Trifecta is running on Ryan's physical iPhone; Apple enrollment submitted.
 
-### M1 — Capacitor shell + static split + TestFlight internal · **3–5 d** · *the core test loop*
-The real, shippable architecture — and because the UI is one SPA, the static split is cheap.
+### M1 — Static split + Bearer auth *(Path B — deferred; the shippable architecture)* · **3–5 d**
+> **Not the test loop.** With Path A first, the core test loop is remote-URL + TestFlight internal
+> (M0 + the runbook). This M1 refactor is only needed for the **public** App Store — do it later.
+> Because the UI is one SPA, the static split is cheap when you get to it.
 - **Add Capacitor 8**, `npx cap add ios`; native `webDir: 'out'`.
 - **Static-export the frontend**: `output: 'export'`, `images: { unoptimized: true }`; confirm nothing in `app/` relies on server-render (it doesn't — single client page). Server logic stays on Railway.
 - **Auth: add Bearer-token mode.** On login, also return the signed token in the JSON body; on the server, accept `Authorization: Bearer <token>` in `getUserIdFromRequest` (cookie mode stays for the web PWA). Store the token in the **iOS Keychain** via a secure-storage plugin — **not** `@capacitor/preferences` (unencrypted).
