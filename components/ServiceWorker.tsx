@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { IS_NATIVE } from "@/lib/runtime";
 
 /**
  * Registers the PWA service worker and keeps the installed app up to date.
@@ -19,6 +20,7 @@ import { useEffect } from "react";
 export function ServiceWorker() {
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (IS_NATIVE) return; // the bundled native app IS the cache; a SW just causes trouble
     if (!("serviceWorker" in navigator)) return;
     if (process.env.NODE_ENV !== "production") return; // avoid dev caching headaches
 

@@ -16,18 +16,24 @@ async function jsonFetch(url: string, opts?: RequestInit) {
     const token = getTokenSync();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
+  // Hard timeout so a stalled WebView fetch can never hang the UI forever.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
   try {
     const res = await fetch(API_BASE + url, {
       ...opts,
       headers,
       credentials: IS_NATIVE ? "omit" : "same-origin",
+      signal: controller.signal,
     });
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, data };
   } catch (e) {
     // Never throw — surface a readable error so the UI shows it instead of hanging.
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = e instanceof Error ? (e.name === "AbortError" ? "request timed out" : e.message) : String(e);
     return { ok: false, status: 0, data: { error: `Can't reach the server (${msg}).` } };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
