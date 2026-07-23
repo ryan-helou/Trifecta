@@ -1,0 +1,178 @@
+# Trifecta iOS — fastlane
+#
+# Path-A TestFlight loop, headless (no Xcode GUI, no Apple ID/2FA):
+#   fastlane build     # archive Release → signed IPA (auto-registers bundle ID + dist cert via API key)
+#   fastlane upload    # upload the built IPA to TestFlight internal (needs the ASC app record to exist)
+#   fastlane beta      # build + upload in one shot (once the app record exists)
+#
+# NOTE: creating the App Store Connect *app record* is a one-time web-UI step —
+# Apple's API key can't create it (`produce` needs Apple-ID/2FA). Everything else
+# below uses the API key.
+#
+# Auth: App Store Connect API key. The .p8 (the ONLY secret) lives OUTSIDE the repo
+# at ~/.appstoreconnect/private_keys/. Key ID + Issuer ID are non-secret identifiers.
+
+default_platform(:ios)
+
+API_KEY_ID    = "PZ5T3D2T7A"
+API_ISSUER_ID = "a2009c5b-786e-42e7-a600-c9af7e854559"
+API_KEY_PATH  = File.expand_path("~/.appstoreconnect/private_keys/AuthKey_PZ5T3D2T7A.p8")
+
+def asc_key
+  app_store_connect_api_key(
+    key_id: API_KEY_ID,
+    issuer_id: API_ISSUER_ID,
+    key_filepath: API_KEY_PATH,
+    in_house: false
+  )
+end
+
+# Passed to the ARCHIVE xcodebuild invocation so development signing can auto-update.
+SIGN_XCARGS = "-allowProvisioningUpdates " \
+              "-authenticationKeyPath #{API_KEY_PATH} " \
+              "-authenticationKeyID #{API_KEY_ID} " \
+              "-authenticationKeyIssuerID #{API_ISSUER_ID}"
+
+TEAM_ID = "9QX2835W83"
+
+# Manual signing for the EXPORT step — uses the distribution cert + App Store profile
+# created explicitly via the API key (cert / get_provisioning_profile), avoiding the
+# in-export cloud-signing path which throws "Cloud signing permission error".
+EXPORT_OPTS = {
+  signingStyle: "manual",
+  teamID: TEAM_ID,
+  signingCertificate: "Apple Distribution",
+  provisioningProfiles: { "app.trifecta.mobile" => "app.trifecta.mobile AppStore" }
+}
+
+platform :ios do
+  desc "Archive (Release) → signed IPA. Auto-registers the bundle ID + creates the distribution cert/profile via the API key."
+  lane :build do
+    asc_key # registers the key in lane context so xcodebuild -allowProvisioningUpdates can authenticate
+    # Auto-increment the build number past the latest one on TestFlight (Apple rejects
+    # duplicates). Passed via xcargs so no project.pbxproj edit / git churn.
+    next_build = latest_testflight_build_number(
+      api_key: asc_key,
+      app_identifier: "app.trifecta.mobile",
+      initial_build_number: 1
+    ) + 1
+    UI.message("Building with build number #{next_build}")
+    build_app(
+      project: "App.xcodeproj",
+      scheme: "App",
+      configuration: "Release",
+      export_method: "app-store",
+      xcargs: "#{SIGN_XCARGS} CURRENT_PROJECT_VERSION=#{next_build}",
+      export_options: EXPORT_OPTS,
+      output_directory: "build",
+      output_name: "Trifecta.ipa",
+      clean: true
+    )
+  end
+
+  desc "Export an existing .xcarchive to a signed IPA (reuses ENV['ARCHIVE_PATH']). For fast signing iteration."
+  lane :export_only do
+    asc_key
+    build_app(
+      archive_path: ENV["ARCHIVE_PATH"],
+      skip_build_archive: true,
+      export_method: "app-store",
+      export_options: EXPORT_OPTS,
+      output_directory: "build",
+      output_name: "Trifecta.ipa"
+    )
+  end
+
+  desc "Diagnostic: try to create/fetch an Apple Distribution certificate via the API key."
+  lane :diag_cert do
+    cert(
+      api_key: asc_key,
+      output_path: "build/certs"
+    )
+  end
+
+  desc "Register the App ID (bundle identifier) via the App Store Connect API (one-time)."
+  lane :register_bundle_id do
+    asc_key # sets Spaceship::ConnectAPI token
+    existing = Spaceship::ConnectAPI::BundleId.all.find { |b| b.identifier == "app.trifecta.mobile" }
+    if existing
+      UI.success("Bundle ID already registered: #{existing.identifier} (#{existing.id})")
+    else
+      bid = Spaceship::ConnectAPI::BundleId.create(
+        name: "Trifecta",
+        identifier: "app.trifecta.mobile",
+        platform: Spaceship::ConnectAPI::BundleIdPlatform::IOS
+      )
+      UI.success("Registered bundle ID: #{bid.identifier} (#{bid.id})")
+    end
+  end
+
+  desc "Diagnostic: create the App Store provisioning profile for app.trifecta.mobile via the API key."
+  lane :make_profile do
+    get_provisioning_profile(
+      api_key: asc_key,
+      app_identifier: "app.trifecta.mobile",
+      output_path: "build/profiles"
+    )
+  end
+
+  desc "Upload the built IPA to TestFlight (internal). Requires the ASC app record to exist."
+  lane :upload do
+    upload_to_testflight(
+      api_key: asc_key,
+      ipa: "build/Trifecta.ipa",
+      skip_waiting_for_build_processing: true,
+      distribute_external: false
+    )
+  end
+
+  desc "Build + upload in one shot (use once the app record exists)."
+  lane :beta do
+    build
+    upload
+  end
+
+  desc "Add an internal TestFlight tester by email. Usage: fastlane add_tester email:foo@bar.com name:'First Last'"
+  lane :add_tester do |opts|
+    asc_key
+    email = opts[:email] || UI.user_error!("pass email:you@example.com")
+    parts = (opts[:name] || "").strip.split(" ", 2)
+    first = (parts[0] && !parts[0].empty?) ? parts[0] : email.split("@").first
+    last  = parts[1] || "Tester"
+
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    group = app.get_beta_groups.find(&:is_internal_group) || UI.user_error!("no internal group found")
+    UI.message("internal group '#{group.name}' (#{group.id})")
+
+    existing = (Spaceship::ConnectAPI::BetaTester.find(email: email) rescue nil)
+    if existing
+      Spaceship::ConnectAPI.add_beta_tester_to_group(beta_group_id: group.id, beta_tester_ids: [existing.id])
+      UI.success("Attached existing tester #{email} to '#{group.name}'")
+    else
+      Spaceship::ConnectAPI.post_beta_tester_assignment(
+        beta_group_ids: [group.id],
+        attributes: { email: email, firstName: first, lastName: last }
+      )
+      UI.success("Created + assigned tester #{email} to '#{group.name}'")
+    end
+  end
+
+  desc "Add Ryan (ryan.helou@gmail.com) as an internal tester on the latest build."
+  lane :invite_me do
+    add_tester(email: "ryan.helou@gmail.com", name: "Ryan Helou")
+  end
+
+  desc "Show a tester's current group/app assignments. Usage: fastlane tester_status email:foo@bar.com"
+  lane :tester_status do |opts|
+    asc_key
+    email = opts[:email] || "ryan.helou@gmail.com"
+    t = (Spaceship::ConnectAPI::BetaTester.find(email: email, includes: "betaGroups,apps") rescue nil)
+    if t.nil?
+      UI.important("No tester record for #{email}")
+    else
+      groups = (t.beta_groups || []).map { |g| "#{g.name}(internal=#{g.is_internal_group})" }
+      apps = (t.apps || []).map { |a| a.bundle_id }
+      UI.success("tester #{email} id=#{t.id} state=#{t.state.inspect} groups=#{groups.inspect} apps=#{apps.inspect}")
+    end
+  end
+end
