@@ -24,11 +24,18 @@ const config: CapacitorConfig = {
   appId: "app.trifecta.mobile",
   appName: "Trifecta",
 
+  // white WebView background so the safe areas (status bar / home indicator) aren't black
+  backgroundColor: "#ffffff",
+
   webDir: PATH_B ? "out" : "mobile-shell",
 
   ...(PATH_B
     ? {
         plugins: {
+          // Route window.fetch/XHR through native URLSession instead of the WKWebView.
+          // The WebView hangs on cross-origin fetches from capacitor://localhost; native
+          // HTTP has no CORS/preflight and no such stall.
+          CapacitorHttp: { enabled: true },
           // Capgo OTA: auto-download a new JS/HTML/CSS bundle and apply it on the next
           // launch. lib/ota.ts calls notifyAppReady() so a good bundle isn't rolled back.
           CapacitorUpdater: { autoUpdate: true },
