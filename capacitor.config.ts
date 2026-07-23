@@ -32,6 +32,10 @@ const config: CapacitorConfig = {
   ...(PATH_B
     ? {
         plugins: {
+          // Route window.fetch/XHR through native URLSession instead of the WKWebView.
+          // The WebView hangs on cross-origin fetches from capacitor://localhost; native
+          // HTTP has no CORS/preflight and no such stall.
+          CapacitorHttp: { enabled: true },
           // Capgo OTA: auto-download a new JS/HTML/CSS bundle and apply it on the next
           // launch. lib/ota.ts calls notifyAppReady() so a good bundle isn't rolled back.
           CapacitorUpdater: { autoUpdate: true },
