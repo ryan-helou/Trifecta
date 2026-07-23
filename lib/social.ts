@@ -66,7 +66,7 @@ export function publicCard(username: string, data: { profile?: unknown; plan?: u
     const done = Object.values(plan.workouts).filter(
       (w) => (w.status === "done" || w.status === "swapped") && w.discipline !== "rest",
     );
-    const weekAgo = addDays(todayISO, -7);
+    const weekAgo = addDays(todayISO, -6); // last 7 days *inclusive of today* (was -7 → an 8-day window)
     card.weekDone = done.filter((w) => w.date >= weekAgo && w.date <= todayISO).length;
     const latest = done.slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0];
     if (latest) card.latest = { workoutId: latest.id, title: latest.title, discipline: latest.discipline, whenISO: latest.date };
