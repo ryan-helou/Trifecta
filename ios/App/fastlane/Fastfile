@@ -49,12 +49,20 @@ platform :ios do
   desc "Archive (Release) → signed IPA. Auto-registers the bundle ID + creates the distribution cert/profile via the API key."
   lane :build do
     asc_key # registers the key in lane context so xcodebuild -allowProvisioningUpdates can authenticate
+    # Auto-increment the build number past the latest one on TestFlight (Apple rejects
+    # duplicates). Passed via xcargs so no project.pbxproj edit / git churn.
+    next_build = latest_testflight_build_number(
+      api_key: asc_key,
+      app_identifier: "app.trifecta.mobile",
+      initial_build_number: 1
+    ) + 1
+    UI.message("Building with build number #{next_build}")
     build_app(
       project: "App.xcodeproj",
       scheme: "App",
       configuration: "Release",
       export_method: "app-store",
-      xcargs: SIGN_XCARGS,
+      xcargs: "#{SIGN_XCARGS} CURRENT_PROJECT_VERSION=#{next_build}",
       export_options: EXPORT_OPTS,
       output_directory: "build",
       output_name: "Trifecta.ipa",
