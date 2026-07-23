@@ -107,18 +107,32 @@ so you'll add **Capgo OTA** to keep instant web updates. Until then, you don't n
 
 ---
 
-## 6. When you're ready for the public App Store (Path B — later)
+## 6. Path B — the public-App-Store build (BUILT on branch `feat/path-b`)
 
-Not now, but so it's written down. See [app-store-epic.md](app-store-epic.md) §2 M-B for detail:
-1. **Static export target** — env-gated `output: 'export'` build → bundle into `webDir` (must NOT
-   change the Railway server build, which needs the API routes).
-2. **Bearer-token auth** — the bundled origin is `capacitor://localhost`, so same-origin cookies
-   die; switch to `Authorization: Bearer` (the HMAC token infra already exists in
-   `lib/auth-server.ts`), store the token in the iOS **Keychain**, enable **CORS**. Fold in the
-   known P0 auth fixes here.
-3. **Capgo OTA** (`@capgo/capacitor-updater`, ~$12/yr) for instant web updates on the bundled app.
-4. **HealthKit** (`@capgo/capacitor-health`) — the native capability that clears Guideline 4.2
-   and replaces Strava as the data spine.
-5. **Compliance** — Privacy Policy + ToS pages, in-app account deletion (Guideline 5.1.1(v)),
-   accurate privacy nutrition labels.
-6. **Submit** for full review.
+The shippable architecture is coded + build-verified (branch `feat/path-b`, not yet
+merged). What's done vs. what still needs your Mac + iPhone:
+
+**Done (headless, verified):**
+1. **Static export** — `npm run build:static` → `./out` (env-gated `output:'export'`; the
+   Railway server build is unchanged).
+2. **Bearer auth + CORS + P0 fix** — API accepts `Authorization: Bearer`; `proxy.ts` adds
+   CORS for `capacitor://localhost`; a dedicated `SESSION_SECRET` is set in Railway.
+3. **Native client** — absolute API URL + Bearer + iOS **Keychain** token (`@aparajita/capacitor-secure-storage`).
+4. **HealthKit data layer** — reader + source-agnostic matcher + Info.plist/entitlements (`@capgo/capacitor-health`).
+5. **Compliance** — `/privacy`, `/terms`, in-app **account deletion** (`Profile → Delete account`).
+6. **Capgo OTA** — `@capgo/capacitor-updater` + `npm run ota` deploy script.
+
+**Hands-on (your Mac + iPhone) to actually ship it:**
+```sh
+# 1. Build the bundled Path-B app + sync it into the native project
+nvm use 22
+CAP_PATH_B=1 npm run build:static     # emits ./out (bundled frontend, Bearer mode)
+CAP_PATH_B=1 npx cap sync ios         # copies out/ + adds the Keychain/Health/OTA plugins
+```
+- In **Xcode → Signing & Capabilities → + Capability → HealthKit** (wires the entitlement + App ID).
+- Add a **"Connect Apple Health"** button (calls `requestHealthAuth()` + `syncAppleHealth()` from `lib/health.ts`) — best done with you watching the permission prompt.
+- **Run on device** and confirm: login (Bearer), your data loads, Delete-account works, Health sync credits a session.
+- **Capgo OTA setup (one-time):** make a free account at capgo.app → `npx @capgo/cli login <token>` → `npx @capgo/cli app add app.trifecta.mobile`. After that, `npm run ota` ships web updates to the bundled app with no resubmit.
+- **App Store Connect:** fill the **privacy nutrition labels**, add App Store screenshots/description, then **Archive → Distribute → App Store** and submit for review.
+
+> Path A (the current TestFlight build) keeps working unchanged — `CAP_PATH_B` is unset by default.
