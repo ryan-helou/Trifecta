@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
 import { getUserIdFromRequest } from "@/lib/auth-server";
+import { rateLimit } from "@/lib/rateLimit";
+import type { Plan } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +11,14 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const uid = getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+
+  const rl = rateLimit(`kudos:${uid}`, 60, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Slow down a moment." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+    );
+  }
 
   const body = await req.json().catch(() => ({}));
   const ownerUsername = typeof body.ownerUsername === "string" ? body.ownerUsername.trim() : "";
@@ -19,6 +29,14 @@ export async function POST(req: NextRequest) {
   const store = getStore();
   const owner = await store.getUserByUsername(ownerUsername);
   if (!owner) return NextResponse.json({ error: "No such athlete." }, { status: 404 });
+  if (owner.id === uid) return NextResponse.json({ error: "You can't kudos your own session." }, { status: 400 });
+
+  // The workout must actually exist on the owner and be a surfaced (done/swapped)
+  // session — no kudos rows against arbitrary or hidden ids.
+  const w = (owner.data as { plan?: Plan } | undefined)?.plan?.workouts?.[workoutId];
+  if (!w || !(w.status === "done" || w.status === "swapped")) {
+    return NextResponse.json({ error: "No such session." }, { status: 404 });
+  }
 
   if (on) await store.addKudos(uid, owner.id, workoutId);
   else await store.removeKudos(uid, owner.id, workoutId);
