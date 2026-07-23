@@ -88,6 +88,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [perSport, setPerSport] = useState(profile.perSport ?? defaultSportSplit(profile));
   const [strength, setStrength] = useState<StrengthPref>(profile.strength ?? { enabled: false, daysPerWeek: 2, split: "full" });
   const [restDay, setRestDay] = useState<number | undefined>(profile.restDayPreference);
+  const [longDay, setLongDay] = useState<number>(profile.longSessionDay ?? 5);
   const [ftp, setFtp] = useState(profile.ftp);
   const [maxHR, setMaxHR] = useState(profile.maxHR);
   const [hoursCap, setHoursCap] = useState(profile.weeklyHoursCap);
@@ -123,7 +124,8 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
 
   const total = perSport.swim + perSport.bike + perSport.run + (strength.enabled ? strength.daysPerWeek : 0);
   const wpwClamped = Math.max(1, Math.min(21, total));
-  const dateOk = raceDateISO > todayISO();
+  const fitness = raceType === "fitness";
+  const dateOk = fitness || raceDateISO > todayISO(); // fitness mode has no race date
   const canSave = dateOk && total >= 1 && (raceType !== "custom" || (custom.swimM > 0 && custom.bikeM > 0 && custom.runM > 0));
 
   const setSport = (k: keyof typeof perSport, v: number) => setPerSport((p) => ({ ...p, [k]: Math.max(0, Math.min(10, v)) }));
@@ -153,20 +155,22 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   function save() {
     if (!canSave) return;
     haptic("success");
+    const isRealRace = raceType !== "custom" && raceType !== "fitness";
     const next: Profile = {
       ...profile,
       raceType,
       custom: raceType === "custom" ? custom : undefined,
-      raceName: raceType === "custom" ? undefined : raceName,
-      raceLocation: raceType === "custom" ? undefined : raceLocation,
-      raceId: raceType === "custom" ? undefined : raceId,
-      raceDateISO,
+      raceName: isRealRace ? raceName : undefined,
+      raceLocation: isRealRace ? raceLocation : undefined,
+      raceId: isRealRace ? raceId : undefined,
+      raceDateISO: fitness ? "" : raceDateISO,
       level,
       unitPreference: unit,
       workoutsPerWeek: wpwClamped,
       perSport,
       strength,
       restDayPreference: restDay,
+      longSessionDay: longDay,
       runPR,
       swimPR,
       bikePR,
@@ -210,8 +214,23 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       }
     >
       <div className="space-y-6 px-5 py-5">
-          {/* race */}
-          <Field label="Race">
+          {/* goal: a race, or just training for fitness */}
+          <Field label="Goal">
+            <button
+              onClick={() => {
+                setRaceType(fitness ? "olympic" : "fitness");
+                setRaceId(undefined);
+                setRaceName(undefined);
+                setRaceLocation(undefined);
+              }}
+              className={`mb-3 w-full rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                fitness ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2 text-muted"
+              }`}
+            >
+              {fitness ? "✓ Training for general fitness — no race" : "No race? Just train for general fitness"}
+            </button>
+
+            {!fitness && (<>
             <div className="grid grid-cols-4 gap-2">
               {RACES.map((r) => (
                 <Pill
@@ -279,9 +298,11 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 </div>
               </div>
             )}
+            </>)}
           </Field>
 
-          {/* date */}
+          {/* date — only when there's a race to count down to */}
+          {!fitness && (
           <Field label="Race day">
             <input className="input" type="date" min={addDays(todayISO(), 1)} value={raceDateISO} onChange={(e) => setRaceDateISO(e.target.value)} />
             {raceDateISO && (
@@ -290,6 +311,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               </p>
             )}
           </Field>
+          )}
 
           {/* level */}
           <Field label="Experience">
@@ -319,6 +341,12 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               <span className="eyebrow mr-1 self-center text-[0.66rem]">Rest day</span>
               {WD.map((w, i) => (
                 <button key={w} onClick={() => setRestDay(restDay === i ? undefined : i)} className={`chip ${restDay === i ? "border-accent bg-accent/10 text-foreground" : ""}`}>{w}</button>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="eyebrow mr-1 self-center text-[0.66rem]">Long day</span>
+              {WD.map((w, i) => (
+                <button key={w} onClick={() => setLongDay(i)} className={`chip ${longDay === i ? "border-accent bg-accent/10 text-foreground" : ""}`}>{w}</button>
               ))}
             </div>
           </Field>

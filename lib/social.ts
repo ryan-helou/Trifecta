@@ -1,7 +1,7 @@
 import { Plan, Profile } from "./types";
 import { computeStreak } from "./stats";
 import { addDays, daysBetween } from "./dates";
-import { raceCategoryName } from "./planEngine";
+import { isFitnessGoal, raceCategoryName } from "./planEngine";
 
 // ---------------------------------------------------------------------------
 // Social domain — derive a shareable "card" from a user's stored state, and a
@@ -51,9 +51,13 @@ export function publicCard(username: string, data: { profile?: unknown; plan?: u
   const card: PublicCard = { username, streak: 0, weekDone: 0 };
 
   if (profile) {
-    const name = profile.raceName ?? profile.custom?.name ?? raceCategoryName(profile);
-    const daysOut = profile.raceDateISO ? Math.max(0, daysBetween(todayISO, profile.raceDateISO)) : null;
-    card.race = { name, category: raceCategoryName(profile), daysOut };
+    if (isFitnessGoal(profile)) {
+      card.race = { name: "Training for fitness", category: "Fitness", daysOut: null };
+    } else {
+      const name = profile.raceName ?? profile.custom?.name ?? raceCategoryName(profile);
+      const daysOut = profile.raceDateISO ? Math.max(0, daysBetween(todayISO, profile.raceDateISO)) : null;
+      card.race = { name, category: raceCategoryName(profile), daysOut };
+    }
     card.level = profile.level;
   }
 

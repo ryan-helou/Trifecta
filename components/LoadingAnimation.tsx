@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Profile } from "@/lib/types";
+import { isFitnessGoal } from "@/lib/planEngine";
 import { COURSE_SPAN, RaceCourse } from "./RaceCourse";
 import { Wordmark } from "./Wordmark";
 
@@ -10,6 +11,7 @@ const RACE_LABEL: Record<string, string> = {
   half: "Ironman 70.3",
   full: "full Ironman",
   custom: "custom",
+  fitness: "general fitness",
 };
 
 export function LoadingAnimation({
@@ -22,11 +24,12 @@ export function LoadingAnimation({
   const [progress, setProgress] = useState(0);
   const done = useRef(false);
 
+  const fitness = isFitnessGoal(profile);
   const race = profile.raceType === "custom" ? profile.custom?.name || "custom" : RACE_LABEL[profile.raceType];
   const steps = [
     `Analyzing your ${race} goal…`,
     "Reading your PRs and setting training zones…",
-    "Structuring Base → Build → Peak → Taper…",
+    fitness ? "Structuring a rolling Base → Build block…" : "Structuring Base → Build → Peak → Taper…",
     `Balancing your ${profile.workoutsPerWeek} workouts around long sessions…`,
     "Applying the 80/20 intensity rule…",
     "Placing your bricks and threshold work…",

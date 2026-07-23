@@ -55,12 +55,25 @@ export function categoryOf(p: Profile): Cat {
   if (p.raceType === "olympic") return "olympic";
   if (p.raceType === "half") return "half";
   if (p.raceType === "full") return "full";
+  if (p.raceType === "fitness") return "olympic"; // no race → moderate, all-round volumes
   // classify a custom race by its run leg
   const run = p.custom?.runM ?? 10000;
   if (run <= 12000) return "olympic";
   if (run <= 25000) return "half";
   return "full";
 }
+
+/** True when there's no target race to periodise toward — either the athlete chose
+ *  "just get fitter", or they picked a distance but never set a date. The plan then
+ *  runs as a rolling base→build fitness block instead of counting down to race day. */
+export function isFitnessGoal(p: Profile): boolean {
+  return p.raceType === "fitness" || !p.raceDateISO;
+}
+
+// A rolling general-fitness block: no peak, no taper, no race week. Long enough to
+// carry real base→build structure, and it regenerates forward whenever the plan is
+// rebuilt, so training just keeps progressing until the athlete adds a race.
+const FITNESS_BLOCK_WEEKS = 12;
 
 const RACE_BIKE_KMH: Record<Level, number> = { beginner: 26, intermediate: 30, advanced: 33, elite: 36 };
 // Typical flat-course FTP the level speeds above implicitly assume — used to
@@ -362,6 +375,11 @@ function pickWeekSlots(
   const mods = injuryMods(p);
   const counts = weekSportCounts(p, phase, isRecovery, mods);
 
+  // The day the athlete has most time for long sessions (default Saturday). The
+  // long ride/brick anchors here; the long run lands the day after.
+  const longDay = ((((p.longSessionDay ?? 5) % 7) + 7) % 7);
+  const longRunDay = (longDay + 1) % 7;
+
   // ---- BIKE ---------------------------------------------------------------
   // The long anchor becomes a brick in build/peak — unless a run injury makes
   // running off the bike unwise, in which case it stays a long endurance ride.
@@ -370,11 +388,11 @@ function pickWeekSlots(
   const bikeRacePace = mods.bike.capZone >= 3;
   const longAnchor: Role = brickOk
     ? {
-        discipline: "brick", hard: !recover, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap + runOff, prefDay: 5,
+        discipline: "brick", hard: !recover, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap + runOff, prefDay: longDay,
         build: (min) => W.brick(ctx, Math.max(30, min - runOff), runOff, bikeRacePace && phase === "peak"),
       }
     : {
-        discipline: "bike", hard: false, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap, prefDay: 5,
+        discipline: "bike", hard: false, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap, prefDay: longDay,
         build: (min) => W.bikeLong(ctx, min, phase !== "base" && !recover && bikeRacePace),
       };
   // when a sport is off-limits (severe injury), keep only gentle, short sessions
@@ -384,7 +402,7 @@ function pickWeekSlots(
 
   // ---- RUN ----------------------------------------------------------------
   const longRun: Role = {
-    discipline: "run", hard: false, scalable: true, weight: 2.2, minMin: 30, maxMin: runCap, prefDay: 6,
+    discipline: "run", hard: false, scalable: true, weight: 2.2, minMin: 30, maxMin: runCap, prefDay: longRunDay,
     build: (min) => W.runLong(ctx, min, phase === "peak" && !recover && mods.run.capZone >= 3),
   };
   const runList: Role[] = mods.run.avoid
@@ -557,6 +575,9 @@ function assignDays(roles: Role[], restDay?: number): Slot[] {
 // ---- assemble the whole plan --------------------------------------------
 
 export function generatePlan(profile: Profile): Plan {
+  // No race on the calendar → a rolling fitness block instead of a countdown.
+  if (isFitnessGoal(profile)) return generateFitnessPlan(profile);
+
   const cat = categoryOf(profile);
   const paces = derivePaces(profile);
   const ctx: BuildCtx = { paces, level: profile.level };
@@ -683,6 +704,80 @@ export function generatePlan(profile: Profile): Plan {
     compressed,
     delayedStart,
     notice,
+  };
+}
+
+/** Build a rolling general-fitness plan for an athlete with no target race: a base
+ *  block then a build block, recovery weeks on the athlete's load cycle, and NO
+ *  peak/taper/race week. Reuses the same per-week builder as a race plan, so all the
+ *  personalisation (per-sport counts, injuries, equipment, strength, blackouts,
+ *  long-session day) still applies. */
+function generateFitnessPlan(profile: Profile): Plan {
+  const cat = categoryOf(profile); // "olympic" volumes by default; honours a chosen distance
+  const paces = derivePaces(profile);
+  const ctx: BuildCtx = { paces, level: profile.level };
+
+  const startMonday = mondayOf(todayISO());
+  const totalWeeks = FITNESS_BLOCK_WEEKS;
+  const cycleLen = profile.level === "beginner" ? 3 : 4; // 2:1 vs 3:1 load:deload
+
+  // A sustainable ceiling — a touch below race peak, since there's no taper to
+  // recover into and this block just keeps rolling.
+  const peakHours = Math.min(
+    PEAK_HOURS[cat][profile.level] * 0.9,
+    profile.weeklyHoursCap && profile.weeklyHoursCap > 0 ? profile.weeklyHoursCap : Infinity,
+  );
+
+  // first half base (aerobic engine), second half build (add some intensity)
+  const baseWeeks = Math.ceil(totalWeeks / 2);
+  const buildWeeks = totalWeeks - baseWeeks;
+
+  const weeks: Week[] = [];
+  const workouts: Record<string, Workout> = {};
+
+  for (let i = 0; i < totalWeeks; i++) {
+    const phase: Phase = i < baseWeeks ? "base" : "build";
+    const isRecovery = (i + 1) % cycleLen === 0 && i > 0;
+    const idxInPhase = phase === "base" ? i : i - baseWeeks;
+    const phaseLen = phase === "base" ? baseWeeks : buildWeeks;
+    const label = `${phase === "base" ? "Base" : "Build"} ${idxInPhase + 1}${isRecovery ? " · Recovery" : ""}`;
+
+    const frac = baseFraction(phase, idxInPhase, phaseLen, 0, 0);
+    let targetHours = peakHours * frac * (isRecovery ? 0.62 : 1);
+    targetHours = Math.round(targetHours * 2) / 2;
+
+    const weekStart = addDays(startMonday, i * 7);
+    const week: Week = {
+      index: i,
+      phase,
+      startDate: weekStart,
+      label,
+      isRecovery,
+      isRaceWeek: false,
+      targetHours,
+      focus: focusFor(phase, isRecovery, false),
+      workoutIds: [],
+    };
+    buildNormalWeek(ctx, profile, cat, phase, i, isRecovery, targetHours, week, workouts);
+    weeks.push(week);
+  }
+
+  applyBlackouts(profile, weeks, workouts);
+
+  return {
+    id: `plan-${Date.now()}`,
+    profile,
+    startDateISO: startMonday,
+    raceDateISO: "", // no target race
+    totalWeeks,
+    weeks,
+    workouts,
+    paces,
+    generatedAtISO: new Date().toISOString(),
+    compressed: false,
+    delayedStart: false,
+    notice:
+      "Fitness mode — a rolling block to build all-round triathlon fitness. No race on the calendar; add one any time and we'll periodise toward it.",
   };
 }
 

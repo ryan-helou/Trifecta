@@ -31,6 +31,7 @@ interface Draft {
   focusDiscipline?: Discipline;
   strength: { enabled: boolean; daysPerWeek: number; split: StrengthSplit; customSplit?: string };
   restDayPreference?: number;
+  longSessionDay?: number;
   weeklyHoursCap?: number;
   equipment: { pool: boolean; trainer: boolean; gym: boolean };
   blackouts: DateRange[];
@@ -123,25 +124,33 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
     perSport.swim + perSport.bike + perSport.run + (draft.strength.enabled ? draft.strength.daysPerWeek : 0);
 
   const finalProfile: Profile | null = useMemo(() => {
-    // the account is created last, so a profile can be assembled before we have a
-    // username — it's filled in at signup (see signupAndStart)
-    if (!draft.raceType || !draft.raceDateISO || !draft.level) return null;
+    // Every question is skippable, so we default anything unanswered: no goal chosen
+    // → fitness, no experience → intermediate. A race distance with no date routes to
+    // a rolling fitness block too (isFitnessGoal), and the nudge asks for the date.
+    // (The account is created last, so a profile assembles before we have a username —
+    // it's filled in at signup; see signupAndStart.)
+    const rt: RaceType = draft.raceType ?? "fitness";
+    const fitness = rt === "fitness";
+    const lvl: Level = draft.level ?? "intermediate";
+    // real-event identity only applies to a bare race distance, never custom/fitness
+    const isRealRace = rt !== "custom" && !fitness;
     const ps = resolvePerSport(draft);
     const strengthDays = draft.strength.enabled ? draft.strength.daysPerWeek : 0;
     const wpw = Math.max(1, Math.min(21, ps.swim + ps.bike + ps.run + strengthDays));
     return {
       username: username ?? "",
-      raceType: draft.raceType,
-      custom: draft.raceType === "custom" ? draft.custom : undefined,
-      raceName: draft.raceType === "custom" ? undefined : draft.raceName,
-      raceLocation: draft.raceType === "custom" ? undefined : draft.raceLocation,
-      raceId: draft.raceType === "custom" ? undefined : draft.raceId,
-      raceDateISO: draft.raceDateISO,
-      level: draft.level,
+      raceType: rt,
+      custom: rt === "custom" ? draft.custom : undefined,
+      raceName: isRealRace ? draft.raceName : undefined,
+      raceLocation: isRealRace ? draft.raceLocation : undefined,
+      raceId: isRealRace ? draft.raceId : undefined,
+      raceDateISO: fitness ? "" : draft.raceDateISO ?? "",
+      level: lvl,
       workoutsPerWeek: wpw,
       perSport: { ...ps },
       strength: draft.strength,
       restDayPreference: draft.restDayPreference,
+      longSessionDay: draft.longSessionDay ?? 5, // default Saturday
       runPR: draft.runPR,
       swimPR: draft.swimPR,
       bikePR: draft.bikePR,
@@ -159,11 +168,13 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   }, [username, draft]);
 
   // Steps that don't apply are skipped: the custom-distance step (unless it's a
-  // custom race), and the race-day step when a real event was picked — the event
-  // already carries its date, so there's nothing to ask.
+  // custom race), and the race-day step when a real event was picked (it already
+  // carries its date) or when training for fitness (there's no race to date).
   const hasEventDate = !!(draft.raceId && draft.raceDateISO);
+  const isFitness = draft.raceType === "fitness";
+  const skipDate = hasEventDate || isFitness;
   const stepActive = (s: (typeof STEPS)[number]) =>
-    (s !== "custom" || isCustom) && (s !== "date" || !hasEventDate);
+    (s !== "custom" || isCustom) && (s !== "date" || !skipDate);
 
   function skip(dir: 1 | -1, from: number): number {
     let n = from + dir;
@@ -173,18 +184,15 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   const next = () => setIdx((i) => skip(1, i));
   const back = () => setIdx((i) => skip(-1, i));
 
+  // Every question is skippable — Continue is always available. The only guard is a
+  // broken custom race (zero distances), which the athlete actively opened. Skipped
+  // answers fall back to sensible defaults in finalProfile (goal → fitness, level →
+  // intermediate, no date → rolling fitness block), and the in-app "finish your
+  // profile" nudge invites them to fill the important ones later.
   const canNext = (() => {
     switch (step) {
-      case "race":
-        return !!draft.raceType;
       case "custom":
         return draft.custom.swimM > 0 && draft.custom.bikeM > 0 && draft.custom.runM > 0;
-      case "date":
-        return !!draft.raceDateISO && draft.raceDateISO > todayISO();
-      case "level":
-        return !!draft.level;
-      case "frequency":
-        return totalSessions >= 1;
       default:
         return true;
     }
@@ -459,17 +467,25 @@ type StepProps = { draft: Draft; set: React.Dispatch<React.SetStateAction<Draft>
 
 function RaceStep({ draft, set }: StepProps) {
   const [mode, setMode] = useState<"distance" | "event">(draft.raceId ? "event" : "distance");
-  const races: { key: RaceType; name: string; legs?: [string, string, string] }[] = [
+  const races: { key: RaceType; name: string; legs?: [string, string, string]; sub?: string }[] = [
     { key: "olympic", name: "Olympic", legs: ["1.5 km swim", "40 km bike", "10 km run"] },
     { key: "half", name: "Ironman 70.3", legs: ["1.9 km swim", "90 km bike", "21.1 km run"] },
     { key: "full", name: "Full Ironman", legs: ["3.8 km swim", "180 km bike", "42.2 km run"] },
-    { key: "custom", name: "Custom distance" },
+    { key: "custom", name: "Custom distance", sub: "Set your own swim / bike / run" },
+    { key: "fitness", name: "Just get fitter", sub: "No race — build all-round triathlon fitness" },
   ];
   const legColor = ["--swim", "--bike", "--run"] as const;
 
-  // pick a bare distance → drop any real-event identity
+  // pick a bare distance → drop any real-event identity (and any date, for fitness)
   const pickDistance = (key: RaceType) =>
-    set((d) => ({ ...d, raceType: key, raceId: undefined, raceName: undefined, raceLocation: undefined }));
+    set((d) => ({
+      ...d,
+      raceType: key,
+      raceId: undefined,
+      raceName: undefined,
+      raceLocation: undefined,
+      raceDateISO: key === "fitness" ? undefined : d.raceDateISO,
+    }));
 
   // pick a real event → set its category + pre-fill the date
   const pickEvent = (r: CatalogRace) =>
@@ -484,7 +500,7 @@ function RaceStep({ draft, set }: StepProps) {
 
   return (
     <div>
-      <Head title="What are you training for?" sub="Pick your race — this shapes the whole plan." />
+      <Head title="What are you training for?" sub="Pick your race — or just train for general fitness. This shapes the whole plan." />
       <div className="mb-4 grid grid-cols-2 gap-2">
         {(["distance", "event"] as const).map((m) => (
           <button
@@ -514,7 +530,7 @@ function RaceStep({ draft, set }: StepProps) {
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-muted">Set your own swim / bike / run</div>
+                <div className="text-sm text-muted">{r.sub}</div>
               )}
             </Card>
           ))}
@@ -805,6 +821,22 @@ function ScheduleStep({ draft, set }: StepProps) {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="mb-5">
+        <div className="mb-2 eyebrow text-[0.72rem]">Long-workout day</div>
+        <div className="flex flex-wrap gap-2">
+          {WD.map((w, i) => (
+            <button
+              key={w}
+              onClick={() => set((d) => ({ ...d, longSessionDay: i }))}
+              className={`chip ${(draft.longSessionDay ?? 5) === i ? "is-selected" : ""}`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">The day you have the most time — we&apos;ll anchor your long ride here and the long run the day after.</p>
       </div>
 
       <div className="mb-5">
@@ -1144,20 +1176,23 @@ function InjuriesStep({ draft, set }: StepProps) {
 
 function ReviewStep({ draft, total, profile }: { draft: Draft; total: number; profile: Profile | null }) {
   const proj = profile ? projectRace(profile) : null;
-  const race =
-    draft.raceName ??
-    (draft.raceType === "custom"
-      ? draft.custom.name
-      : draft.raceType === "olympic"
-      ? "Olympic"
-      : draft.raceType === "half"
-      ? "Ironman 70.3"
-      : "Full Ironman");
+  const rt = draft.raceType ?? "fitness"; // skipped goal → fitness
+  const fitness = rt === "fitness";
+  const race = fitness
+    ? "General fitness"
+    : draft.raceName ??
+      (rt === "custom"
+        ? draft.custom.name
+        : rt === "olympic"
+        ? "Olympic"
+        : rt === "half"
+        ? "Ironman 70.3"
+        : "Full Ironman");
   const ps = resolvePerSport(draft);
   const rows: [string, string][] = [
-    ["Race", race],
-    ["Date", draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
-    ["Level", draft.level ?? "—"],
+    [fitness ? "Goal" : "Race", race],
+    ["Date", fitness ? "No race — training for fitness" : draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
+    ["Level", draft.level ?? "intermediate"],
     [
       "Weekly sessions",
       `${total} · Swim ${ps.swim} · Bike ${ps.bike} · Run ${ps.run}${draft.autoFrequency ? " · auto" : ""}`,

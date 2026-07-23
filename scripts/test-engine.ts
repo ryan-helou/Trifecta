@@ -1,15 +1,16 @@
-import { generatePlan } from "../lib/planEngine";
+import { generatePlan, isFitnessGoal } from "../lib/planEngine";
 import { Profile } from "../lib/types";
 import { fmtDuration } from "../lib/format";
 import { addDays } from "../lib/dates";
 import { derivePaces } from "../lib/paces";
 import { projectRace } from "../lib/predict";
 import { calibratePaces } from "../lib/calibrate";
-import { assessAdaptation, applyAdaptation } from "../lib/adapt";
+import { assessAdaptation, applyAdaptation, logWorkout, creditedDiscipline, creditedSeconds } from "../lib/adapt";
 import { logReadiness, readinessScore, READY_LOW } from "../lib/readiness";
 import { flattenWorkout } from "../lib/workoutSteps";
 import { buildWorkoutFit } from "../lib/fit";
 import { publicCard, raceKeyOf } from "../lib/social";
+import { profileGaps } from "../lib/profileGaps";
 
 function mk(over: Partial<Profile>): Profile {
   const race = new Date();
@@ -57,6 +58,11 @@ const scenarios: { name: string; p: Profile }[] = [
   // ---- equipment scenarios ----
   { name: "No pool (dryland swim)", p: mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), perSport: { swim: 3, bike: 2, run: 2 }, equipment: { pool: false, trainer: true, gym: true } }) },
   { name: "No gym (home strength, PPL)", p: mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, strength: { enabled: true, daysPerWeek: 3, split: "push-pull-legs" }, equipment: { pool: true, trainer: true, gym: false } }) },
+  // ---- fitness mode (no race) — routes through the rolling-block generator ----
+  { name: "Fitness explicit 6/wk", p: mk({ raceType: "fitness", raceDateISO: "", workoutsPerWeek: 6 }) },
+  { name: "Fitness beginner 4/wk", p: mk({ raceType: "fitness", raceDateISO: "", level: "beginner", workoutsPerWeek: 4 }) },
+  { name: "Fitness + injury (severe run)", p: mk({ raceType: "fitness", raceDateISO: "", perSport: { swim: 2, bike: 3, run: 3 }, injuries: [{ id: "if1", area: "achilles", disciplines: ["run"], severity: "severe" }] }) },
+  { name: "Distance picked, no date → fitness", p: mk({ raceType: "half", raceDateISO: "", perSport: { swim: 2, bike: 3, run: 3 } }) },
 ];
 
 let problems = 0;
@@ -164,6 +170,65 @@ console.log("\n=== projection ===");
   const near = projectRace({ ...p, raceDateISO: raceInWeeks(3) });
   check(near.gainFrac < proj.gainFrac, "fewer weeks to race → smaller modelled gain");
   console.log(`     current=${fmtDuration(proj.currentSec)} projected=${fmtDuration(proj.projectedSec)} gain=${fmtDuration(proj.gainSec)}`);
+}
+
+// ---- fitness mode: no race → a rolling base→build block, no peak/taper/race week ----
+console.log("\n=== fitness mode (no race) ===");
+{
+  const p = mk({ raceType: "fitness", raceDateISO: "", perSport: { swim: 2, bike: 3, run: 3 } });
+  check(isFitnessGoal(p), "raceType 'fitness' is a fitness goal");
+  const plan = generatePlan(p);
+  check(plan.raceDateISO === "", "fitness plan carries no race date");
+  check(plan.totalWeeks === 12, `fitness block is 12 weeks (got ${plan.totalWeeks})`);
+  const phases = new Set(plan.weeks.map((w) => w.phase));
+  check(!phases.has("peak") && !phases.has("taper"), "no peak/taper phases in a fitness block");
+  check(plan.weeks.every((w) => !w.isRaceWeek), "no race week in a fitness block");
+  check(phases.has("base") && phases.has("build"), "fitness block has both base and build phases");
+  check(!Object.values(plan.workouts).some((w) => w.type === "race_prep"), "no race_prep sessions in a fitness block");
+  check(plan.weeks.every((w) => w.workoutIds.length > 0), "every fitness week has sessions");
+  const proj = projectRace(p);
+  check(proj.projectedSec === 0 && proj.gainSec === 0, "projectRace returns zeros for a fitness goal");
+  // a distance picked but no date also routes to fitness
+  const p2 = mk({ raceType: "half", raceDateISO: "" });
+  check(isFitnessGoal(p2), "distance picked but no date → fitness goal");
+  check(generatePlan(p2).raceDateISO === "" && generatePlan(p2).totalWeeks === 12, "no-date half becomes a rolling fitness block");
+  // social card degrades gracefully (no daysOut, Fitness category)
+  const card = publicCard("fit", { profile: plan.profile, plan }, addDays(plan.startDateISO, 3));
+  check(card.race?.daysOut == null && card.race?.category === "Fitness", "fitness social card has no race countdown");
+}
+
+// ---- profile gaps: the "finish your profile" nudge, derived from the profile ----
+console.log("\n=== profile gaps (finish-your-profile nudge) ===");
+{
+  // a race distance picked but no date → nudge to add the date
+  const g1 = profileGaps(mk({ raceType: "half", raceDateISO: "" }));
+  check(g1.some((g) => g.key === "racedate"), "distance picked + no date → race-date gap");
+  // a fitness athlete chose to have no race → never nudged for a date
+  const g2 = profileGaps(mk({ raceType: "fitness", raceDateISO: "" }));
+  check(!g2.some((g) => g.key === "racedate"), "fitness athlete not nudged for a race date");
+  check(g2.some((g) => g.key === "prs"), "no PRs/FTP → performance-data gap");
+  // a complete-enough profile → no gaps
+  const g3 = profileGaps(mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), ftp: 220 }));
+  check(g3.length === 0, "race with a date + FTP → no gaps");
+}
+
+// ---- long-session day: long ride anchors on the chosen day, long run the day after ----
+console.log("\n=== long-session day ===");
+{
+  const build = (longDay?: number) => {
+    const plan = generatePlan(mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 }, ...(longDay != null ? { longSessionDay: longDay } : {}) }));
+    const wk = plan.weeks.find((w) => w.phase === "build" && !w.isRecovery) ?? plan.weeks[Math.floor(plan.totalWeeks * 0.6)];
+    const ws = wk.workoutIds.map((id) => plan.workouts[id]);
+    const bike = ws.filter((w) => w.discipline === "bike" || w.discipline === "brick").sort((a, b) => b.estDurationSec - a.estDurationSec)[0];
+    const run = ws.filter((w) => w.discipline === "run").sort((a, b) => b.estDurationSec - a.estDurationSec)[0];
+    return { bikeDay: bike?.dayIndex, runDay: run?.dayIndex };
+  };
+  const def = build(); // default Saturday (5)
+  check(def.bikeDay === 5, `default long ride lands on Saturday (got d${def.bikeDay})`);
+  check(def.runDay === 6, `default long run lands on Sunday (got d${def.runDay})`);
+  const wed = build(2); // Wednesday
+  check(wed.bikeDay === 2, `long ride follows longSessionDay=Wed (got d${wed.bikeDay})`);
+  check(wed.runDay === 3, `long run lands the day after, Thu (got d${wed.runDay})`);
 }
 
 // ---- calibration: consistently-too-hard eases the run targets ----
@@ -295,6 +360,67 @@ console.log("\n=== social cards ===");
   const k1 = raceKeyOf(plan.profile);
   const k2 = raceKeyOf({ ...plan.profile, raceDateISO: addDays(plan.profile.raceDateISO, 1) });
   check(!!k1 && k1 !== k2, "raceKey distinguishes different races");
+}
+
+// ---- log a workout: manual actual-vs-plan (tick / adjust / swap / bonus) ----
+console.log("\n=== log a workout ===");
+{
+  const p = mk({ raceType: "half", raceDateISO: raceInWeeks(18), perSport: { swim: 2, bike: 3, run: 3 } });
+  const plan = generatePlan(p);
+  const runW = Object.values(plan.workouts).find((w) => w.discipline === "run" && w.status === "planned")!;
+  check(!!runW, "found a planned run to log against");
+
+  // 1) equivalent → ticked off, marked done, actuals credited
+  {
+    const r = logWorkout(plan, { dateISO: runW.date, discipline: "run", durationSec: runW.estDurationSec, distanceM: runW.estDistanceM, rpe: 5, feel: "ok" });
+    check(r.outcome === "ticked", `equivalent run → ticked (got ${r.outcome})`);
+    check(r.plan.workouts[runW.id].status === "done", "matched workout marked done");
+    check(r.plan.workouts[runW.id].actualDurationSec === runW.estDurationSec, "actual duration recorded");
+    check(r.coachPrefill.length > 10, "coach prefill is populated");
+  }
+
+  // 2) much shorter → adjusted (still done, credited what you actually did)
+  {
+    const shorter = Math.round(runW.estDurationSec * 0.4);
+    const r = logWorkout(plan, { dateISO: runW.date, discipline: "run", durationSec: shorter });
+    check(r.outcome === "adjusted", `40%-length run → adjusted (got ${r.outcome})`);
+    check(creditedSeconds(r.plan.workouts[runW.id]) === shorter, "credited the shorter actual duration");
+  }
+
+  // 3) different sport than planned → swapped, credit moves to what you did
+  {
+    const bikeDay = Object.values(plan.workouts).find((w) => w.discipline === "bike" && w.status === "planned")!;
+    const daySwims = Object.values(plan.workouts).filter((w) => w.date === bikeDay.date && w.discipline === "swim");
+    if (daySwims.length === 0) {
+      const r = logWorkout(plan, { dateISO: bikeDay.date, discipline: "swim", durationSec: 1800, distanceM: 1500 });
+      check(r.outcome === "swapped", `swim on a non-swim day → swapped (got ${r.outcome})`);
+      check(!!r.matchedId && creditedDiscipline(r.plan.workouts[r.matchedId]) === "swim", "credit moved to swim");
+    } else {
+      check(true, "swap case skipped (day already had a swim planned)");
+    }
+  }
+
+  // 4) nothing planned that day → a bonus session is added and marked done.
+  //    Use a light 3/wk plan so week 0 is guaranteed to have empty days.
+  {
+    const lightPlan = generatePlan(mk({ raceType: "olympic", raceDateISO: raceInWeeks(14), workoutsPerWeek: 3 }));
+    const wk0 = lightPlan.weeks[0];
+    let emptyDate: string | null = null;
+    for (let day = 0; day < 7; day++) {
+      const iso = addDays(wk0.startDate, day);
+      if (!Object.values(lightPlan.workouts).some((w) => w.date === iso)) { emptyDate = iso; break; }
+    }
+    check(!!emptyDate, "found an empty day in a light week");
+    const before = Object.keys(lightPlan.workouts).length;
+    const r = logWorkout(lightPlan, { dateISO: emptyDate!, discipline: "run", durationSec: 1800, rpe: 4 });
+    check(r.outcome === "bonus", `empty day → bonus (got ${r.outcome})`);
+    check(Object.keys(r.plan.workouts).length === before + 1, "bonus session added to the plan");
+    const added = Object.values(r.plan.workouts).find((w) => w.date === emptyDate && w.discipline === "run");
+    check(added?.status === "done", "bonus session is marked done");
+    // it must be reachable from its week too (reindexed), so it shows on the calendar
+    const inWeek = r.plan.weeks.some((w) => w.workoutIds.some((id) => id === added?.id));
+    check(inWeek, "bonus session is attached to its week");
+  }
 }
 
 console.log(`\n\n${problems === 0 ? "✅ NO PROBLEMS" : "❌ " + problems + " PROBLEMS"}`);

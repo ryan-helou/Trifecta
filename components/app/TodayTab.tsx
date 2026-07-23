@@ -9,7 +9,10 @@ import { WorkoutCard } from "./WorkoutCard";
 import { ReadinessSheet } from "./ReadinessSheet";
 import { ProgressRing } from "./motion";
 import { Icon } from "./icons";
-import { PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
+import { FitnessHero, PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
+import { isFitnessGoal } from "@/lib/planEngine";
+import { profileGaps, gapSignature } from "@/lib/profileGaps";
+import { Profile } from "@/lib/types";
 import { weekProgress } from "@/lib/adapt";
 import { readinessBand } from "@/lib/readiness";
 import { calibrationDue } from "@/lib/calibrate";
@@ -17,8 +20,8 @@ import { computeStreak } from "@/lib/stats";
 import { fmtFullDate as fullDate, addDays, dayIndexOf, fmtDayMonth, weekdayLong } from "@/lib/dates";
 
 export function TodayTab() {
-  const { plan, username, offline } = useApp();
-  const { today, openCoach, openWorkout, goTab, actions } = useUI();
+  const { plan, profile, username, offline } = useApp();
+  const { today, openCoach, openWorkout, openLog, goTab, actions } = useUI();
   const toast = useToast();
   const [readyOpen, setReadyOpen] = useState(false);
 
@@ -66,10 +69,16 @@ export function TodayTab() {
             </div>
           )}
         </div>
-        <button onClick={() => openCoach()} className="card-glass flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold">
-          <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
-          Coach
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => openLog()} className="card-glass flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold">
+            <span aria-hidden className="text-base leading-none text-accent">＋</span>
+            Log
+          </button>
+          <button onClick={() => openCoach()} className="card-glass flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold">
+            <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
+            Coach
+          </button>
+        </div>
       </div>
 
       {offline && (
@@ -79,8 +88,10 @@ export function TodayTab() {
       )}
 
       <div className="animate-fade-up" style={{ animationDelay: "60ms" }}>
-        <RaceCountdown plan={plan} today={today} />
+        {isFitnessGoal(plan.profile) ? <FitnessHero plan={plan} today={today} /> : <RaceCountdown plan={plan} today={today} />}
       </div>
+
+      {profile && <ProfileNudge profile={profile} />}
 
       {plan.notice && <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm text-muted">{plan.notice}</div>}
 
@@ -158,6 +169,12 @@ export function TodayTab() {
             ))}
           </div>
         )}
+        <button
+          onClick={() => openLog()}
+          className="mt-2.5 w-full rounded-2xl border border-dashed border-line py-3 text-center text-sm font-semibold text-muted transition hover:border-accent/50 hover:text-foreground"
+        >
+          ＋ Log a workout you did
+        </button>
       </div>
 
       {/* up next — the next session after today */}
@@ -191,6 +208,57 @@ export function TodayTab() {
       </button>
 
       {readyOpen && <ReadinessSheet onClose={() => setReadyOpen(false)} />}
+    </div>
+  );
+}
+
+const NUDGE_KEY = "amatri:profile-nudge-dismissed";
+
+/** "Finish your profile" — surfaces the important answers a fully-skippable
+ *  onboarding may have left blank (race date, PRs). Tapping opens Edit settings;
+ *  dismissing sticks only while the gap set is unchanged. */
+function ProfileNudge({ profile }: { profile: Profile }) {
+  const { openSettings } = useUI();
+  const gaps = profileGaps(profile);
+  const sig = gapSignature(gaps);
+  // undefined until we've read the stored dismissal — avoids a flash on reload
+  const [dismissedSig, setDismissedSig] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    try {
+      setDismissedSig(window.localStorage.getItem(NUDGE_KEY));
+    } catch {
+      setDismissedSig(null);
+    }
+  }, []);
+
+  if (dismissedSig === undefined) return null;
+  if (!gaps.length || dismissedSig === sig) return null;
+
+  const dismiss = () => {
+    try {
+      window.localStorage.setItem(NUDGE_KEY, sig);
+    } catch {}
+    setDismissedSig(sig);
+  };
+
+  return (
+    <div className="animate-fade-up card p-4" style={{ animationDelay: "75ms" }}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="eyebrow text-[0.72rem]">A few answers will sharpen your plan</div>
+          <div className="mt-0.5 font-display text-[1.05rem] font-semibold">Finish your profile</div>
+        </div>
+        <button onClick={dismiss} aria-label="Dismiss" className="text-muted transition hover:text-foreground">✕</button>
+      </div>
+      <ul className="mt-2.5 space-y-1.5">
+        {gaps.map((g) => (
+          <li key={g.key} className="flex items-start gap-2 text-sm text-muted">
+            <span aria-hidden className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
+            {g.label}
+          </li>
+        ))}
+      </ul>
+      <button onClick={openSettings} className="btn btn-primary mt-3 w-full py-2.5 text-sm">Answer now</button>
     </div>
   );
 }
