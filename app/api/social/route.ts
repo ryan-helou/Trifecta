@@ -66,10 +66,16 @@ export async function GET(req: NextRequest) {
   const others = users.filter((u) => u.id !== uid && !followingIds.has(u.id));
   const sameRace = (u: UserLite) => (myKey && raceKeyOf(u.data?.profile as Profile | undefined) === myKey ? 0 : 1);
   others.sort((a, b) => sameRace(a) - sameRace(b) || (b.data?.updatedAtISO ?? "").localeCompare(a.data?.updatedAtISO ?? ""));
-  const suggestions = others.slice(0, 6).map((u) => base(u, false));
+  const suggestions = await Promise.all(
+    others.slice(0, 6).map((u) => withKudos(base(u, false), u.id)),
+  );
 
-  // cohort — how many others are training for my exact race
-  const cohortUsers = myKey ? others.filter((u) => raceKeyOf(u.data?.profile as Profile | undefined) === myKey) : [];
+  // cohort — how many others are training for my exact race. Counts over ALL users
+  // (minus me), independent of follow state — following someone shouldn't drop them
+  // from the "training for your race" tally.
+  const cohortUsers = myKey
+    ? users.filter((u) => u.id !== uid && raceKeyOf(u.data?.profile as Profile | undefined) === myKey)
+    : [];
   const cohort = { count: cohortUsers.length, raceName: meCard.race?.name };
 
   return NextResponse.json({ me: meCard, feed, suggestions, cohort });

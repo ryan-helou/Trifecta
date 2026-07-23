@@ -162,7 +162,7 @@ function DayStrip({ week, today, plan }: { week: Week; today: string; plan: Plan
     <div className="flex gap-1.5">
       {Array.from({ length: 7 }).map((_, day) => {
         const iso = addDays(week.startDate, day);
-        const items = week.workoutIds.map((id) => plan.workouts[id]).filter((w) => w.dayIndex === day);
+        const items = week.workoutIds.map((id) => plan.workouts[id]).filter((w) => w && w.dayIndex === day);
         const isToday = iso === today;
         return (
           <div
