@@ -12,7 +12,8 @@
     "start": "next start -H 0.0.0.0",
     "lint": "eslint",
     "icons": "node scripts/gen-icons.mjs",
-    "assets:native": "node scripts/gen-native-assets.mjs"
+    "assets:native": "node scripts/gen-native-assets.mjs",
+    "build:static": "node scripts/build-static.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",
