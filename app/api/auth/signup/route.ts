@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DuplicateUsernameError, getStore } from "@/lib/db";
-import { hashPassword, sessionCookie, validateCredentials } from "@/lib/auth-server";
+import { createSessionToken, hashPassword, sessionCookie, validateCredentials } from "@/lib/auth-server";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
@@ -34,7 +34,11 @@ export async function POST(req: NextRequest) {
     }
     throw e;
   }
-  const res = NextResponse.json({ user: { username: user.username }, state: {} });
+  const res = NextResponse.json({
+    user: { username: user.username },
+    state: {},
+    token: createSessionToken(user.id),
+  });
   res.cookies.set(sessionCookie(user.id));
   return res;
 }
