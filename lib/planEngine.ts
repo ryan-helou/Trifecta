@@ -33,18 +33,17 @@ export const RACE_DISTANCES: Record<Cat, { swim: number; bike: number; run: numb
   full: { swim: 3800, bike: 180000, run: 42200, name: "Ironman" },
 };
 
-// Plan length by distance, clamped. `min` = the shortest defensible build (sooner ⇒
-// compressed); `max` = how far out we still lay down a full countdown. The old maxima
-// (16/24/30) were too tight: an athlete who signs up a normal season ahead (a 70.3 ~30+
-// weeks out) got a 24-week plan starting weeks from now — nonsensical idle time. These
-// span a realistic runway (olympic ~6mo, half ~9mo, full ~10–11mo); the surplus flows
-// into the aerobic base (see the phase split below), which is exactly where long-course
-// lead time belongs. Beyond `max`, a delayed start with a real base-building nudge is honest.
-const PLAN_LEN: Record<Cat, { min: number; max: number }> = {
-  olympic: { min: 8, max: 24 },
-  half: { min: 12, max: 36 },
-  full: { min: 16, max: 44 },
-};
+// The shortest defensible build per distance — a race sooner than this compresses the
+// plan (we keep the key sessions and shorten the ramp).
+const PLAN_MIN: Record<Cat, number> = { olympic: 8, half: 12, full: 16 };
+
+// The plan ALWAYS begins the week the athlete signs up — no delayed start. It spans the
+// whole runway to race day, so however far out the race is, that lead time flows into the
+// aerobic base (see the phase split below), which is exactly where long-course time belongs.
+// We only clamp at a sanity ceiling for pathological input: a race booked more than a year
+// out isn't meaningfully periodised from day one, so beyond MAX_PLAN_WEEKS the structured
+// plan starts closer to the race (the sole surviving `delayedStart` case).
+const MAX_PLAN_WEEKS = 52;
 
 // The build/"specific-prep" phase is a *bounded* block (~6–12 wk in Friel/traditional
 // periodization; even shorter, rotated, under block periodization). It carries near-peak
@@ -598,7 +597,7 @@ export function generatePlan(profile: Profile): Plan {
   const start0 = mondayOf(todayISO());
   const raceMonday = mondayOf(profile.raceDateISO);
   const weeksUntil = weeksBetween(start0, raceMonday) + 1; // include race week
-  const { min, max } = PLAN_LEN[cat];
+  const min = PLAN_MIN[cat];
 
   let totalWeeks: number;
   let compressed = false;
@@ -606,10 +605,12 @@ export function generatePlan(profile: Profile): Plan {
   if (weeksUntil < min) {
     totalWeeks = Math.max(4, weeksUntil);
     compressed = true;
-  } else if (weeksUntil > max) {
-    totalWeeks = max;
+  } else if (weeksUntil > MAX_PLAN_WEEKS) {
+    // pathologically far out (>1 year): cap the structured plan; it begins closer to race.
+    totalWeeks = MAX_PLAN_WEEKS;
     delayedStart = true;
   } else {
+    // the common case: span the whole runway, starting the week they signed up.
     totalWeeks = weeksUntil;
   }
 
