@@ -1,0 +1,2 @@
+app_identifier("app.trifecta.mobile")
+# Auth is via the App Store Connect API key (see Fastfile) — no Apple ID / 2FA needed.
