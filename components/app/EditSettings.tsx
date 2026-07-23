@@ -90,6 +90,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [restDay, setRestDay] = useState<number | undefined>(profile.restDayPreference);
   const [longDay, setLongDay] = useState<number>(profile.longSessionDay ?? 5);
   const [ftp, setFtp] = useState(profile.ftp);
+  const [thresholdHr, setThresholdHr] = useState(profile.thresholdHr);
   const [maxHR, setMaxHR] = useState(profile.maxHR);
   const [hoursCap, setHoursCap] = useState(profile.weeklyHoursCap);
   const [focus, setFocus] = useState<Discipline | undefined>(profile.focusDiscipline);
@@ -175,6 +176,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       swimPR,
       bikePR,
       ftp,
+      thresholdHr,
       maxHR,
       weeklyHoursCap: hoursCap,
       focusDiscipline: focus,
@@ -447,6 +449,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <NumIn label="Bike FTP (W)" value={ftp} onChange={setFtp} />
+                <NumIn label="Threshold HR (bpm)" value={thresholdHr} onChange={setThresholdHr} />
                 <NumIn label="Max HR (bpm)" value={maxHR} onChange={setMaxHR} />
               </div>
             </div>
