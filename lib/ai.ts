@@ -36,6 +36,11 @@ async function makeClient(): Promise<OpenAI> {
   return new OpenAI({
     apiKey: aiKey() ?? "",
     baseURL: process.env.AI_BASE_URL || DEFAULT_BASE_URL,
+    // Bound a stalled provider call: flash-lite answers in a few seconds, so a
+    // 20s cap + one retry keeps a hung request from tying up the route for the
+    // SDK default of 10 minutes (600s x 2).
+    timeout: 20_000,
+    maxRetries: 1,
   });
 }
 

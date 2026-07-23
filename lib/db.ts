@@ -264,10 +264,16 @@ class PgStore implements Store {
   async createUser(username: string, passwordHash: string): Promise<UserRow> {
     await this.init();
     const id = newId();
-    await this.pool.query(
-      "INSERT INTO users (id, username, username_lower, password_hash, data) VALUES ($1,$2,$3,$4,$5)",
-      [id, username, username.toLowerCase(), passwordHash, {}],
-    );
+    try {
+      await this.pool.query(
+        "INSERT INTO users (id, username, username_lower, password_hash, data) VALUES ($1,$2,$3,$4,$5)",
+        [id, username, username.toLowerCase(), passwordHash, {}],
+      );
+    } catch (e) {
+      // unique-violation on username_lower (concurrent signup) → typed 409, not a raw 500
+      if ((e as { code?: string }).code === "23505") throw new DuplicateUsernameError();
+      throw e;
+    }
     return { id, username, passwordHash, data: {} };
   }
 
@@ -280,6 +286,14 @@ class PgStore implements Store {
   async setData(userId: string, data: AppState): Promise<void> {
     await this.init();
     await this.pool.query("UPDATE users SET data = $1, updated_at = now() WHERE id = $2", [data, userId]);
+  }
+}
+
+/** Thrown by a Store's createUser when the username is already taken (for a race-safe 409). */
+export class DuplicateUsernameError extends Error {
+  constructor() {
+    super("Username already taken");
+    this.name = "DuplicateUsernameError";
   }
 }
 
@@ -301,10 +315,12 @@ class MemoryStore implements Store {
     return this.users.get(id) ?? null;
   }
   async createUser(username: string, passwordHash: string): Promise<UserRow> {
+    const lower = username.toLowerCase();
+    if (this.byName.has(lower)) throw new DuplicateUsernameError();
     const id = newId();
     const row: UserRow = { id, username, passwordHash, data: {} };
     this.users.set(id, row);
-    this.byName.set(username.toLowerCase(), id);
+    this.byName.set(lower, id);
     return row;
   }
   async getData(userId: string): Promise<AppState> {
