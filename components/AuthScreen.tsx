@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useApp } from "./AppProvider";
-import { API_BASE } from "@/lib/runtime";
 import { Reactor } from "./Reactor";
 import { Wordmark } from "./Wordmark";
 
@@ -17,31 +16,17 @@ export function AuthScreen({ onBack }: { onBack?: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [dbg, setDbg] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
     setError(null);
-    const w = window as unknown as { Capacitor?: { getPlatform?: () => string } };
-    let d = `cap=${!!w.Capacitor} plat=${w.Capacitor?.getPlatform?.() ?? "?"} base=${API_BASE || "(rel)"}`;
-    setDbg(d + " · GET me…");
     try {
-      const r = await fetch(API_BASE + "/api/auth/me");
-      d += ` · me=${r.status}`;
-    } catch (err) {
-      d += ` · me-THREW=${err instanceof Error ? err.message : String(err)}`;
-    }
-    setDbg(d + " · login…");
-    try {
-      const t0 = Date.now();
       const err = await login(username.trim(), password);
-      d += ` · login=${Date.now() - t0}ms err=${err ?? "ok"}`;
-      setDbg(d);
       if (err) setError(err);
     } catch (err) {
-      setDbg(d + ` · login-THREW=${err instanceof Error ? err.message : String(err)}`);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -112,7 +97,6 @@ export function AuthScreen({ onBack }: { onBack?: () => void }) {
             />
 
             {error && <div className="mt-1 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
-            {dbg && <div className="mt-1 rounded-lg border border-line bg-surface-2 px-3 py-2 text-[10px] text-muted whitespace-pre-wrap break-all">{dbg}</div>}
 
             <button type="submit" disabled={busy} className="btn btn-primary mt-4 py-3.5 text-base">
               {busy ? "One sec…" : "Sign in"}
@@ -127,7 +111,6 @@ export function AuthScreen({ onBack }: { onBack?: () => void }) {
             Build your plan
           </button>
         </p>
-        <p className="pb-3 text-center text-[10px] text-muted">native build · b4-debug</p>
       </div>
     </div>
   );
