@@ -133,7 +133,8 @@ Profile
   weeksUntil = weeksBetween(mondayOf(today), mondayOf(raceDate)) + 1
   clamp into PLAN_LEN[cat] → totalWeeks   (too soon ⇒ compressed; too far ⇒ delayedStart)
   taperWeeks = min(TAPER_WEEKS[cat], floor(totalWeeks·0.18))
-  baseWeeks ≈ 45% of the non-taper remainder; peakWeeks ∈ {0,1,2}; buildWeeks = the rest
+  buildWeeks = bounded specific-prep block (≤ BUILD_MAX[cat], ~6–12 wk); peakWeeks ∈ {0,1,2};
+              baseWeeks = the rest  ⇒ surplus lead time lengthens BASE, never the near-peak build
   cycleLen = beginner ? 3 : 4        (2:1 vs 3:1 load:deload)
   peakHours = min(PEAK_HOURS[cat][level], weeklyHoursCap)
   │
@@ -403,7 +404,8 @@ hold for all of them, shrink counterexamples." `[ZetCode-PBT, arXiv-PBT]`
 
 **Physiological / load (the safety invariants — these are the *point* of the product):**
 9. **Monotone taper.** `targetHours` must be non-increasing across every taper week and strictly below
-   the peak week. **⚠️ This invariant FAILS today for full-distance (3-week) tapers** — see 4.2.
+   the peak week. **✅ Now holds for all distances** — the 3-week full taper was fixed (`baseFraction`
+   now indexes the descent by weeks-to-race: 10.5 → 8.5 → 5.0 h); see 4.2.
 10. **Bounded week-over-week ramp.** Non-recovery `targetHours` should not jump more than a bounded
     fraction (the field heuristic is ~10%/week, superseded by keeping the acute:chronic load ratio in
     ~0.8–1.3 `[Outside-ACWR]`). **Not currently enforced** — a Runna-style "controlled double
@@ -429,9 +431,21 @@ hold for all of them, shrink counterexamples." `[ZetCode-PBT, arXiv-PBT]`
     session (the `kept-` id namespacing must hold; regression-test the "same relative index" collision
     the code comments call out).
 
-### 4.2 Concrete bug found by tracing: the 3-week taper is non-monotone
+### 4.2 Concrete bug found by tracing: the 3-week taper was non-monotone — **FIXED (2026-07-22)**
 
-`baseFraction`'s taper branch:
+> **Resolution.** `baseFraction`'s taper branch now indexes the descent by *weeks-to-race*, so the
+> earliest taper week carries the most load and every taper is strictly non-increasing at any length:
+> ```ts
+> const weeksToRace = taperLen - 1 - taperPos; // 0 = race week
+> if (weeksToRace <= 0) return 0.32;           // race week — the lightest
+> const ladder = [0.55, 0.7];                  // 1 week out, then ≥2 weeks out (clamped)
+> return ladder[Math.min(ladder.length - 1, weeksToRace - 1)];
+> ```
+> A full Ironman now tapers **0.7 → 0.55 → 0.32** (target hours **10.5 → 8.5 → 5.0**); 2-week and
+> 1-week tapers are unchanged. Verified against invariant #9 for all distances. The original bug, for
+> the record:
+
+The old `baseFraction` taper branch:
 
 ```ts
 const ladder = [0.7, 0.55, 0.42];
@@ -620,14 +634,14 @@ valuable adaptivity investment.
 ### 7.1 The deterministic plan costs approximately nothing
 
 `generatePlan` is pure CPU: a few hundred lines of arithmetic and one O(sessions×7) greedy loop over
-~8–30 weeks. Runtime is sub-millisecond; it runs client-side in onboarding
+~8–44 weeks. Runtime is sub-millisecond; it runs client-side in onboarding
 (`components/onboarding/Onboarding.tsx`) and on rebuild with no server round-trip and no per-plan
 variable cost. **Marginal cost per plan ≈ $0.** Every rebuild, every "what-if" in settings, every
 adaptation re-run is also free. At 10k or 10M users the plan-generation line item is the same: zero.
 
 ### 7.2 What an LLM-per-plan competitor pays
 
-A full multisport plan is large: 12–30 weeks × ~6–12 sessions × structured segments with cues. To
+A full multisport plan is large: 12–44 weeks × ~6–12 sessions × structured segments with cues. To
 *author* that with an LLM you're emitting well north of 15–30k output tokens per plan (structured
 workouts are token-heavy), plus a few thousand input tokens of context. Concrete rates (2025–26):
 
@@ -671,7 +685,8 @@ posture: **AI is a garnish on a complete meal, not an ingredient the dish fails 
    tests, true reproducibility, and the simulation harness. (§4.3)
 2. **Stand up a property-test suite** over the §4.1 invariants with input fuzzing + shrinking. This is
    the single biggest risk-reduction for the beating heart of the product. (§4)
-3. **Fix the 3-week taper monotonicity bug** and add invariant #9 as a regression test. (§4.2)
+3. ~~**Fix the 3-week taper monotonicity bug**~~ **✅ done (2026-07-22, §4.2)** — still owed: add
+   invariant #9 (and the §4.1 catalogue) as an automated regression test so it can't silently return.
 4. **Enforce `weeklyHoursCap`** with a final normalization pass so the hours promise is real. (§3.4)
 5. **Add explicit constraints for cross-day hard-session spacing and an ACWR/ramp-rate ceiling** —
    the two physiological objectives currently left emergent. (§3.4, §6)
