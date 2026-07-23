@@ -51,13 +51,18 @@ So the answer to "a way to test and update" is concretely: **TestFlight for the 
 
 Estimates are **focused build-days**. Enrollment/review **latencies run in parallel** and are called out separately.
 
-### M0 — Apple account + first run on a real iPhone · **~0.5 d** (+ enrollment latency, parallel)
+### M0 — Apple account + first run on a real iPhone · **~0.5 d** (+ enrollment latency, parallel) · ✅ **DONE 2026-07-23**
 The unblock-everything milestone. Two things in parallel:
 - **Enroll in the Apple Developer Program — Individual, $99/yr.** Identity verification via the Apple Developer app (ID + selfie); realistic approval **~1–3 days**. *Start this first; it's the longest-latency, lowest-effort item and it gates TestFlight + HealthKit.*
 - **Stand up the remote-URL shell — no enrollment needed.** Add Capacitor, point it at the live Railway PWA (`server.url`), and do a **free-Apple-ID Xcode direct install** to your own iPhone. Proves the native plumbing in **minutes**.
   - *This same remote-URL build is what goes to TestFlight (internal + external) for the whole Path-A test loop — it's not throwaway. It's only unshippable to the **public** App Store (Guideline 4.2 rejects remote-URL wrappers at full review); Path B's bundled build fixes that later.*
 
 **Acceptance:** Trifecta is running on Ryan's physical iPhone; Apple enrollment submitted.
+> ✅ **Met 2026-07-23.** Capacitor 8.4.2 remote-URL shell installed to Ryan's iPhone via
+> Xcode (free-Apple-ID direct install, auto-managed signing, bundle `app.trifecta.mobile`),
+> loading the live Railway site. Apple Developer Program **purchased** (Enrollment ID
+> `C9543JM5Z7`), approval pending ~1–3 d — gates TestFlight (next). NB: free-Apple-ID dev
+> build expires **~7 days** (≈Jul 30); TestFlight removes that limit.
 
 ### M1 — Static split + Bearer auth *(Path B — deferred; the shippable architecture)* · **3–5 d**
 > **Not the test loop.** With Path A first, the core test loop is remote-URL + TestFlight internal
