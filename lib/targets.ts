@@ -17,7 +17,7 @@ export function targetView(discipline: Discipline, zone: Zone, paces: PaceModel,
   if (discipline === "run") {
     const z = paces.run.zones[zone];
     const hr = paces.hr.zones[zone];
-    if (paces.hr.maxHR && hr.loBpm) secondary.push(`${hr.loBpm}–${hr.hiBpm} bpm`);
+    if (hr.loBpm) secondary.push(`${hr.loBpm}–${hr.hiBpm} bpm`);
     return {
       primary: fmtPaceRange(z.loSecPerKm, z.hiSecPerKm, unit),
       secondary,
@@ -42,7 +42,7 @@ export function targetView(discipline: Discipline, zone: Zone, paces: PaceModel,
       primary = `${z.loPct}–${z.hiPct}% FTP`;
     }
     const hr = paces.hr.zones[zone];
-    if (paces.hr.maxHR && hr.loBpm) secondary.push(`${hr.loBpm}–${hr.hiBpm} bpm`);
+    if (hr.loBpm) secondary.push(`${hr.loBpm}–${hr.hiBpm} bpm`);
     return { primary, secondary, zoneName: meta.name };
   }
   // strength / rest / brick container

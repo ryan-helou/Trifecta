@@ -120,6 +120,7 @@ export function ProfileTab() {
         <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm, unit)} first />
         <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} />
         <Row k="Bike FTP" v={paces.bike.ftp ? `${paces.bike.ftp} W` : "Zone / RPE based"} />
+        {paces.hr.lthr ? <Row k="Threshold HR" v={`${paces.hr.lthr} bpm${paces.hr.lthrSource === "estimated" ? " · est." : ""}`} /> : null}
         {paces.hr.maxHR ? <Row k="Max HR" v={`${paces.hr.maxHR} bpm`} /> : null}
         <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
           {paces.run.source === "pr" ? "Dialed in from your PRs." : "Estimated from your level — add PRs to sharpen them."}

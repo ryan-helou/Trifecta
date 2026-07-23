@@ -4,7 +4,10 @@ import { Zone } from "./types";
 // 5-zone intensity model.
 // Percentages/offsets encode the field-standard math:
 //   bike  = %FTP (Coggan)          run  = % of threshold PACE (Friel/Daniels)
-//   swim  = seconds offset vs CSS   hr   = %HRmax fallback
+//   swim  = seconds offset vs CSS   hr   = % of threshold HR / LTHR (Friel)
+// HR is anchored to lactate-threshold HR (LTHR), the triathlon standard — the
+// direct analog of FTP for the bike and threshold pace for the run — NOT flat
+// %HRmax (which floats the aerobic band up into threshold effort).
 // Every zone always carries an RPE + a color so a target is never blank.
 // ---------------------------------------------------------------------------
 
@@ -19,7 +22,7 @@ export interface ZoneMeta {
   // pace multiplier applied to threshold pace (sec/km). >1 = slower.
   paceMult: [number, number];
   cssOffset: [number, number]; // sec per 100m relative to CSS (+ = slower)
-  hrPct: [number, number]; // % of max HR
+  lthrPct: [number, number]; // % of lactate-threshold HR (LTHR), Friel bands
   purpose: string;
 }
 
@@ -34,7 +37,7 @@ export const ZONES: Record<Zone, ZoneMeta> = {
     ftpPct: [40, 55],
     paceMult: [1.2, 1.3],
     cssOffset: [8, 12],
-    hrPct: [55, 68],
+    lthrPct: [70, 85],
     purpose: "Active recovery and easy aerobic flushing.",
   },
   2: {
@@ -47,7 +50,7 @@ export const ZONES: Record<Zone, ZoneMeta> = {
     ftpPct: [56, 75],
     paceMult: [1.12, 1.2],
     cssOffset: [4, 8],
-    hrPct: [68, 83],
+    lthrPct: [85, 90],
     purpose: "Aerobic base — the bulk of your training. Conversational.",
   },
   3: {
@@ -60,7 +63,7 @@ export const ZONES: Record<Zone, ZoneMeta> = {
     ftpPct: [76, 90],
     paceMult: [1.05, 1.1],
     cssOffset: [1, 3],
-    hrPct: [83, 90],
+    lthrPct: [90, 94],
     purpose: "Muscular endurance — comfortably hard, long-course race feel.",
   },
   4: {
@@ -73,7 +76,7 @@ export const ZONES: Record<Zone, ZoneMeta> = {
     ftpPct: [91, 105],
     paceMult: [0.99, 1.03],
     cssOffset: [-1, 1],
-    hrPct: [90, 96],
+    lthrPct: [94, 100],
     purpose: "Lift your lactate threshold — the ceiling on sustainable speed.",
   },
   5: {
@@ -86,7 +89,7 @@ export const ZONES: Record<Zone, ZoneMeta> = {
     ftpPct: [106, 120],
     paceMult: [0.9, 0.96],
     cssOffset: [-5, -2],
-    hrPct: [96, 100],
+    lthrPct: [100, 106],
     purpose: "Top-end aerobic power. Short, sharp, and hard.",
   },
 };

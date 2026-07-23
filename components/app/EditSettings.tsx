@@ -90,6 +90,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [restDay, setRestDay] = useState<number | undefined>(profile.restDayPreference);
   const [longDay, setLongDay] = useState<number>(profile.longSessionDay ?? 5);
   const [ftp, setFtp] = useState(profile.ftp);
+  const [thresholdHr, setThresholdHr] = useState(profile.thresholdHr);
   const [maxHR, setMaxHR] = useState(profile.maxHR);
   const [hoursCap, setHoursCap] = useState(profile.weeklyHoursCap);
   const [focus, setFocus] = useState<Discipline | undefined>(profile.focusDiscipline);
@@ -175,6 +176,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       swimPR,
       bikePR,
       ftp,
+      thresholdHr,
       maxHR,
       weeklyHoursCap: hoursCap,
       focusDiscipline: focus,
@@ -340,13 +342,13 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="eyebrow mr-1 self-center text-[0.66rem]">Rest day</span>
               {WD.map((w, i) => (
-                <button key={w} onClick={() => setRestDay(restDay === i ? undefined : i)} className={`chip ${restDay === i ? "border-accent bg-accent/10 text-foreground" : ""}`}>{w}</button>
+                <button key={w} onClick={() => setRestDay(restDay === i ? undefined : i)} className={`chip ${restDay === i ? "is-selected" : ""}`}>{w}</button>
               ))}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               <span className="eyebrow mr-1 self-center text-[0.66rem]">Long day</span>
               {WD.map((w, i) => (
-                <button key={w} onClick={() => setLongDay(i)} className={`chip ${longDay === i ? "border-accent bg-accent/10 text-foreground" : ""}`}>{w}</button>
+                <button key={w} onClick={() => setLongDay(i)} className={`chip ${longDay === i ? "is-selected" : ""}`}>{w}</button>
               ))}
             </div>
           </Field>
@@ -413,7 +415,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span className="inline-flex items-center gap-1.5"><Icon name="run" size={15} className="text-run" />Run PR</span></div>
                 <div className="mb-2 flex flex-wrap gap-2">
                   {RUN_PR_OPTIONS.map((o) => (
-                    <button key={o.label} onClick={() => setRunDistKm(String(o.distanceM / 1000))} className={`chip ${Math.round(parseFloat(runDistKm) * 1000) === o.distanceM ? "border-accent bg-accent/10" : ""}`}>{o.label}</button>
+                    <button key={o.label} onClick={() => setRunDistKm(String(o.distanceM / 1000))} className={`chip ${Math.round(parseFloat(runDistKm) * 1000) === o.distanceM ? "is-selected" : ""}`}>{o.label}</button>
                   ))}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -425,7 +427,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span className="inline-flex items-center gap-1.5"><Icon name="swim" size={15} className="text-swim" />Swim PR</span></div>
                 <div className="mb-2 flex flex-wrap gap-2">
                   {SWIM_PR_OPTIONS.map((o) => (
-                    <button key={o.label} onClick={() => setSwimDistM(String(o.distanceM))} className={`chip ${Math.round(parseFloat(swimDistM)) === o.distanceM ? "border-accent bg-accent/10" : ""}`}>{o.label}</button>
+                    <button key={o.label} onClick={() => setSwimDistM(String(o.distanceM))} className={`chip ${Math.round(parseFloat(swimDistM)) === o.distanceM ? "is-selected" : ""}`}>{o.label}</button>
                   ))}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -437,7 +439,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold"><span className="inline-flex items-center gap-1.5"><Icon name="bike" size={15} className="text-bike" />Bike PR</span></div>
                 <div className="mb-2 flex flex-wrap gap-2">
                   {BIKE_PR_OPTIONS.map((o) => (
-                    <button key={o.label} onClick={() => setBikeDistKm(String(o.distanceM / 1000))} className={`chip ${Math.round(parseFloat(bikeDistKm) * 1000) === o.distanceM ? "border-accent bg-accent/10" : ""}`}>{o.label}</button>
+                    <button key={o.label} onClick={() => setBikeDistKm(String(o.distanceM / 1000))} className={`chip ${Math.round(parseFloat(bikeDistKm) * 1000) === o.distanceM ? "is-selected" : ""}`}>{o.label}</button>
                   ))}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -447,6 +449,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <NumIn label="Bike FTP (W)" value={ftp} onChange={setFtp} />
+                <NumIn label="Threshold HR (bpm)" value={thresholdHr} onChange={setThresholdHr} />
                 <NumIn label="Max HR (bpm)" value={maxHR} onChange={setMaxHR} />
               </div>
             </div>

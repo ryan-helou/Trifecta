@@ -229,7 +229,8 @@ export interface Profile {
   swimPR?: SwimPR;
   bikePR?: BikePR; // a benchmark best time (e.g. 40 km TT) — recorded; bike pacing still runs off FTP
   ftp?: number; // cycling functional threshold power, watts
-  maxHR?: number; // bpm
+  thresholdHr?: number; // lactate/functional threshold HR (LTHR), bpm — anchors HR zones (Friel)
+  maxHR?: number; // bpm (used to estimate LTHR when thresholdHr is absent)
   // extras
   weeklyHoursCap?: number; // athlete-imposed ceiling on weekly hours
   restDayPreference?: number; // 0=Mon … 6=Sun, a day they'd like off
@@ -267,6 +268,9 @@ export interface PaceModel {
   };
   hr: {
     maxHR: number | null;
+    lthr: number | null; // lactate-threshold HR the zones are built from
+    lthrSource: "measured" | "estimated" | null; // "estimated" = derived from maxHR (≈0.9×), "measured" = athlete-entered
+    // loPct/hiPct are % of LTHR (Friel), not %HRmax
     zones: Record<Zone, { loPct: number; hiPct: number; loBpm?: number; hiBpm?: number }>;
   };
 }
