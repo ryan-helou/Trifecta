@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { apiStravaDisconnect, apiStravaStatus, apiStravaSync, StravaStatus } from "@/lib/api";
+import { useApp } from "../AppProvider";
+import { healthAvailable, requestHealthAuth, syncAppleHealth } from "@/lib/health";
 import { useToast } from "./Toast";
 
 // Monochrome to fit the Paper (black & white) theme. Swap back to "#FC4C02" for Strava brand orange.
@@ -26,8 +28,11 @@ function timeAgo(iso?: string | null): string {
 */
 export function Connections() {
   const toast = useToast();
+  const { plan, applyPlan } = useApp();
   const [status, setStatus] = useState<StravaStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [healthOk, setHealthOk] = useState(false);
+  const [healthBusy, setHealthBusy] = useState(false);
 
   const refresh = async () => {
     try {
@@ -51,6 +56,31 @@ export function Connections() {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    healthAvailable()
+      .then(setHealthOk)
+      .catch(() => {});
+  }, []);
+
+  const syncHealth = async () => {
+    setHealthBusy(true);
+    const authed = await requestHealthAuth();
+    if (!authed) {
+      setHealthBusy(false);
+      toast({ text: "Apple Health access is off — enable it in Settings › Privacy › Health.", tone: "warning" });
+      return;
+    }
+    const res = plan ? await syncAppleHealth(plan) : null;
+    setHealthBusy(false);
+    if (res && res.applied > 0) {
+      applyPlan(res.plan);
+      toast({ text: `Apple Health — ${res.applied} session${res.applied > 1 ? "s" : ""} marked done.`, tone: "success" });
+      setTimeout(() => window.location.reload(), 900);
+    } else {
+      toast({ text: "Apple Health — nothing new to match.", tone: "default" });
+    }
+  };
 
   const sync = async () => {
     setBusy(true);
@@ -122,7 +152,39 @@ export function Connections() {
           </div>
         )}
       </div>
+
+      {healthOk && (
+        <div className="card mt-3 overflow-hidden">
+          <div className="px-4 py-3.5">
+            <div className="flex items-start gap-2.5">
+              <HealthMark />
+              <p className="text-sm leading-snug text-muted">
+                Read your swim, bike, and run workouts from Apple Health to auto-complete planned sessions. Your
+                health data stays on your device.
+              </p>
+            </div>
+            <button
+              onClick={syncHealth}
+              disabled={healthBusy}
+              className="btn mt-3 w-full py-3 text-sm font-semibold"
+              style={{ background: "#111111", color: "#fff" }}
+            >
+              {healthBusy ? "Syncing…" : "Sync Apple Health"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function HealthMark() {
+  return (
+    <span aria-hidden className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: "#111111" }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none">
+        <path d="M12 21s-7-4.35-9.5-8.5C1 9 3 5.5 6.5 5.5c2 0 3.2 1.2 3.5 2 .3-.8 1.5-2 3.5-2C17 5.5 19 9 21.5 12.5 19 16.65 12 21 12 21z" />
+      </svg>
+    </span>
   );
 }
 
