@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { IS_NATIVE } from "@/lib/runtime";
 
 /**
  * Registers the PWA service worker and keeps the installed app up to date.
@@ -19,6 +20,19 @@ import { useEffect } from "react";
 export function ServiceWorker() {
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (IS_NATIVE) {
+      // The bundled native app IS the cache — a SW just serves stale assets. Beyond
+      // skipping registration, proactively tear down any SW + Cache Storage a prior
+      // build (e.g. an early Path-A shell) may have left controlling this WebView, so
+      // a fresh install can never be masked by leftover cached JS again.
+      navigator.serviceWorker?.getRegistrations?.()
+        .then((regs) => regs.forEach((r) => r.unregister()))
+        .catch(() => {});
+      if (typeof caches !== "undefined") {
+        caches.keys?.().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+      }
+      return;
+    }
     if (!("serviceWorker" in navigator)) return;
     if (process.env.NODE_ENV !== "production") return; // avoid dev caching headaches
 
