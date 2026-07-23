@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { Plan, Profile } from "@/lib/types";
-import { apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
+import { apiDeleteAccount, apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
 import { clearToken, loadToken, setToken } from "@/lib/tokenStore";
 
 type Screen = "loading" | "anon" | "onboarding" | "app";
@@ -26,6 +26,8 @@ interface Ctx {
    *  account is the LAST thing an anon athlete does in onboarding */
   signupAndStart(u: string, p: string, profile: Profile, plan: Plan): Promise<string | null>;
   logout(): Promise<void>;
+  /** permanently erase the account + all data (returns an error string, or null) */
+  deleteAccount(): Promise<string | null>;
   startPlan(profile: Profile, plan: Plan): void;
   applyPlan(plan: Plan): void;
   applyPlanAndProfile(plan: Plan, profile: Profile): void;
@@ -172,6 +174,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPlan(null);
   }, []);
 
+  const deleteAccount = useCallback(async (): Promise<string | null> => {
+    const { ok, data } = await apiDeleteAccount();
+    if (!ok) return data.error || "Could not delete your account.";
+    await clearToken();
+    try {
+      localStorage.removeItem(CACHE_KEY);
+    } catch {}
+    setUsername(null);
+    setProfile(null);
+    setPlan(null);
+    return null;
+  }, []);
+
   const startPlan = useCallback(
     (prof: Profile, pl: Plan) => {
       setProfile(prof);
@@ -229,7 +244,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider
-      value={{ screen, username, profile, plan, offline, signup, login, signupAndStart, logout, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
+      value={{ screen, username, profile, plan, offline, signup, login, signupAndStart, logout, deleteAccount, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
     >
       {children}
     </AppCtx.Provider>
