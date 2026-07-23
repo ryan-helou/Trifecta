@@ -9,13 +9,29 @@ export const dynamic = "force-dynamic";
 // flash-lite by default) with a tight output cap so cost stays a fraction of a
 // cent per call. The whole app works without it.
 
-const SYSTEM = `You are the AmaTri Coach — an expert, encouraging triathlon coach.
+// The athlete can name their coach (Profile.coachName). We fold that name into
+// the persona so the coach answers in character. Sanitised to a short, single-
+// line string so it can't be used to inject instructions into the prompt.
+function cleanCoachName(raw: unknown): string {
+  const name = String(raw ?? "").replace(/[\r\n]+/g, " ").replace(/[^\p{L}\p{N} '.-]/gu, "").trim().slice(0, 30);
+  return name || "Coach";
+}
+
+function systemPrompt(coachName: string): string {
+  const named = coachName.toLowerCase() !== "coach";
+  const identity = named
+    ? `You are ${coachName}, the athlete's personal AmaTri triathlon coach — expert and encouraging.`
+    : `You are the AmaTri Coach — an expert, encouraging triathlon coach.`;
+  return `${identity}
 Rules:
-- Be concise: 2–4 short sentences, no preamble, no markdown headers.
+- Be concise: 2–4 short sentences, no preamble, no markdown headers.${
+    named ? `\n- Your name is ${coachName}. Speak in the first person and, if you refer to yourself, use that name. Never break character or mention being an AI/model.` : ""
+  }
 - Ground every answer in the athlete's data you're given (their race, level, phase, today's session).
 - Motivate through clarity and respect, never hype. No "crush it", no exclamation-mark spam.
 - Give practical, specific guidance (pacing, fueling, form, recovery).
 - You are not a doctor. For pain/injury/illness, advise rest and a medical professional — briefly.`;
+}
 
 // crude per-user hourly limiter to protect spend
 const g = globalThis as unknown as { __coachHits?: Map<string, { c: number; t: number }> };
@@ -52,10 +68,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const context = String(body.context ?? "").slice(0, 4000);
   const question = String(body.question ?? "").slice(0, 600);
+  const coachName = cleanCoachName(body.coachName);
 
   try {
     const text = await aiText(
-      SYSTEM,
+      systemPrompt(coachName),
       `Athlete context:\n${context}\n\n${
         question ? `Question: ${question}` : "Give a short, motivating note for today."
       }`,
