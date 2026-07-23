@@ -1,6 +1,6 @@
 import { Level, PaceModel, Profile, Zone } from "./types";
 import { derivePaces } from "./paces";
-import { categoryOf, estimateRaceSeconds, raceDistances } from "./planEngine";
+import { categoryOf, estimateRaceSeconds, isFitnessGoal, raceDistances } from "./planEngine";
 import { todayISO, weeksBetween } from "./dates";
 
 // ---------------------------------------------------------------------------
@@ -60,6 +60,10 @@ function sharpen(p: PaceModel, g: number): PaceModel {
  * `fromISO` defaults to today; pass it so the estimate is deterministic in tests.
  */
 export function projectRace(profile: Profile, fromISO: string = todayISO()): RaceProjection {
+  // No target race → nothing to project a finish time against.
+  if (isFitnessGoal(profile)) {
+    return { currentSec: 0, projectedSec: 0, gainSec: 0, weeksToRace: 0, gainFrac: 0 };
+  }
   const cat = categoryOf(profile);
   const dist = raceDistances(profile);
   const paces = derivePaces(profile); // already includes any calibration

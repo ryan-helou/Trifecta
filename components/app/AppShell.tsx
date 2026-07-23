@@ -14,6 +14,8 @@ import { ProfileTab } from "./ProfileTab";
 import { WorkoutDetail } from "./WorkoutDetail";
 import { CheckinSheet } from "./CheckinSheet";
 import { CoachSheet } from "./CoachSheet";
+import { EditSettings } from "./EditSettings";
+import { LogWorkoutSheet } from "./LogWorkoutSheet";
 import { todayISO } from "@/lib/dates";
 import {
   applyAdaptation,
@@ -21,6 +23,7 @@ import {
   easeUpcoming,
   logCheckin,
   logInstead,
+  logWorkout,
   moveWorkout,
   rebuildFromToday,
   setStatus,
@@ -44,6 +47,8 @@ export function AppShell() {
   const [checkinId, setCheckinId] = useState<string | null>(null);
   const [coach, setCoach] = useState<{ open: boolean; prefill?: string }>({ open: false });
   const [coachMsgs, setCoachMsgs] = useState<CoachMsg[]>([COACH_GREETING]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
   const [dismissRealign, setDismissRealign] = useState(false);
   const [dismissAdapt, setDismissAdapt] = useState(false);
 
@@ -81,6 +86,12 @@ export function AppShell() {
     unswap: (id) => applyPlan(unswapDiscipline(plan, id)),
     logInstead: (id, note, opts) => applyPlan(logInstead(plan, id, note, opts)),
     logCheckin: (id, entry) => applyPlan(logCheckin(plan, id, entry)),
+    logWorkout: (input) => {
+      const res = logWorkout(plan, input);
+      applyPlan(res.plan);
+      const { plan: _p, ...view } = res;
+      return view;
+    },
     rebuild: () => applyPlan(rebuildFromToday(plan, today)),
     ease: (days) => applyPlan(easeUpcoming(plan, today, days)),
     logReadiness: (dateISO, input) => applyPlan(logReadiness(plan, dateISO, input)),
@@ -112,6 +123,8 @@ export function AppShell() {
         openWorkout: setDetailId,
         openCheckin: setCheckinId,
         openCoach: (prefill) => setCoach({ open: true, prefill }),
+        openSettings: () => setSettingsOpen(true),
+        openLog: () => setLogOpen(true),
         goTab: setTab,
         actions,
       }}
@@ -183,6 +196,8 @@ export function AppShell() {
 
       {detail && <WorkoutDetail workout={detail} plan={plan} />}
       {checkin && <CheckinSheet workout={checkin} plan={plan} today={today} onClose={() => setCheckinId(null)} />}
+      {settingsOpen && profile && <EditSettings profile={profile} onClose={() => setSettingsOpen(false)} />}
+      {logOpen && <LogWorkoutSheet plan={plan} today={today} onClose={() => setLogOpen(false)} />}
       {coach.open && (
         <CoachSheet
           plan={plan}

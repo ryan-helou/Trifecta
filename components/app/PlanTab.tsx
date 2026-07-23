@@ -9,6 +9,7 @@ import { weekProgress } from "@/lib/adapt";
 import { addDays, weekdayShort, fmtDayMonth } from "@/lib/dates";
 import { fmtDuration } from "@/lib/format";
 import { haptic } from "@/lib/haptics";
+import { isFitnessGoal } from "@/lib/planEngine";
 import { Plan, Week } from "@/lib/types";
 import { Icon } from "./icons";
 
@@ -32,7 +33,11 @@ export function PlanTab() {
       <div className="animate-fade-up">
         <div className="eyebrow text-[0.72rem]">Training plan · {plan.totalWeeks} weeks</div>
         <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight">
-          The road to <span className="italic text-accent">race day</span>
+          {isFitnessGoal(plan.profile) ? (
+            <>Your <span className="italic text-accent">fitness</span> block</>
+          ) : (
+            <>The road to <span className="italic text-accent">race day</span></>
+          )}
         </h1>
       </div>
 
