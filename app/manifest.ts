@@ -1,5 +1,9 @@
 import type { MetadataRoute } from "next";
 
+// Static content — force-static so it can be emitted during `output: 'export'`
+// (the bundled app build) as well as served normally on Railway.
+export const dynamic = "force-static";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Trifecta — First light to finish line",
