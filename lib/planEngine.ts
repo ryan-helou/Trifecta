@@ -40,10 +40,11 @@ const PLAN_MIN: Record<Cat, number> = { olympic: 8, half: 12, full: 16 };
 // The plan ALWAYS begins the week the athlete signs up — no delayed start. It spans the
 // whole runway to race day, so however far out the race is, that lead time flows into the
 // aerobic base (see the phase split below), which is exactly where long-course time belongs.
-// We only clamp at a sanity ceiling for pathological input: a race booked more than a year
-// out isn't meaningfully periodised from day one, so beyond MAX_PLAN_WEEKS the structured
-// plan starts closer to the race (the sole surviving `delayedStart` case).
-const MAX_PLAN_WEEKS = 52;
+// Someone who books an event a year-plus out and downloads the app wants to start building
+// *today*, not sit idle until a "real" plan kicks in. The only clamp is a guard against
+// clearly-mistaken input (a date 2+ years out — a typo, not a race being trained for): past
+// MAX_PLAN_WEEKS the structured plan starts closer to the race (the sole `delayedStart` case).
+const MAX_PLAN_WEEKS = 104; // ~2 years — a guardrail for bad dates, not real race lead times
 
 // The build/"specific-prep" phase is a *bounded* block (~6–12 wk in Friel/traditional
 // periodization; even shorter, rotated, under block periodization). It carries near-peak
