@@ -95,8 +95,8 @@ export interface Workout {
 
 /** What the athlete actually did, pulled from a synced device activity. */
 export interface WorkoutActuals {
-  source: "strava";
-  activityId: number;
+  source: "strava" | "healthkit";
+  activityId: number | string;
   name?: string;
   distanceM?: number;
   durationSec?: number;

@@ -9,7 +9,9 @@ import {
   useState,
 } from "react";
 import { Plan, Profile } from "@/lib/types";
-import { apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
+import { apiDeleteAccount, apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
+import { clearToken, loadToken, setToken } from "@/lib/tokenStore";
+import { notifyAppReady } from "@/lib/ota";
 
 type Screen = "loading" | "anon" | "onboarding" | "app";
 
@@ -25,6 +27,8 @@ interface Ctx {
    *  account is the LAST thing an anon athlete does in onboarding */
   signupAndStart(u: string, p: string, profile: Profile, plan: Plan): Promise<string | null>;
   logout(): Promise<void>;
+  /** permanently erase the account + all data (returns an error string, or null) */
+  deleteAccount(): Promise<string | null>;
   startPlan(profile: Profile, plan: Plan): void;
   applyPlan(plan: Plan): void;
   applyPlanAndProfile(plan: Plan, profile: Profile): void;
@@ -68,8 +72,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // hydrate
   useEffect(() => {
     let cancelled = false;
+    // Never let a slow/failed boot (a hung Keychain read or API call) leave the app
+    // stuck on the loading screen — fall through to login/app after 6s no matter what.
+    const safety = setTimeout(() => {
+      if (!cancelled) setBooted(true);
+    }, 6000);
     (async () => {
       try {
+        // don't let a hung native Keychain read block boot
+        await Promise.race([loadToken(), new Promise((r) => setTimeout(r, 2500))]);
         const me = await apiMe();
         if (cancelled) return;
         if (me.authenticated && me.user) {
@@ -90,11 +101,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       } finally {
         if (!cancelled) setBooted(true);
+        clearTimeout(safety);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(safety);
     };
+  }, []);
+
+  // Capgo OTA (Path B): confirm the current bundle booted so it isn't rolled back.
+  useEffect(() => {
+    notifyAppReady();
   }, []);
 
   const persist = useCallback(
@@ -114,6 +132,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const signup = useCallback(async (u: string, p: string): Promise<string | null> => {
     const { ok, data } = await apiSignup(u, p);
     if (!ok) return data.error || "Could not sign up.";
+    if (data.token) await setToken(data.token); // native: persist the Bearer token
     setUsername(data.user.username);
     setProfile(null);
     setPlan(null);
@@ -125,6 +144,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (u: string, p: string): Promise<string | null> => {
     const { ok, data } = await apiLogin(u, p);
     if (!ok) return data.error || "Could not sign in.";
+    if (data.token) await setToken(data.token); // native: persist the Bearer token
     const st = data.state ?? {};
     setUsername(data.user.username);
     setProfile((st.profile as Profile) ?? null);
@@ -142,6 +162,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async (u: string, p: string, prof: Profile, pl: Plan): Promise<string | null> => {
       const { ok, data } = await apiSignup(u, p);
       if (!ok) return data.error || "Could not create your account.";
+      if (data.token) await setToken(data.token); // native: persist the Bearer token
       const uname = data.user.username;
       const profNamed: Profile = { ...prof, username: uname };
       const planNamed: Plan = { ...pl, profile: profNamed };
@@ -158,12 +179,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await apiLogout().catch(() => {});
+    await clearToken(); // native: drop the Keychain token
     try {
       localStorage.removeItem(CACHE_KEY);
     } catch {}
     setUsername(null);
     setProfile(null);
     setPlan(null);
+  }, []);
+
+  const deleteAccount = useCallback(async (): Promise<string | null> => {
+    const { ok, data } = await apiDeleteAccount();
+    if (!ok) return data.error || "Could not delete your account.";
+    await clearToken();
+    try {
+      localStorage.removeItem(CACHE_KEY);
+    } catch {}
+    setUsername(null);
+    setProfile(null);
+    setPlan(null);
+    return null;
   }, []);
 
   const startPlan = useCallback(
@@ -223,7 +258,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider
-      value={{ screen, username, profile, plan, offline, signup, login, signupAndStart, logout, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
+      value={{ screen, username, profile, plan, offline, signup, login, signupAndStart, logout, deleteAccount, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
     >
       {children}
     </AppCtx.Provider>
