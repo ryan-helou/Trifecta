@@ -33,11 +33,24 @@ export const RACE_DISTANCES: Record<Cat, { swim: number; bike: number; run: numb
   full: { swim: 3800, bike: 180000, run: 42200, name: "Ironman" },
 };
 
+// Plan length by distance, clamped. `min` = the shortest defensible build (sooner ⇒
+// compressed); `max` = how far out we still lay down a full countdown. The old maxima
+// (16/24/30) were too tight: an athlete who signs up a normal season ahead (a 70.3 ~30+
+// weeks out) got a 24-week plan starting weeks from now — nonsensical idle time. These
+// span a realistic runway (olympic ~6mo, half ~9mo, full ~10–11mo); the surplus flows
+// into the aerobic base (see the phase split below), which is exactly where long-course
+// lead time belongs. Beyond `max`, a delayed start with a real base-building nudge is honest.
 const PLAN_LEN: Record<Cat, { min: number; max: number }> = {
-  olympic: { min: 8, max: 16 },
-  half: { min: 12, max: 24 },
-  full: { min: 16, max: 30 },
+  olympic: { min: 8, max: 24 },
+  half: { min: 12, max: 36 },
+  full: { min: 16, max: 44 },
 };
+
+// The build/"specific-prep" phase is a *bounded* block (~6–12 wk in Friel/traditional
+// periodization; even shorter, rotated, under block periodization). It carries near-peak
+// load, so it must NOT grow with lead time — the aerobic base does that instead. These
+// cap the build so surplus weeks extend base, not build.
+const BUILD_MAX: Record<Cat, number> = { olympic: 8, half: 10, full: 12 };
 
 const PEAK_HOURS: Record<Cat, Record<Level, number>> = {
   olympic: { beginner: 7, intermediate: 9, advanced: 11, elite: 13 },
@@ -139,15 +152,14 @@ function baseFraction(phase: Phase, idxInPhase: number, phaseLen: number, taperP
     return 0.85 + (1.0 - 0.85) * (idxInPhase / (phaseLen - 1));
   }
   if (phase === "peak") return 1.0;
-  // taper: descend toward the race
-  const ladder = [0.7, 0.55, 0.42];
-  // taperPos: 0-based from start of taper; last taper week is race week
-  const isRaceWeek = taperPos === taperLen - 1;
-  if (isRaceWeek) return 0.32;
-  // pick from ladder aligning the end
-  const remainingBeforeRace = taperLen - 1 - taperPos; // weeks between this and race
-  const li = Math.min(ladder.length - 1, remainingBeforeRace);
-  return ladder[Math.max(0, li)];
+  // taper: strictly descends toward race day — the earliest taper week carries the most
+  // load, the race week the least. Indexed by *weeks-to-race* so any taper length (1–3)
+  // stays monotone (invariant #9; the old ladder ran 0.42→0.55→0.32 on a 3-week taper,
+  // a non-monotone dip — doc 04 §4.2). Half/Olympic tapers (2/1 wk) are unchanged.
+  const weeksToRace = taperLen - 1 - taperPos; // 0 = race week
+  if (weeksToRace <= 0) return 0.32; // race week — the lightest
+  const ladder = [0.55, 0.7]; // 1 week out, then ≥2 weeks out (clamped)
+  return ladder[Math.min(ladder.length - 1, weeksToRace - 1)];
 }
 
 // ---- the scheduler ------------------------------------------------------
@@ -604,18 +616,22 @@ export function generatePlan(profile: Profile): Plan {
   // start Monday chosen so the last week contains race day
   const startMonday = addDays(raceMonday, -(totalWeeks - 1) * 7);
 
-  // phase split
+  // phase split. Build is a *bounded* specific-prep block; base — the aerobic development
+  // that determines long-course performance — is the residual, so extra lead time lengthens
+  // the BASE, never the build. This upholds "moving the race later never shortens the base
+  // phase" (doc 04 §4.4) and avoids stacking many weeks of near-peak build load (an
+  // overtraining trap). base ramps gently (0.6→0.85 of peak, `baseFraction`) with 3:1/2:1
+  // recovery cycles, so a long base is a slow aerobic build, not monotonic overload.
   const taperWeeks = Math.min(TAPER_WEEKS[cat], Math.max(1, Math.floor(totalWeeks * 0.18)));
   const remaining = totalWeeks - taperWeeks;
-  let baseWeeks = Math.max(1, Math.round(remaining * 0.45));
   let peakWeeks = remaining >= 6 ? Math.min(2, Math.max(1, Math.round(remaining * 0.12))) : remaining >= 4 ? 1 : 0;
-  let buildWeeks = remaining - baseWeeks - peakWeeks;
-  if (buildWeeks < 1) {
-    buildWeeks = Math.max(1, remaining - baseWeeks);
+  let buildWeeks = Math.min(BUILD_MAX[cat], Math.max(1, Math.round(remaining * 0.35)));
+  let baseWeeks = remaining - buildWeeks - peakWeeks;
+  if (baseWeeks < 1) {
+    // ultra-compressed plans: guarantee ≥1 base week, then trim build/peak to fit.
+    baseWeeks = 1;
+    buildWeeks = Math.max(1, remaining - baseWeeks - peakWeeks);
     peakWeeks = Math.max(0, remaining - baseWeeks - buildWeeks);
-  }
-  if (baseWeeks + buildWeeks + peakWeeks !== remaining) {
-    baseWeeks = remaining - buildWeeks - peakWeeks;
   }
 
   const baseEnd = baseWeeks;
