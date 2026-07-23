@@ -1,42 +1,45 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 // ---------------------------------------------------------------------------
-// Trifecta iOS shell — Capacitor config.
+// Trifecta iOS — Capacitor config, with two modes selected by CAP_PATH_B.
 //
-// PATH A (current — the test + update loop):
-//   `server.url` points the native WKWebView at the live PWA on Railway. The
-//   app IS the live site, so a Railway deploy = an instant app update. No static
-//   export, no Bearer-auth refactor, no OTA service needed. Same-origin cookies
-//   work because the WebView origin is the Railway origin.
-//   → Good for TestFlight *testing* (internal + external). NOT App-Store-shippable:
-//     Apple Guideline 4.2 rejects remote-URL wrappers at full review.
+// PATH A (default): the native WKWebView loads the live Railway PWA (`server.url`),
+//   so a Railway deploy = an instant app update. Great for TestFlight *testing*;
+//   NOT App-Store-shippable (Guideline 4.2 rejects remote-URL wrappers).
 //
-// PATH B (later — public App Store): comment out `server.url`, bundle a static
-//   export into `webDir`, switch auth to Bearer tokens + CORS, add Capgo OTA and
-//   HealthKit. See docs/app-store-epic.md and docs/ios-runbook.md.
+// PATH B (CAP_PATH_B=1): the shippable public build — bundle the static export
+//   (`webDir: 'out'`) and take **Capgo OTA** updates, so web-style changes still
+//   reach users without an App Store resubmit. Build the bundled app with:
+//     CAP_PATH_B=1 npm run build:static      # emits ./out
+//     CAP_PATH_B=1 npx cap sync ios          # copies out/ + configures the plugins
+//   Ship an OTA update after the first store release with:  npm run ota
 //
-// LOCAL DEV (live-reload against `next dev` on this machine): set
-//   `server.url` to `http://<your-LAN-IP>:3000` and `server.cleartext` to true.
+// LOCAL DEV (live-reload against `next dev`): set server.url to your LAN IP + cleartext.
 // ---------------------------------------------------------------------------
 
+const PATH_B = process.env.CAP_PATH_B === "1";
+
 const config: CapacitorConfig = {
-  // Bundle identifier — FOREVER-ish once on the App Store; change before the first
-  // TestFlight upload if you own a reverse-domain you'd rather use.
+  // Bundle identifier — locked to the App Store record; do not change.
   appId: "app.trifecta.mobile",
   appName: "Trifecta",
 
-  // `mobile-shell/` holds the offline fallback shown when the remote URL can't load.
-  // (Path B will point this at the static export `out/` instead.)
-  webDir: "mobile-shell",
+  webDir: PATH_B ? "out" : "mobile-shell",
 
-  server: {
-    url: "https://amatri-production.up.railway.app",
-    cleartext: false,
-  },
+  ...(PATH_B
+    ? {
+        plugins: {
+          // Capgo OTA: auto-download a new JS/HTML/CSS bundle and apply it on the next
+          // launch. lib/ota.ts calls notifyAppReady() so a good bundle isn't rolled back.
+          CapacitorUpdater: { autoUpdate: true },
+        },
+      }
+    : {
+        // Path A: load the live site. (`mobile-shell/` is the offline fallback.)
+        server: { url: "https://amatri-production.up.railway.app", cleartext: false },
+      }),
 
-  ios: {
-    contentInset: "always",
-  },
+  ios: { contentInset: "always" },
 };
 
 export default config;

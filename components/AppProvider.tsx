@@ -11,6 +11,7 @@ import {
 import { Plan, Profile } from "@/lib/types";
 import { apiDeleteAccount, apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
 import { clearToken, loadToken, setToken } from "@/lib/tokenStore";
+import { notifyAppReady } from "@/lib/ota";
 
 type Screen = "loading" | "anon" | "onboarding" | "app";
 
@@ -99,6 +100,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Capgo OTA (Path B): confirm the current bundle booted so it isn't rolled back.
+  useEffect(() => {
+    notifyAppReady();
   }, []);
 
   const persist = useCallback(
