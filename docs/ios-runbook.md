@@ -53,9 +53,15 @@ npx cap add ios
 
 # copy web assets (the mobile-shell/ offline fallback) + config into the native project
 npx cap sync ios
+
+# generate the real app icon + splash into the native project from resources/
+# (resources/icon.png + splash*.png are already committed; regenerate with `npm run assets:native`)
+npm install --save-dev @capacitor/assets
+npx @capacitor/assets generate --ios
 ```
 
 This creates an `ios/` folder (the native Xcode project). Commit it — it's part of the repo now.
+The icon/splash come from `resources/` (Trifecta brand mark, opaque 1024², App-Store-valid).
 
 > **Bundle ID decision:** `capacitor.config.ts` sets `appId: "app.trifecta.mobile"`. This is
 > hard to change once on the App Store. If you own a domain you'd rather use as the
