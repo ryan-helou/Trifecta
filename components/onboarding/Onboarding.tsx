@@ -39,6 +39,7 @@ interface Draft {
   swimPR?: { distanceM: number; timeSec: number; label: string };
   bikePR?: { distanceM: number; timeSec: number; label: string };
   ftp?: number;
+  thresholdHr?: number;
   maxHR?: number;
   unit?: Unit; // km vs mi for distance/pace display
   injuries: Injury[];
@@ -155,6 +156,7 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
       swimPR: draft.swimPR,
       bikePR: draft.bikePR,
       ftp: draft.ftp,
+      thresholdHr: draft.thresholdHr,
       maxHR: draft.maxHR,
       unitPreference: draft.unit ?? "metric",
       weeklyHoursCap: draft.weeklyHoursCap,
@@ -1064,9 +1066,10 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
 
       <div className="grid grid-cols-2 gap-3">
         <NumFieldOpt label="Bike FTP" unit="W" value={draft.ftp} onChange={(n) => set((d) => ({ ...d, ftp: n }))} />
+        <NumFieldOpt label="Threshold HR" unit="bpm" value={draft.thresholdHr} onChange={(n) => set((d) => ({ ...d, thresholdHr: n }))} />
         <NumFieldOpt label="Max HR" unit="bpm" value={draft.maxHR} onChange={(n) => set((d) => ({ ...d, maxHR: n }))} />
       </div>
-      <p className="mt-2 text-xs text-muted">Your FTP still powers bike pacing — the PR is a benchmark we track your fitness against.</p>
+      <p className="mt-2 text-xs text-muted">Your FTP still powers bike pacing — the PR is a benchmark we track your fitness against. Threshold HR (your average HR over a hard, steady 20–30 min effort) sets your heart-rate zones, just like FTP sets bike zones. No test yet? Leave it blank and we'll estimate it from your max HR.</p>
     </div>
   );
 }

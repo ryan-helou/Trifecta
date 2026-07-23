@@ -26,19 +26,19 @@ const CAL_DISCIPLINES: Discipline[] = ["run", "bike", "swim"];
 
 const isDone = (w: Workout) => w.status === "done" || w.status === "swapped";
 const zoneRpeMid = (z: Zone) => (ZONES[z].rpe[0] + ZONES[z].rpe[1]) / 2;
-const zoneHrMid = (z: Zone) => (ZONES[z].hrPct[0] + ZONES[z].hrPct[1]) / 2;
+const zoneHrMid = (z: Zone) => (ZONES[z].lthrPct[0] + ZONES[z].lthrPct[1]) / 2;
 const FEEL_DELTA = { rough: 2, ok: 0, great: -1.5 } as const;
 
 /** One session's "strain delta" in RPE-equivalent units: how much harder (+) or
  *  easier (−) it actually was than the zone it prescribed. null if no signal. */
-function strainDelta(w: Workout, maxHR: number | null): number | null {
+function strainDelta(w: Workout, lthr: number | null): number | null {
   const parts: number[] = [];
   if (typeof w.rpe === "number") parts.push(w.rpe - zoneRpeMid(w.primaryZone));
   if (w.feel) parts.push(FEEL_DELTA[w.feel]);
-  if (maxHR && w.actuals?.avgHr) {
-    const actualPct = (w.actuals.avgHr / maxHR) * 100;
-    // ~4% of HRmax ≈ one RPE point
-    parts.push((actualPct - zoneHrMid(w.primaryZone)) / 4);
+  if (lthr && w.actuals?.avgHr) {
+    const actualPct = (w.actuals.avgHr / lthr) * 100;
+    // zones are %LTHR (tighter band than %HRmax): ~3.5% of LTHR ≈ one RPE point
+    parts.push((actualPct - zoneHrMid(w.primaryZone)) / 3.5);
   }
   if (!parts.length) return null;
   return parts.reduce((a, b) => a + b, 0) / parts.length;
@@ -67,7 +67,7 @@ const clampCal = (v: number) => Math.max(-CAL_MAX, Math.min(CAL_MAX, v));
  * anchors the look-back window (pass it for deterministic tests).
  */
 export function calibratePaces(plan: Plan, todayISO: string): CalibrationResult | null {
-  const maxHR = plan.paces.hr.maxHR;
+  const lthr = plan.paces.hr.lthr;
   const since = addDays(todayISO, -WINDOW_DAYS);
   const prev = plan.profile.calibration ?? { run: 0, swim: 0, bike: 0, updatedISO: "" };
 
@@ -77,7 +77,7 @@ export function calibratePaces(plan: Plan, todayISO: string): CalibrationResult 
     if (!isDone(w) || w.date < since || w.date > todayISO) continue;
     const disc = creditedDiscipline(w);
     if (!CAL_DISCIPLINES.includes(disc)) continue; // bricks/strength don't calibrate a pace anchor
-    const d = strainDelta(w, maxHR);
+    const d = strainDelta(w, lthr);
     if (d != null) strainBy[disc].push(d);
   }
 
