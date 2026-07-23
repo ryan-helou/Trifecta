@@ -97,16 +97,22 @@ export function derivePaces(p: Profile): PaceModel {
     };
   });
 
-  // ---- HR %HRmax (+ bpm if maxHR known) ----
+  // ---- HR %LTHR (Friel) (+ bpm when LTHR is known/estimable) ----
+  // Anchored to lactate-threshold HR — the HR analog of FTP/threshold pace.
+  // Prefer a measured LTHR; otherwise estimate it from max HR (LTHR ≈ 0.9×HRmax,
+  // a standard rough default). Flat %HRmax is deliberately not used.
   const maxHR = p.maxHR && p.maxHR > 0 ? p.maxHR : null;
+  const measuredLthr = p.thresholdHr && p.thresholdHr > 0 ? p.thresholdHr : null;
+  const lthr = measuredLthr ?? (maxHR ? Math.round(maxHR * 0.9) : null);
+  const lthrSource: PaceModel["hr"]["lthrSource"] = measuredLthr ? "measured" : lthr ? "estimated" : null;
   const hrZones = {} as PaceModel["hr"]["zones"];
   ([1, 2, 3, 4, 5] as Zone[]).forEach((z) => {
-    const [lo, hi] = ZONES[z].hrPct;
+    const [lo, hi] = ZONES[z].lthrPct;
     hrZones[z] = {
       loPct: lo,
       hiPct: hi,
-      loBpm: maxHR ? Math.round((maxHR * lo) / 100) : undefined,
-      hiBpm: maxHR ? Math.round((maxHR * hi) / 100) : undefined,
+      loBpm: lthr ? Math.round((lthr * lo) / 100) : undefined,
+      hiBpm: lthr ? Math.round((lthr * hi) / 100) : undefined,
     };
   });
 
@@ -114,7 +120,7 @@ export function derivePaces(p: Profile): PaceModel {
     run: { thresholdSecPerKm, zones: runZones, source: runSource },
     swim: { cssSecPer100, zones: swimZones, source: swimSource },
     bike: { ftp, zones: bikeZones, source: ftp ? "ftp" : "level" },
-    hr: { maxHR, zones: hrZones },
+    hr: { maxHR, lthr, lthrSource, zones: hrZones },
   };
 }
 
