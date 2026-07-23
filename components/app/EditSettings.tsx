@@ -83,6 +83,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [showCatalog, setShowCatalog] = useState(false);
   const [level, setLevel] = useState<Level>(profile.level);
   const [unit, setUnit] = useState<Unit>(profile.unitPreference ?? "metric");
+  const [coachName, setCoachName] = useState(profile.coachName ?? "");
   // Seed from the engine's derived split when the athlete has no explicit per-sport
   // counts — otherwise opening + saving silently rewrites their weekly volume to 2/2/2.
   const [perSport, setPerSport] = useState(profile.perSport ?? defaultSportSplit(profile));
@@ -166,6 +167,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       raceDateISO: fitness ? "" : raceDateISO,
       level,
       unitPreference: unit,
+      coachName: coachName.trim() || undefined,
       workoutsPerWeek: wpwClamped,
       perSport,
       strength,
@@ -328,6 +330,18 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               <Pill on={unit === "metric"} onClick={() => setUnit("metric")}>Kilometres</Pill>
               <Pill on={unit === "imperial"} onClick={() => setUnit("imperial")}>Miles</Pill>
             </div>
+          </Field>
+
+          {/* coach name — personalise the AI coach */}
+          <Field label="Your coach">
+            <input
+              className="input"
+              value={coachName}
+              maxLength={30}
+              placeholder="Name your coach — e.g. Alex"
+              onChange={(e) => setCoachName(e.target.value)}
+            />
+            <p className="mt-1.5 text-xs text-muted">Give your AI coach a name — it&apos;ll go by this in chat. Leave blank for &ldquo;Coach&rdquo;.</p>
           </Field>
 
           {/* per-sport frequency */}

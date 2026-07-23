@@ -236,6 +236,7 @@ export interface Profile {
   longSessionDay?: number; // 0=Mon … 6=Sun, the day with most time for long sessions (default Sat=5)
   focusDiscipline?: Discipline; // a limiter they want to bias toward
   unitPreference?: Unit; // km vs mi for distance/pace display (default metric)
+  coachName?: string; // athlete's name for the AI coach (e.g. "Alex"); falls back to "Coach"
   // ---- deep personalization (all optional; the engine honours them) ----
   perSport?: SportFreq; // explicit swim/bike/run sessions per week
   strength?: StrengthPref; // resistance training preference

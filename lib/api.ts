@@ -47,10 +47,10 @@ export async function apiSaveState(profile: Profile | null, plan: Plan | null) {
   });
 }
 
-export async function apiCoach(context: string, question: string) {
+export async function apiCoach(context: string, question: string, coachName?: string) {
   const { data } = await jsonFetch("/api/coach", {
     method: "POST",
-    body: JSON.stringify({ context, question }),
+    body: JSON.stringify({ context, question, coachName }),
   });
   return data as { enabled?: boolean; text?: string };
 }
