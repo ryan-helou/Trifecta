@@ -72,9 +72,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // hydrate
   useEffect(() => {
     let cancelled = false;
+    // Never let a slow/failed boot (a hung Keychain read or API call) leave the app
+    // stuck on the loading screen — fall through to login/app after 6s no matter what.
+    const safety = setTimeout(() => {
+      if (!cancelled) setBooted(true);
+    }, 6000);
     (async () => {
       try {
-        await loadToken(); // native: read the Bearer token from the Keychain before the first API call
+        // don't let a hung native Keychain read block boot
+        await Promise.race([loadToken(), new Promise((r) => setTimeout(r, 2500))]);
         const me = await apiMe();
         if (cancelled) return;
         if (me.authenticated && me.user) {
@@ -95,10 +101,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       } finally {
         if (!cancelled) setBooted(true);
+        clearTimeout(safety);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(safety);
     };
   }, []);
 
