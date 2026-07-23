@@ -88,7 +88,7 @@ There is no single "correct" zone system; each is a different lens on the same c
 
 ### 1.5 Macro / meso / microcycle & load:deload
 
-- **Macrocycle:** the whole plan to the A-race (our ~8–44 weeks by distance×level — compressing if the race is sooner, extending the aerobic base if it's further out).
+- **Macrocycle:** the whole plan to the A-race — spanning the entire runway from sign-up (our ~8–52 weeks; compressing if the race is sooner, extending the aerobic base if it's further out).
 - **Mesocycle:** a 3–4 week block with a theme (base, build, peak). Ends in a deload.
 - **Microcycle:** the week.
 - **Progressive overload with deloads:** you can't build linearly forever — fitness is built by *stress + recovery*, and unrecovered stress becomes non-functional overreaching → overtraining. The standard is **3:1** (three progressively harder weeks, one recovery week at ~60% load) for trained athletes and **2:1** for beginners, masters, and the injury-prone. Recovery weeks drop *volume* ~40%, keep a touch of intensity to hold sharpness.
@@ -204,7 +204,7 @@ Current frontier themes: (1) **durability/resilience** as the fourth pillar; (2)
 ### What our engine already does (cite file:line)
 
 **Plan length, phases, load curve** — [lib/planEngine.ts](../../lib/planEngine.ts):
-- Plan length by distance×level, clamped: Olympic 8–24, half 12–36, full 16–44 weeks (`PLAN_LEN`). Compresses if the race is sooner. If it's further out, the plan **fills the runway with base** — build is a bounded ~6–12-week specific-prep block (`BUILD_MAX`) and `baseWeeks` is the residual, so surplus lead time grows the aerobic engine (the long-course determinant), not near-peak build load. Only *past* the max does it delay the start (rare — a race >~10 months out).
+- Plan length = the **whole runway to race day, always starting the week the athlete signs up** (no delayed start). A race sooner than the per-distance minimum (Olympic 8 / half 12 / full 16 wk, `PLAN_MIN`) compresses; otherwise `totalWeeks = weeksUntil`, so surplus lead time **fills the runway with base** — build is a bounded ~6–12-week specific-prep block (`BUILD_MAX`) and `baseWeeks` is the residual, so extra time grows the aerobic engine (the long-course determinant), not near-peak build load. The *only* delayed-start case is a race booked past a one-year sanity ceiling (`MAX_PLAN_WEEKS = 52`), where periodising from day one isn't meaningful.
 - **Base/Build/Peak/Taper** split: taper = `min(TAPER_WEEKS, floor(totalWeeks*0.18))` (L603); base ≈ **45% of remaining** (`round(remaining*0.45)`, L605); peak ≈ 12% capped at 2 weeks (L606); build = the rest. `TAPER_WEEKS` = Olympic 1 / half 2 / full 3 (L48).
 - **Weekly load curve** via `baseFraction` (L132–151): base ramps **0.60→0.85** of peak, build **0.85→1.00**, peak **1.00**, taper ladder **[0.70, 0.55, 0.42]** with **race week 0.32**. Peak weekly hours from `PEAK_HOURS` (L42–46): e.g., half-IM intermediate 11 h, full-IM advanced 18 h — capped by the athlete's `weeklyHoursCap`.
 - **3:1 / 2:1 load:deload**: `cycleLen = level==="beginner" ? 3 : 4` (L620); recovery weeks every `cycleLen` weeks within base/build (L634), scaled to **0.62×** load (L654).
