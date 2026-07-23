@@ -70,7 +70,7 @@ export function RaceCatalogPicker({
           <button
             key={f.key}
             onClick={() => setDist(f.key)}
-            className={`chip flex-1 justify-center ${dist === f.key ? "border-accent bg-accent/10 text-foreground" : ""}`}
+            className={`chip flex-1 justify-center ${dist === f.key ? "is-selected" : ""}`}
           >
             {f.label}
           </button>
