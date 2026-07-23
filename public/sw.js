@@ -1,8 +1,8 @@
-// AmaTri service worker — makes the app installable and usable offline.
+// Trifecta service worker — makes the app installable and usable offline.
 // The cache name carries a per-build id (stamped by scripts/stamp-sw.mjs at
 // build time) so the browser sees this file change on every deploy and swaps in
 // the new worker — that's what lets the installed app actually update.
-const CACHE = "amatri-1784744774915";
+const CACHE = "trifecta-1784777952294";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -68,13 +68,13 @@ self.addEventListener("notificationclick", (event) => {
 self.addEventListener("push", (event) => {
   let payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch {}
-  const title = payload.title || "AmaTri";
+  const title = payload.title || "Trifecta";
   event.waitUntil(
     self.registration.showNotification(title, {
       body: payload.body || "Time to train.",
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      tag: payload.tag || "amatri-push",
+      tag: payload.tag || "trifecta-push",
       data: { url: payload.url || "/" },
     }),
   );

@@ -1,6 +1,6 @@
-# AmaTri Knowledge Base
+# Trifecta Knowledge Base
 
-> The eight realms of expertise AmaTri must master to become a category-defining
+> The eight realms of expertise Trifecta must master to become a category-defining
 > triathlon coaching product. Each doc is a **canonical, code-grounded reference** —
 > not a blog post. It pairs the real domain science / engineering with an honest
 > audit of what our codebase does today (cited to `file:line`) and a set of
@@ -14,7 +14,7 @@ wired into [AGENTS.md](../../AGENTS.md) so every session honours it. Keep these 
 current as the code and the field evolve (each carries a "Last researched" date).
 
 Last full research pass: **2026-07-22** · 8 docs · ~4,560 lines · every "How this maps
-to AmaTri" section cites real functions in the engine.
+to Trifecta" section cites real functions in the engine.
 
 ---
 
@@ -91,7 +91,7 @@ See each doc's §5 for its full, prioritized roadmap.
 
 - **Reading:** start with the TL;DR, then §4 (decision rules) for how-to-build guidance,
   then §3 for what our code does today. §1–2 are the deep reference.
-- **Grounding:** every "How this maps to AmaTri" section cites `file:line`. When you
+- **Grounding:** every "How this maps to Trifecta" section cites `file:line`. When you
   change that code, update the doc.
 - **Freshness:** the fast-moving realms are 5 (device APIs/policies) and 8 (Next.js
   version + compliance law). Re-research those before relying on specifics older than a

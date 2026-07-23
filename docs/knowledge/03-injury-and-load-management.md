@@ -1,7 +1,7 @@
 # Injury & Load Management + Biomechanics
-> Canonical AmaTri knowledge doc · Realm 3 of 8 · Last researched: 2026-07-22
+> Canonical Trifecta knowledge doc · Realm 3 of 8 · Last researched: 2026-07-22
 
-**Purpose:** Injury-awareness is AmaTri's flagship differentiator — the thing Runna
+**Purpose:** Injury-awareness is Trifecta's flagship differentiator — the thing Runna
 structurally ignores and the reason a time-crunched age-grouper trusts us with their
 season. This doc is the clinical and scientific backbone for that claim. It sets out what
 the sports-medicine evidence actually says about how endurance athletes get hurt, how
@@ -133,7 +133,7 @@ hard-code it:
 - **Empirical fragility:** when outliers are removed and workload is treated as
   continuous, **the ACWR-injury association often disappears.**
 
-Takeaway for AmaTri: **"avoid sharp jumps in load" is a sound principle; any specific ACWR
+Takeaway for Trifecta: **"avoid sharp jumps in load" is a sound principle; any specific ACWR
 threshold is not evidence.** Use ramp-rate awareness as a soft heuristic, never a
 gate with a magic number.
 
@@ -145,7 +145,7 @@ From daily loads:
 - **Strain = weekly load × monotony.**
 High **monotony combined with high load** is associated with illness and overtraining.
 The practical lesson — **hard/easy variation protects you** — is baked into 80/20
-polarized training and into deload weeks. AmaTri's easy-day / hard-day scheduling and
+polarized training and into deload weeks. Trifecta's easy-day / hard-day scheduling and
 recovery weeks reduce monotony almost as a side effect.
 
 **Sleep and energy availability are load multipliers.** Chronic short sleep and **low
@@ -304,13 +304,13 @@ real medical risk:
 at all**, **do not auto-regulate to daily readiness**, and put the onus on the user to
 manually downshift when a plan feels too hard or a niggle appears
 (see [runna-competitive-analysis.md](../research/runna-competitive-analysis.md)). Injury
-and overtraining complaints are their most visible open flank. AmaTri's engine already
+and overtraining complaints are their most visible open flank. Trifecta's engine already
 does injury-driven plan reshaping *and* protective auto-regulation — the two things the
 category is missing.
 
 ---
 
-## 3. How this maps to AmaTri
+## 3. How this maps to Trifecta
 
 ### What our engine already does (with citations)
 
@@ -504,7 +504,7 @@ prescribed without knowledge of relevant medical history. Our safety pitch raise
 lowers — the standard we're held to.*
 
 **DO:**
-- Ship a clear, prominent **medical disclaimer**: AmaTri provides **general fitness
+- Ship a clear, prominent **medical disclaimer**: Trifecta provides **general fitness
   information, not medical advice**, is **not a medical device**, and does **not diagnose,
   treat, or rehabilitate injury.**
 - Screen at onboarding with a **PAR-Q-style pre-participation questionnaire** (cardiac

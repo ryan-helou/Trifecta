@@ -19,22 +19,22 @@ const body = Geist({
 });
 
 export const metadata: Metadata = {
-  applicationName: "AmaTri",
-  title: "AmaTri — First light to finish line",
+  applicationName: "Trifecta",
+  title: "Trifecta — First light to finish line",
   description:
     "Train for the longest day. An adaptive, day-by-day triathlon plan for Olympic, 70.3, and the full Ironman 140.6 — built around your race, your level, and your PRs.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "AmaTri",
+    title: "Trifecta",
   },
   icons: {
     icon: [
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/icon-192.png?v=2", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png?v=2", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/apple-icon.png", sizes: "180x180" }],
+    apple: [{ url: "/icons/apple-icon.png?v=2", sizes: "180x180" }],
   },
   formatDetection: { telephone: false },
 };

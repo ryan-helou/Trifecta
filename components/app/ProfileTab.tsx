@@ -49,7 +49,7 @@ export function ProfileTab() {
         <div>
           <div className="font-display text-2xl font-semibold capitalize tracking-tight">{username}</div>
           <div className="eyebrow mt-1 text-[0.72rem]">
-            {profile.level} · AmaTri athlete
+            {profile.level} · Trifecta athlete
           </div>
         </div>
       </div>

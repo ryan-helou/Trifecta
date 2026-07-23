@@ -1,6 +1,6 @@
-# Behavioral Science, Habit Design & Retention (the knowledge that decides whether AmaTri is a company)
+# Behavioral Science, Habit Design & Retention (the knowledge that decides whether Trifecta is a company)
 
-> **What this is.** The canonical reference for how AmaTri *keeps* an athlete, not just how it
+> **What this is.** The canonical reference for how Trifecta *keeps* an athlete, not just how it
 > plans for one. The physiology in [01](01-exercise-physiology-and-periodization.md)–[03](03-injury-and-load-management.md)
 > and the engine in [04](04-planning-engine-algorithm-design.md) are worth exactly nothing if the
 > athlete stops opening the app in week three — which, on the base rates, is what most of them will
@@ -12,7 +12,7 @@
 > feels*); this doc owns the *why they come back*.
 >
 > **Compiled:** 2026-07-22. **Method:** multi-source web research (peer-reviewed behavioral science,
-> product-analytics benchmark reports, named case studies) cross-read against the AmaTri codebase
+> product-analytics benchmark reports, named case studies) cross-read against the Trifecta codebase
 > (`lib/notify.ts`, `lib/social.ts`, `lib/haptics.ts`, `lib/adapt.ts`, `lib/readiness.ts`,
 > `lib/stats.ts`, `lib/predict.ts`, `components/onboarding/Onboarding.tsx`, `components/app/*`).
 > **Honesty rule:** retention benchmarks are notoriously inconsistent across vendors (Adjust,
@@ -53,7 +53,7 @@
    Copy the mechanic; copy the *forgiveness* (freeze / earn-back) even harder. `[Shuttleworth, UXMag]`
 8. **Forgiving plans beat rigid plans.** Athletes miss sessions for time, fatigue, weather, life —
    not weakness. A plan that **absorbs a miss and reschedules** retains; a plan that leaves a red
-   "FAILED" and craters the week teaches learned helplessness → churn. This is already AmaTri's
+   "FAILED" and craters the week teaches learned helplessness → churn. This is already Trifecta's
    design philosophy in `lib/adapt.ts` — it is a *retention* feature, not just a planning one.
 9. **The Hooked loop (Trigger → Action → Variable Reward → Investment) is the engagement engine.**
    Our reward is under-built (praise is only mildly variable) and our **external trigger is broken
@@ -94,7 +94,7 @@ Consumer mobile retention decays viciously, and **Health & Fitness is at the har
 
 Rules of thumb from the analytics literature: **D30 ≈ half of D7**; an app at ~30% D7 tends to land ~15–20% D30 `[Sendbird]`. Amplitude's **"7% rule"**: if your retention curve hasn't *flattened* above ~zero by the time it stabilizes, you don't have PMF — a flat, non-zero asymptote is the signal you retain a real core `[Amplitude-7pct]`.
 
-**The shape matters more than any single day.** A healthy curve **flattens** at a non-trivial floor; a great one **smiles** (churned/lapsed users resurrect as the product improves or the network pulls them back) `[Sequoia-Retention, IndieHackers-Smile]`. For AmaTri the smile is *structurally available* — a triathlete finishes a race, lapses, then comes back for the next season. Designing the **post-race re-entry + next-race** loop is how you manufacture a smile instead of a cliff.
+**The shape matters more than any single day.** A healthy curve **flattens** at a non-trivial floor; a great one **smiles** (churned/lapsed users resurrect as the product improves or the network pulls them back) `[Sequoia-Retention, IndieHackers-Smile]`. For Trifecta the smile is *structurally available* — a triathlete finishes a race, lapses, then comes back for the next season. Designing the **post-race re-entry + next-race** loop is how you manufacture a smile instead of a cliff.
 
 ### 1.2 Subscription-level churn (the number that pays salaries)
 Free-install retention is vanity next to *paid* retention. Here it's brutal but the *revenue* is real (Health & Fitness monetizes better long-term than almost any category):
@@ -111,18 +111,18 @@ Fitness demand is violently cyclical: a **January sign-up spike** (New-Year reso
 - **Turn the calendar into a weapon.** The same seasonality is the **Fresh-Start Effect** (§2.8): people act on aspiration at temporal landmarks. Every Monday, month-start, birthday, and post-race is a *free re-engagement trigger* — if you have the notification channel to fire it (we mostly don't yet; §3.4).
 
 ### 1.4 Why physiology is worthless without adherence
-A perfectly periodized 16-week Ironman build (engine: [04](04-planning-engine-algorithm-design.md)) that the athlete abandons in week 3 produces **zero fitness and zero revenue.** Adherence is the *only* path by which our physiology creates value. Framed sharply: **AmaTri's product is not "a good plan" — it's "a plan you actually complete."** Every section below is in service of that sentence.
+A perfectly periodized 16-week Ironman build (engine: [04](04-planning-engine-algorithm-design.md)) that the athlete abandons in week 3 produces **zero fitness and zero revenue.** Adherence is the *only* path by which our physiology creates value. Framed sharply: **Trifecta's product is not "a good plan" — it's "a plan you actually complete."** Every section below is in service of that sentence.
 
 ---
 
 ## 2. The behavior-change canon (the frameworks that explain adherence)
 
-These are the named, evidence-backed models a growth/retention practitioner reasons with. Each ends with **→ AmaTri implication.**
+These are the named, evidence-backed models a growth/retention practitioner reasons with. Each ends with **→ Trifecta implication.**
 
 ### 2.1 The Fogg Behavior Model — B = MAP
 BJ Fogg (Stanford Behavior Design Lab): a behavior occurs only when **Motivation, Ability, and a Prompt converge in the same moment**; if any is missing, no behavior. The central, counter-intuitive insight: **increasing Ability (making it easier) is almost always more effective and durable than pumping Motivation** `[Fogg]`. Motivation is a wave — it spikes at signup and after inspiration, then recedes; you cannot bank on it. His **Tiny Habits** recipe — *"After [anchor], I will [tiny behavior], then [celebrate]"* — engineers each variable: anchor = Prompt, tiny behavior = Ability, celebration = Motivation reinforcement `[Fogg, GoalsAndProgress]`.
 
-- **→ AmaTri:** When an athlete misses a session, resist the urge to *motivate harder* ("crush it!"). Instead **lower Ability cost** (one-tap "move to tomorrow," swap a hard session for easy, shorten it) and **fix the Prompt** (a reliable, well-timed reminder — which we currently can't deliver on iOS). Our `swapDiscipline` / `moveWorkout` / `easeUpcoming` in `lib/adapt.ts` are *Ability* levers. Our missing push channel is a *Prompt* failure. Celebrate immediately on completion (we do — `Celebration.tsx` + `haptic('success')`).
+- **→ Trifecta:** When an athlete misses a session, resist the urge to *motivate harder* ("crush it!"). Instead **lower Ability cost** (one-tap "move to tomorrow," swap a hard session for easy, shorten it) and **fix the Prompt** (a reliable, well-timed reminder — which we currently can't deliver on iOS). Our `swapDiscipline` / `moveWorkout` / `easeUpcoming` in `lib/adapt.ts` are *Ability* levers. Our missing push channel is a *Prompt* failure. Celebrate immediately on completion (we do — `Celebration.tsx` + `haptic('success')`).
 
 ### 2.2 The Hooked Model — Trigger → Action → Variable Reward → Investment
 Nir Eyal's four-phase loop for habit-forming products `[Eyal, Amplitude-Hook]`:
@@ -131,7 +131,7 @@ Nir Eyal's four-phase loop for habit-forming products `[Eyal, Amplitude-Hook]`:
 3. **Variable Reward** — reward with *variability* sustains engagement (Skinner's intermittent reinforcement; dopamine responds to *surprise*). Predictable rewards habituate and go flat.
 4. **Investment** — the user puts something *in* (data, streak, PR history, followers) that (a) makes the next loop easier/better and (b) raises switching cost.
 
-- **→ AmaTri, honestly assessed:**
+- **→ Trifecta, honestly assessed:**
   - **Trigger:** external is *broken on iOS* (§3.4); internal trigger ("what's my session today?") exists but relies on the user self-initiating.
   - **Action:** strong — the app answers "what do I do today" in one screen (`TodayTab`).
   - **Variable Reward:** *weak.* Our praise strings rotate (`CheckinSheet` `PRAISE[]`) and celebrations fire on milestones (`stats.ts` `celebrationFor`), but the reward is largely **predictable**. There's a real opportunity for *variable* surprise-and-delight (unexpected coach note, a "you just beat your 10k split from 6 weeks ago" you didn't ask for).
@@ -142,12 +142,12 @@ Habits are learned **cue → routine → reward** loops (Duhigg's popularization
 - **Myth:** "21 days." This traces to Maxwell Maltz's 1960 *Psycho-Cybernetics* observing patients took *"a minimum of about 21 days"* to adjust to a new face — an anecdote, not a study. It is **folklore.**
 - **Evidence:** **Lally et al. (2010, *Eur. J. Social Psych.*)** tracked 96 people forming a daily habit: **median 66 days to automaticity, range 18–254**, and **only ~48% reached the plateau** at all `[Lally]`. Simple behaviors (a glass of water) automate faster than complex ones (a 50-minute run). Crucially, **missing one day did not measurably harm** the formation trajectory — a single lapse is not fatal. This is the empirical backbone of "forgiving plans."
 
-- **→ AmaTri:** Our retention model must assume **the habit is not set until ~week 9**, i.e., across the exact window (month 2–3) where subscription churn peaks. Two design consequences: (1) **the first ~9 weeks need the most scaffolding** (prompts, streaks, coach touch); (2) **one missed day must never read as failure** — Lally says it doesn't matter; our streak logic already encodes this (`stats.ts`: a rest day is "kept," today stays "pending," a single planned-but-undone day breaks it only in the *past*). Good instinct; extend it (streak freeze) in §5.
+- **→ Trifecta:** Our retention model must assume **the habit is not set until ~week 9**, i.e., across the exact window (month 2–3) where subscription churn peaks. Two design consequences: (1) **the first ~9 weeks need the most scaffolding** (prompts, streaks, coach touch); (2) **one missed day must never read as failure** — Lally says it doesn't matter; our streak logic already encodes this (`stats.ts`: a rest day is "kept," today stays "pending," a single planned-but-undone day breaks it only in the *past*). Good instinct; extend it (streak freeze) in §5.
 
 ### 2.4 Implementation intentions & habit stacking (the cheapest adherence win in the literature)
 **Implementation intentions** (Gollwitzer): pre-committing *when, where, and how* — an **"if [situation], then [behavior]"** plan — dramatically raises follow-through. The Gollwitzer & Sheeran (2006) meta-analysis: **94 studies, 8,000+ participants, effect size d ≈ 0.65** (medium-large) *on top of* existing goal intentions `[Gollwitzer-Sheeran]`. For *physical activity* specifically the effect is real but more modest and stronger when paired with reinforcement `[PLOS-One-PA]`. **Habit stacking** (anchoring a new behavior to an existing routine — "after my morning coffee, I lay out my kit") is the Tiny-Habits operationalization.
 
-- **→ AmaTri:** We ask *how many* sessions per week (`FrequencyStep`) but **never ask when/where.** Adding a lightweight "**When will you usually train? (morning / lunch / evening) and where?**" step turns each planned session into an if-then plan and lets reminders fire at the *right* moment (also feeding send-time optimization). This is a **high-leverage, low-effort** backlog item (§5) — one of the best-evidenced interventions in all of behavior change, and we collect *none* of it today.
+- **→ Trifecta:** We ask *how many* sessions per week (`FrequencyStep`) but **never ask when/where.** Adding a lightweight "**When will you usually train? (morning / lunch / evening) and where?**" step turns each planned session into an if-then plan and lets reminders fire at the *right* moment (also feeding send-time optimization). This is a **high-leverage, low-effort** backlog item (§5) — one of the best-evidenced interventions in all of behavior change, and we collect *none* of it today.
 
 ### 2.5 Self-Determination Theory (SDT) — the framework that matters most for endurance
 Ryan & Deci: motivation lies on a continuum from **amotivation → extrinsic → intrinsic**, and self-determined (autonomous) motivation requires three basic psychological needs `[Ryan-Deci]`:
@@ -160,16 +160,16 @@ The exercise-domain evidence is specific and useful `[Teixeira-2012, Edmunds]`:
 - **Intrinsic motivation** ("I train because I love it") best predicts **long-term maintenance** — *exactly the retention window that kills fitness apps.*
 - **How to feed each need in-product:** Competence ← **structure, positive feedback, realistic goals**; Autonomy ← **meaningful choices, minimal pressure, rationale-giving**; Relatedness ← **connection, belonging, being seen.**
 
-- **→ AmaTri (this is our deepest moat, framed correctly):**
+- **→ Trifecta (this is our deepest moat, framed correctly):**
   - **Competence** is our strongest card: a *realistic, achievable* plan (the injury-aware, 80/20-disciplined engine that *won't* leave you cooked), visible progress (`ProgressTab` fitness curve, PRs, banked hours), calibrated pace targets that *update as you improve* (`calibrate.ts`), and honest praise. **Every "your plan adjusted because you're ahead / because you were sore" message is a competence hit.**
-  - **Autonomy** is served by *choice with rationale*: "Let AmaTri decide" vs "I'll choose" (`FrequencyStep`), swap/move/skip verbs, weakness focus, rest-day preference. **The forgiving plan is autonomy-support in code** — it treats the athlete as a competent adult managing a life, not a soldier who failed inspection.
+  - **Autonomy** is served by *choice with rationale*: "Let Trifecta decide" vs "I'll choose" (`FrequencyStep`), swap/move/skip verbs, weakness focus, rest-day preference. **The forgiving plan is autonomy-support in code** — it treats the athlete as a competent adult managing a life, not a soldier who failed inspection.
   - **Relatedness** is our **weakest** need today: `FriendsTab` (follow, kudos, race cohort) is nascent and requires knowing usernames. The "coach relationship" (§2.9, §3.5) is the other relatedness channel and is under-exploited.
   - **Beware over-extrinsic-ifying.** SDT's dark warning: piling on badges/points/streaks can **crowd out** the intrinsic love of training (§2.7). For serious age-groupers this is a real risk — they don't want to feel *gamed.* Reward *mastery and meaning*, not just compliance.
 
 ### 2.6 Transtheoretical Model (Stages of Change) — meet the athlete where they are
 Prochaska & DiClemente: change moves through **Precontemplation → Contemplation → Preparation → Action → Maintenance**, with **Relapse** an expected part of the cycle (on relapse, **~85% fall back only to Contemplation/Preparation, not all the way to Precontemplation**) `[Prochaska, RuralHealthInfo]`.
 
-- **→ AmaTri:** A triathlete who signs up for a 70.3 is already in **Preparation/Action** — unusually far along vs a generic fitness app (an advantage: our users self-select into intent). The design job is **Maintenance and graceful Relapse handling.** When someone lapses for two weeks, they have *not* reverted to zero motivation — meet them at "Preparation" with a *"let's realign your plan to today"* (`rebuildFromToday` already does this beautifully) rather than a guilt trip or a from-scratch restart. **Relapse is a stage to design for, not a failure to punish.**
+- **→ Trifecta:** A triathlete who signs up for a 70.3 is already in **Preparation/Action** — unusually far along vs a generic fitness app (an advantage: our users self-select into intent). The design job is **Maintenance and graceful Relapse handling.** When someone lapses for two weeks, they have *not* reverted to zero motivation — meet them at "Preparation" with a *"let's realign your plan to today"* (`rebuildFromToday` already does this beautifully) rather than a guilt trip or a from-scratch restart. **Relapse is a stage to design for, not a failure to punish.**
 
 ### 2.7 Loss aversion, streaks & endowed progress (power tools with sharp edges)
 - **Loss aversion** (Kahneman & Tversky): losses hurt ~2× as much as equivalent gains feel good. **Streaks weaponize this** — a 180-day Duolingo user is motivated by *not losing 180*, far more than by *reaching 181* `[Shuttleworth]`. Duolingo grew DAU from ~5M (2020) to **~47.7M (2025)** with ~10.9M paid subs, and ran **600+ experiments on streaks alone** `[Shuttleworth, Trophy]`.
@@ -177,35 +177,35 @@ Prochaska & DiClemente: change moves through **Precontemplation → Contemplatio
 - **The dark side (take seriously).** Streaks are strongest in the **first ~30 days**; past that they curdle into **anxiety, guilt, and compulsion** — a documented pattern where the app is used *to avoid a bad feeling*, not for joy `[UXMag, TheBrink]`. A hard reset-to-zero is the **"broken-streak → quit" cliff**: the endowment is gone, so why continue? For an *injury-aware* brand, a streak that guilts a sore athlete into training is **directly counter to our promise.**
 - **Endowed progress effect** (Nunes & Drèze): people are more motivated to finish a goal they've been given *artificial* early progress on (a loyalty card pre-stamped with 2 of 10 feels closer than 0 of 8). Framing a plan as "**you're already 15% of the way to the start line**" beats "0/112 sessions."
 
-- **→ AmaTri:** We have streaks (`stats.ts`), milestones, and celebrations — good. **We do not have a streak freeze / earn-back / rest-day-aware protection** beyond "rest days count as kept." Add **forgiveness mechanics** (§5) *before* leaning harder on streaks, or we'll manufacture the exact injury-guilt our brand exists to prevent. **Cap streak salience** for serious athletes (surface consistency as a *trend*, not a fragile number that screams). Use **endowed progress** framing on the plan ("15% to race day").
+- **→ Trifecta:** We have streaks (`stats.ts`), milestones, and celebrations — good. **We do not have a streak freeze / earn-back / rest-day-aware protection** beyond "rest days count as kept." Add **forgiveness mechanics** (§5) *before* leaning harder on streaks, or we'll manufacture the exact injury-guilt our brand exists to prevent. **Cap streak salience** for serious athletes (surface consistency as a *trend*, not a fragile number that screams). Use **endowed progress** framing on the plan ("15% to race day").
 
 ### 2.8 The Fresh-Start Effect & temporal landmarks
 Dai, Milkman & Riis (2014, *Management Science*): people pursue aspirational behavior more right after **temporal landmarks** that create a "new mental accounting period" — relegating past failures to the old self. Field evidence: **gym visits +33.4% at the start of a new week**, diet searches **+82.1% at the start of a new year** `[Dai-Milkman-Riis]`.
 
-- **→ AmaTri:** Fresh starts are **free re-engagement triggers.** Every Monday ("new training week"), month-start, birthday, *and especially post-race* ("your next chapter") is a moment to re-activate a lapsing athlete — *if* we can reach them. Frame plan *rebuilds* as fresh starts, not admissions of failure. Ties directly to the seasonality point (§1.3): don't just survive January, ride every small landmark.
+- **→ Trifecta:** Fresh starts are **free re-engagement triggers.** Every Monday ("new training week"), month-start, birthday, *and especially post-race* ("your next chapter") is a moment to re-activate a lapsing athlete — *if* we can reach them. Frame plan *rebuilds* as fresh starts, not admissions of failure. Ties directly to the seasonality point (§1.3): don't just survive January, ride every small landmark.
 
 ### 2.9 Temptation bundling, commitment devices & accountability
 - **Temptation bundling** (Milkman, Minson & Volpp): pair a "should" (train) with a "want" (a page-turner audiobook allowed *only* at the gym). Result: **+51% gym visits** (full treatment) initially, **decaying over time** (esp. after holidays), but **61% chose to pay for the commitment device** afterward `[Milkman-Volpp]`. Honest read: real effect, **decays**, but reveals genuine demand for self-control tools.
 - **Commitment devices** (stickK, Beeminder): pre-committing money/reputation to a goal. Powerful for the already-motivated; can backfire (or feel coercive) if over-applied — an **autonomy risk** under SDT.
 - **Accountability** is the throughline of why human coaching works: someone is *watching and cares.* It's a **relatedness** delivery mechanism. Runna's #1 structural gap is **no default human accountability** (per [runna-competitive-analysis.md](../research/runna-competitive-analysis.md) §5.7).
 
-- **→ AmaTri:** The **coach voice** (§3.5) is our software-scale accountability proxy — "your coach noticed you missed two swims" is relatedness + accountability at ~$0. **Social accountability** (a training partner sees your feed; "3 others training for your race") is the other channel (`social.ts`). Temptation bundling is a lighter-weight idea (e.g., "pair your turbo sessions with a show") — nice-to-have, not core. Avoid heavy financial commitment devices; they clash with our autonomy-supportive, injury-kind brand.
+- **→ Trifecta:** The **coach voice** (§3.5) is our software-scale accountability proxy — "your coach noticed you missed two swims" is relatedness + accountability at ~$0. **Social accountability** (a training partner sees your feed; "3 others training for your race") is the other channel (`social.ts`). Temptation bundling is a lighter-weight idea (e.g., "pair your turbo sessions with a show") — nice-to-have, not core. Avoid heavy financial commitment devices; they clash with our autonomy-supportive, injury-kind brand.
 
 ### 2.10 Social proof, network effects & UGC
 Cialdini's **social proof** ("others like me are doing this") plus **network effects** are retention multipliers. Strava is the canonical case: **social visibility changes consistency** — people who know their training is *seen by people whose opinion matters* behave more consistently. Data point: apps with **social streaks average 5.69-day streaks vs 4.25 without**; Strava users engage **35+ times/month**, driven by kudos/segments/clubs `[Strava-StriveCloud, Trophy-Strava, Tapestry]`. The flip side: network effects are a **cold-start problem** — thin networks don't retain.
 
-- **→ AmaTri:** Social proof is *already* in onboarding-adjacent copy ("N others training for [race]," `social.ts` cohort) and is Runna's proven lever. But our social graph is **empty at cold-start** and **hard to populate** (username-only add). Relatedness/network is our biggest *upside* and biggest *build* — see §5.
+- **→ Trifecta:** Social proof is *already* in onboarding-adjacent copy ("N others training for [race]," `social.ts` cohort) and is Runna's proven lever. But our social graph is **empty at cold-start** and **hard to populate** (username-only add). Relatedness/network is our biggest *upside* and biggest *build* — see §5.
 
 ---
 
-## 3. AmaTri's retention surface, assessed against the science (code-grounded)
+## 3. Trifecta's retention surface, assessed against the science (code-grounded)
 
 What habit machinery actually exists in the repo today, mapped to the frameworks above, with the honest gaps.
 
 ### 3.1 Activation & onboarding — time-to-value and the first-workout race
 **What exists (strong):**
 - **Welcome (`WelcomeScreen.tsx`)** — a promise-first hero ("Every stroke, pedal, and stride — *planned*"), a self-drawing swim→bike→run route, a single CTA ("Create your plan"). Low-friction, confidence-first — the right *tone* (matches Runna's "design for confidence, not speed").
-- **Onboarding (`components/onboarding/Onboarding.tsx`)** — ~10 adaptive steps (race → [custom] → [date] → level → frequency → strength → schedule → PRs → injuries → review), with a **progress bar** and steps that **skip when inapplicable** (real event carries its own date). Good Ability design (steppers, presets, chips, "let AmaTri decide" defaults).
+- **Onboarding (`components/onboarding/Onboarding.tsx`)** — ~10 adaptive steps (race → [custom] → [date] → level → frequency → strength → schedule → PRs → injuries → review), with a **progress bar** and steps that **skip when inapplicable** (real event carries its own date). Good Ability design (steppers, presets, chips, "let Trifecta decide" defaults).
 - **★ Value-before-account, value-before-paywall.** The **plan is generated *before* the account is created** — the account is the *last* step (`AccountStep`), after the athlete watches the plan "forge" (`LoadingAnimation`). This is the single best conversion pattern (show the outcome, then ask). We do it.
 - **★ The finish-time hook is built.** `ReviewStep` renders `projectRace()` (`lib/predict.ts`): *"Your projected finish: X:XX — about N faster than racing at today's fitness."* This is Runna's highest-leverage conversion moment, and **we own the engine.** It delivers *competence* (SDT) and *time-to-value* before any commitment.
 - **Injury intake** (`InjuriesStep`) — free-text → AI-parsed injuries → visible "we'll train around" list. This is a **trust/competence** moment unique to us (Runna has nothing like it).
@@ -272,14 +272,14 @@ There is **no analytics/event-tracking layer** in the repo (no Amplitude/Mixpane
 
 ---
 
-## 4. Measuring retention — loops, curves, and AmaTri's North-Star
+## 4. Measuring retention — loops, curves, and Trifecta's North-Star
 
 You cannot manage what you don't measure, and for a **weekly-cadence sport** the standard SaaS metrics need translation.
 
 ### 4.1 The metric families to track
 - **N-day (classic) retention** — % of a cohort active on exactly day N. Standard, but **too strict for a weekly sport** (a triathlete training Tue/Thu/Sat is *perfectly adherent* yet "inactive" on D-many). Use it for install-level health, not as the core.
 - **Unbounded / rolling retention** — % active *on or after* day N. Kinder to irregular cadence; better for us than strict N-day.
-- **Bracket / weekly retention** — % of a cohort active in **week N.** **This is the right primary cadence for AmaTri.** WAU (weekly actives) and week-over-week retention beat DAU here.
+- **Bracket / weekly retention** — % of a cohort active in **week N.** **This is the right primary cadence for Trifecta.** WAU (weekly actives) and week-over-week retention beat DAU here.
 - **Stickiness (DAU/MAU)** — good for daily apps (messaging 50%+, gaming 20–50%). For a weekly sport, **WAU/MAU is the honest stickiness ratio** — expect and target something healthy on a *weekly* basis, not a Duolingo-style daily one. Don't cargo-cult DAU/MAU.
 - **The retention *curve shape*** — is the north star of diagnosis: does it **flatten** (you have a core), and does it **smile** (resurrection)? (§1.1) `[Amplitude-7pct, Sequoia-Retention]`.
 - **Subscription retention / churn** — monthly logo churn, trial-to-paid, month-3 survival, LTV. The revenue truth.
@@ -328,7 +328,7 @@ Leverage = (impact on the North-Star / churn) × (how much we already have) ÷ (
 2. **★ Server-side + iOS web push (fix the broken Prompt).** Implement web-push (VAPID) with a scheduled sender; iOS PWA push has worked since 16.4. Unlocks: session reminders that *actually fire*, proactive readiness/adaptation nudges, fresh-start pings, win-back. **This is the #1 retention gap** — the external Trigger of the Hooked loop for our core user. Pair with the existing `lib/notify.ts` local path as a fallback. `[Eyal, Fogg]`
 3. **Lifecycle messaging (push + email).** Welcome → onboarding-incomplete → **first-workout nudge** → week-1 recap → **missed-session "let's move it"** → week-9 "habit locked" → **race-week hype** → **post-race re-entry + next race** → win-back. Each is a named behavioral moment (fresh-start, relapse-handling, accountability). Backbone of subscription retention; we have *none.* `[RetentionCheck, Braze]`
 4. **★ Streak forgiveness: freeze + earn-back + illness/travel hold.** Before leaning harder on streaks, add Duolingo-style **earn-back** (re-earn a lost streak, don't sell it) and auto-protect during logged blackout/illness. Kills the **broken-streak → quit cliff** and keeps streaks *on-brand* (injury-kind, not guilt-inducing). Extends existing `computeStreak`. `[Shuttleworth, Lally]`
-5. **Engineer + celebrate the first completed session.** Make "day one" an explicit, achievable, *celebrated* activation moment (an easy first session, a "you're training with AmaTri now" beat). The <3-sessions-in-14-days cliff is the sharpest churn signal — sprint the athlete to session #1, then #3. Instrument `first-workout` as the activation event. `[RetentionCheck]`
+5. **Engineer + celebrate the first completed session.** Make "day one" an explicit, achievable, *celebrated* activation moment (an easy first session, a "you're training with Trifecta now" beat). The <3-sessions-in-14-days cliff is the sharpest churn signal — sprint the athlete to session #1, then #3. Instrument `first-workout` as the activation event. `[RetentionCheck]`
 6. **When/where scheduling → implementation intentions + send-time optimization.** One added onboarding question ("usual training time & place") turns every session into an if-then plan (d≈0.65 evidence) *and* lets push fire at the right moment. Tiny build, top-tier evidence. `[Gollwitzer-Sheeran]`
 7. **★ Proactive coach touches (turn the tool into a relationship).** Use the existing `summarizeForCoach`/`assessAdaptation` context to *initiate*: "noticed you were sore — today's easy," "two swims missed, want to rebalance?", a Monday plan-ahead note, a post-session surprise PR callout. Delivered via #2. Converts the coach from reactive chat → **relatedness + accountability** engine. `[Ryan-Deci, Runna-doc §7.4]`
 8. **Variable, surprising rewards (upgrade the Hooked reward).** Beyond fixed milestones: unexpected "6 weeks ago this pace was threshold — today it's easy," longest-ride-this-month, negative-split callouts, occasional coach kudos. Variability sustains dopamine where predictable praise habituates. `[Eyal]`

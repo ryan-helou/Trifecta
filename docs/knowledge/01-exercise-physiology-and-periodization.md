@@ -1,7 +1,7 @@
 # Exercise Physiology & Periodization (Multisport)
-> Canonical AmaTri knowledge doc · Realm 1 of 8 · Last researched: 2026-07-22
+> Canonical Trifecta knowledge doc · Realm 1 of 8 · Last researched: 2026-07-22
 
-**Purpose:** This realm is the physiological ground truth the entire product stands on. AmaTri's moat is a deterministic engine that generates a coach-quality triathlon plan at ~$0 marginal cost ([lib/planEngine.ts](../../lib/planEngine.ts)). That engine is only as good as the periodization science encoded in it. If our phase splits, intensity distribution, load:deload ratios, taper, brick logic, and per-sport balancing are physiologically sound, we out-coach a $200/month human for the time-crunched age-grouper. If they're naive, we injure people (Runna's open flank — see [runna-competitive-analysis.md](../research/runna-competitive-analysis.md) §5) or leave fitness on the table. This document is what "getting the physiology right" actually means, with the numbers, protocols, named research, and an honest audit of where our code is sound vs. where it's guessing.
+**Purpose:** This realm is the physiological ground truth the entire product stands on. Trifecta's moat is a deterministic engine that generates a coach-quality triathlon plan at ~$0 marginal cost ([lib/planEngine.ts](../../lib/planEngine.ts)). That engine is only as good as the periodization science encoded in it. If our phase splits, intensity distribution, load:deload ratios, taper, brick logic, and per-sport balancing are physiologically sound, we out-coach a $200/month human for the time-crunched age-grouper. If they're naive, we injure people (Runna's open flank — see [runna-competitive-analysis.md](../research/runna-competitive-analysis.md) §5) or leave fitness on the table. This document is what "getting the physiology right" actually means, with the numbers, protocols, named research, and an honest audit of where our code is sound vs. where it's guessing.
 
 ---
 
@@ -64,18 +64,18 @@ Key truths the engine must respect:
 There is no single "correct" zone system; each is a different lens on the same continuum:
 
 - **3-zone (Seiler / physiological):** Z1 = below LT1 (easy), Z2 = between LT1 and LT2 ("the middle," threshold-ish), Z3 = above LT2 (hard). This is the model the **80/20 / polarized** literature is written in — and it's why "polarized" means "avoid the middle Z2," which is a *different* Z2 than the 5-zone Z2. **Terminology trap:** Seiler-Z2 = no-man's-land; Coggan/5-zone-Z2 = aerobic base. Do not conflate.
-- **5-zone (Coggan-lite / what AmaTri uses):** Recovery / Endurance / Tempo / Threshold / VO₂max. Legible for consumers, maps cleanly to one prescription per session. Cost: it compresses Coggan's 7 power zones and loses the anaerobic/neuromuscular top end.
+- **5-zone (Coggan-lite / what Trifecta uses):** Recovery / Endurance / Tempo / Threshold / VO₂max. Legible for consumers, maps cleanly to one prescription per session. Cost: it compresses Coggan's 7 power zones and loses the anaerobic/neuromuscular top end.
 - **7-zone (Coggan power):** Active Recovery, Endurance, Tempo, Lactate Threshold, VO₂max, Anaerobic, Neuromuscular. Precise for cyclists with power; overkill for a consumer tri app.
 - **HR zones (%HRmax or %HRR/Karvonen or %LTHR):** convenient but flawed — HR lags effort by 30–120 s (useless for intervals), drifts up with heat/dehydration/fatigue ("cardiac drift"), and %HRmax overstates zones vs. %HR-reserve. Best as a *ceiling check* on easy days, not an interval target.
 - **RPE (Borg / CR10):** free, always available, and — trained — remarkably accurate. The Norwegian pros race on internal feel. Our engine carries an RPE label on every zone, which is the right safety net.
 
-**The honest position:** thresholds (FTP/CSS/threshold-pace) are the best field anchor; power (bike) and pace (run/swim) beat HR; HR and RPE are backstops. AmaTri's design (§3) matches this.
+**The honest position:** thresholds (FTP/CSS/threshold-pace) are the best field anchor; power (bike) and pace (run/swim) beat HR; HR and RPE are backstops. Trifecta's design (§3) matches this.
 
 ### 1.4 Periodization theory — the models and what the research says
 
 **Periodization** = the planned distribution of training stress over time to peak on a date while managing fatigue and adaptation. Four organizing philosophies:
 
-1. **Linear / traditional (Matveyev):** high volume → low intensity early; progressively lower volume → higher intensity toward the race. Base → Build → Peak → Taper. Robust, simple, the default for a first-time age-grouper. AmaTri is fundamentally this.
+1. **Linear / traditional (Matveyev):** high volume → low intensity early; progressively lower volume → higher intensity toward the race. Base → Build → Peak → Taper. Robust, simple, the default for a first-time age-grouper. Trifecta is fundamentally this.
 2. **Reverse periodization:** intensity first, volume later. Used when the *race* is short/intense or the athlete's off-season is indoors (trainer). Niche for tri.
 3. **Block periodization (Issurin):** 2–4 week mesocycles of *concentrated* single-focus load — **accumulation** (aerobic/base), **transmutation** (sport-specific), **realization** (taper/race). Rationale: you can only develop a few qualities at once, and different qualities detrain at different rates (neural/glycolytic fast, aerobic slow), so concentrate and rotate. Meta-analysis (Rønnestad): **small but real** VO₂max/Wmax benefit vs. traditional for *already-trained* athletes; a 12-week trained-cyclist RCT found **no difference** (Frontiers 2022). Verdict: promising for advanced athletes, not clearly better for the general population, and harder to schedule around three sports.
 4. **Undulating / non-linear:** intensity varies within the week/microcycle rather than across months. This is arguably what *every* good tri week already is (a threshold day, a VO₂ day, easy days) — so "undulating" describes our microcycle even inside a linear macrocycle.
@@ -84,7 +84,7 @@ There is no single "correct" zone system; each is a different lens on the same c
 - **Polarized (POL):** ~80% easy (below LT1) + ~15–20% hard (above LT2), *minimal* threshold. **Stöggl & Sperlich 2014** (48 well-trained endurance athletes, 9 weeks, 4 groups): POL (achieved 68/6/26 by the 3-zone split) produced the **largest gains in VO₂max and time-to-exhaustion** — beating threshold (46/54/0), HIIT (43/0/57), and high-volume (83/16/1). Threshold and high-volume groups saw *no* significant further gains in this already-fit cohort.
 - **Pyramidal (PYR):** ~80% easy + a *descending* amount of threshold then VO₂ (more Z2/threshold than a polarized model, less pure VO₂). Retrospective analyses (Seiler; Kenneally; Filipas) show many elite runners/cyclists actually train **pyramidal for most of the year and shift toward polarized near competition.**
 - **Threshold (THR):** the "middle" heavy model — repeatedly shown *inferior* for improving fitness in the trained, but note the **Norwegian double-threshold method** deliberately lives here with careful lactate control and huge volume.
-- **What to actually believe:** (a) **~80% easy is the near-universal invariant** across all successful models; the fight is only over the other 20%. (b) POL is well-evidenced as a **short intensification block** for fit athletes. (c) **PYR is likely better for long-course triathlon**, whose race intensity *is* threshold-to-tempo — you should spend build-phase quality time at the intensity you'll race. (d) It's not either/or: **PYR in base/build → more POL in peak** is the sophisticated answer. This directly informs how AmaTri should shape quality across phases (§4).
+- **What to actually believe:** (a) **~80% easy is the near-universal invariant** across all successful models; the fight is only over the other 20%. (b) POL is well-evidenced as a **short intensification block** for fit athletes. (c) **PYR is likely better for long-course triathlon**, whose race intensity *is* threshold-to-tempo — you should spend build-phase quality time at the intensity you'll race. (d) It's not either/or: **PYR in base/build → more POL in peak** is the sophisticated answer. This directly informs how Trifecta should shape quality across phases (§4).
 
 ### 1.5 Macro / meso / microcycle & load:deload
 
@@ -199,7 +199,7 @@ Current frontier themes: (1) **durability/resilience** as the fourth pillar; (2)
 
 ---
 
-## 3. How this maps to AmaTri
+## 3. How this maps to Trifecta
 
 ### What our engine already does (cite file:line)
 

@@ -127,5 +127,5 @@ export function buildWorkoutFit(w: Workout, paces: PaceModel): Uint8Array {
 /** Safe filename for a session's FIT export. */
 export function fitFilename(w: Workout): string {
   const slug = w.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "workout";
-  return `amatri-${slug}.fit`;
+  return `trifecta-${slug}.fit`;
 }

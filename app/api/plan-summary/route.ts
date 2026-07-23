@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // One cheap call when the plan is forged: a short "why this plan" note plus a
 // one-line coaching note for each training phase. Optional — no key ⇒ enabled:false.
 
-const SYSTEM = `You are the AmaTri Coach. Given a summary of an athlete's profile and the plan the app built for them, write personalised coaching notes.
+const SYSTEM = `You are the Trifecta Coach. Given a summary of an athlete's profile and the plan the app built for them, write personalised coaching notes.
 Rules:
 - "summary": a 3–5 sentence "why this plan" note to the athlete. Speak to them ("you"). Reference their race and timeline, weekly rhythm, and anything they asked to work around (injuries, strength, days off, equipment). Explain the base → build → peak → taper shape in plain language and reassure them it fits their life.
 - Phase notes (base/build/peak/taper): ONE short sentence each, only for phases that exist in this plan, saying what that block does for THIS athlete specifically. Omit a phase key entirely if it isn't in the plan.

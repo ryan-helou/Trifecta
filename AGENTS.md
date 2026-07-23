@@ -6,7 +6,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # Domain knowledge base — read the relevant realm doc BEFORE designing in it
 
-AmaTri's edge depends on deep expertise in eight realms. Each has a canonical,
+Trifecta's edge depends on deep expertise in eight realms. Each has a canonical,
 code-grounded reference in [docs/knowledge/](docs/knowledge/) (index:
 [docs/knowledge/README.md](docs/knowledge/README.md)). **Before you design or change
 anything in one of these realms, read that doc's §4 (Principles & decision rules) first**
@@ -26,8 +26,8 @@ time. When you change code a doc cites, update the doc; keep its "Last researche
 
 Before building any user-facing feature, plan-engine behaviour, onboarding flow, or
 pricing/positioning decision, consult [docs/research/runna-competitive-analysis.md](docs/research/runna-competitive-analysis.md).
-Runna is the closest analog to AmaTri (adaptive coaching app, running niche; acquired by
+Runna is the closest analog to Trifecta (adaptive coaching app, running niche; acquired by
 Strava in 2025). That doc captures how they work, why they won, what users complain about,
-and — most importantly — the **copy / avoid / exploit** playbook for AmaTri, mapped to our
+and — most importantly — the **copy / avoid / exploit** playbook for Trifecta, mapped to our
 actual engine ([lib/planEngine.ts](lib/planEngine.ts)). Our moat: multisport-native +
 injury-aware/readiness-adaptive planning + a ~$0/plan deterministic engine.

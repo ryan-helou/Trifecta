@@ -42,7 +42,7 @@ export function InstallHint() {
 
   return (
     <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
-      <div className="mb-1 flex items-center gap-2 font-semibold"><Icon name="install" size={18} className="text-accent" /> Install AmaTri</div>
+      <div className="mb-1 flex items-center gap-2 font-semibold"><Icon name="install" size={18} className="text-accent" /> Install Trifecta</div>
       {deferred ? (
         <>
           <p className="mb-3 text-sm text-muted">Add it to your home screen to run it full-screen, like a real app.</p>
@@ -65,7 +65,7 @@ export function InstallHint() {
       ) : (
         <p className="text-sm text-muted">
           In your browser menu, choose <span className="font-semibold text-foreground">Install app</span> /{" "}
-          <span className="font-semibold text-foreground">Add to Home Screen</span> to run AmaTri full-screen.
+          <span className="font-semibold text-foreground">Add to Home Screen</span> to run Trifecta full-screen.
         </p>
       )}
     </div>

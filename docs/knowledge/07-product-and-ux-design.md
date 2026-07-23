@@ -1,10 +1,10 @@
 # 07 — Product & UX Design
 
-> **What this is.** The canonical design brief for AmaTri: the opinionated, codebase-grounded
+> **What this is.** The canonical design brief for Trifecta: the opinionated, codebase-grounded
 > reference anyone consults *before* they design a screen, a flow, or a chart. It covers the
 > hard part of a training app — turning periodization, training load, zones, readiness and race
 > prediction into something a time-crunched age-grouper reads at a glance and *wants* to open
-> tomorrow. It is specific to AmaTri's actual UI (file paths throughout), and it names the
+> tomorrow. It is specific to Trifecta's actual UI (file paths throughout), and it names the
 > best-in-class patterns we copy (TrainingPeaks, Intervals.icu, WHOOP, Strava, Garmin, Zwift,
 > Runna) and the traps we avoid.
 >
@@ -76,7 +76,7 @@
 ## 1. Design philosophy & the `Paper` design system
 
 ### 1.1 The thesis
-AmaTri's design language is codified in the header comment of `app/globals.css`: **"Minimal,
+Trifecta's design language is codified in the header comment of `app/globals.css`: **"Minimal,
 monochrome, white-based. Black ink on white, hairline grays, and no colour at all — the restraint IS
 the identity. Depth comes from tonal steps and thin borders, never from glow or gradients. Numbers
 (splits, paces, countdowns) stay the hero, set like a watch dial."**
@@ -153,7 +153,7 @@ contrast obligations.
 
 Triathlon is a genuinely hard first-run problem: three sports, distances most novices can't visualize,
 zones, PRs, FTP, injuries, equipment. The design job is to get a nervous first-timer from install to a
-plan they believe in **without teaching them sports science first.** Here's how AmaTri does it and where
+plan they believe in **without teaching them sports science first.** Here's how Trifecta does it and where
 it can be sharper.
 
 ### 2.1 The flow, as shipped
@@ -176,7 +176,7 @@ branching flow.
   today's fitness" (`Onboarding.tsx:1186`, from `lib/predict.ts`). This is the emotional turn — "the work
   buys you *this*" — and it's exactly Runna's most-praised onboarding move, reproduced before the paywall.
 - **Progressive disclosure done properly.** One question per screen, sensible defaults pre-loaded in the
-  `Draft` (`Onboarding.tsx:109`: 1500/40k/10k, 2/2/2 sessions, all equipment on), and "let AmaTri decide"
+  `Draft` (`Onboarding.tsx:109`: 1500/40k/10k, 2/2/2 sessions, all equipment on), and "let Trifecta decide"
   escape hatches (auto-frequency, `suggestFrequency`) so a novice never has to *have an opinion* about
   swim-sessions-per-week. NN/g's core onboarding rule — "explain why you need the data, and only ask for
   what's essential" — is satisfied: each `Head` sub-line says why ("This sets your volume… and how fast
@@ -322,7 +322,7 @@ step description + target + cue, next-step peek, transport controls, overall pro
 **audio**: TTS step announcements + Web Audio beeps at 3-2-1 and on transition, a **wake-lock** to keep
 the screen on, and `haptic()` on transitions. Ends on a `celebrate` trophy → "log this session."
 
-**Verdict: this is the feature that makes AmaTri feel like an app, not a website.** Wake-lock, spoken
+**Verdict: this is the feature that makes Trifecta feel like an app, not a website.** Wake-lock, spoken
 cues, and full-screen focus are native-grade and directly attack the PWA perception gap. It also
 degrades safely — every audio/wake-lock call is guarded and no-ops where unsupported.
 
@@ -424,7 +424,7 @@ trend. The industry-standard visualization is the TrainingPeaks **Performance Ma
 - **ATL (Fatigue)** — 7-day EWMA; the fast red line.
 - **TSB (Form) = CTL − ATL** — the "freshness" line; negative in a build (correct), positive on race day.
 
-For AmaTri this chart is *strategic*, not cosmetic: our competitive thesis vs Runna is "genuinely
+For Trifecta this chart is *strategic*, not cosmetic: our competitive thesis vs Runna is "genuinely
 injury-aware / readiness-adaptive planning" (see the Runna doc §0 and [02](02-training-load-and-readiness.md),
 [03](03-injury-and-load-management.md)). A visible load/form chart is the proof of that claim. **Target
 pattern, tuned for `Paper` and small screens:**
@@ -515,7 +515,7 @@ retention, and the vs-Runna differentiation. Cross-refs point at the section wit
 ## 6. Mobile-first & PWA-specific UX
 
 ### 6.1 What's already right
-AmaTri is genuinely mobile-first, not a desktop app squeezed down:
+Trifecta is genuinely mobile-first, not a desktop app squeezed down:
 - **Safe areas everywhere.** `.safe-t` / `.safe-b` use `env(safe-area-inset-*)`; Today/Plan/Progress pad
   their tops with `calc(env(safe-area-inset-top) + 1rem)`. Installed on a notched iPhone, nothing hides
   under the notch or home-indicator.
@@ -543,7 +543,7 @@ AmaTri is genuinely mobile-first, not a desktop app squeezed down:
   `offline` flag surfaced as a Today banner ("showing your saved plan… changes sync when you reconnect,"
   `TodayTab.tsx:76`). The right move: the plan is *local-first*, so a subway swim session still works.
 
-**Closing the perception gap (the PWA's real job):** the features that make AmaTri read as native are
+**Closing the perception gap (the PWA's real job):** the features that make Trifecta read as native are
 already here — wake-lock during workouts, TTS/beep audio cues, haptics, full-screen standalone display,
 install-to-home-screen, offline plan. **Lean into these in marketing and in-product copy** ("runs
 full-screen, like a real app," which `InstallHint` already says). The remaining native envy is
@@ -560,7 +560,7 @@ mid-tier Android, 60fps on the workout timer.
 
 ## 7. Motivational & emotional design
 
-The difference between a *logger* and a *coach* is voice and grace. AmaTri already leans coach, which is
+The difference between a *logger* and a *coach* is voice and grace. Trifecta already leans coach, which is
 the retention-correct choice (see [06](06-behavioral-science-and-retention.md)).
 
 ### 7.1 The coach voice in UI copy
@@ -583,9 +583,9 @@ personality and it's more distinctive than any visual.
 - `computeStreak` surfaces a flame streak on Today/Progress — but **note the streak trap below.**
 
 ### 7.3 Handling missed workouts — the retention hinge
-This is where most fitness apps fail and where AmaTri is *ahead*. Research is blunt: streak-shame and
+This is where most fitness apps fail and where Trifecta is *ahead*. Research is blunt: streak-shame and
 all-or-nothing framing are what make people quit; the loudest Runna beginner complaint is plans that
-don't downshift and then feel punishing. AmaTri's posture:
+don't downshift and then feel punishing. Trifecta's posture:
 - **Rich, guilt-free recovery paths** in `WorkoutDetail`: *move day*, *swap sport* ("swap for an easy…"),
   *did something else* (credits what you actually did), *skip* (reversible). Missing a session is a
   *choice with options*, not a failure.

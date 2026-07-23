@@ -13,7 +13,7 @@ function secret(): string {
   return (
     process.env.SESSION_SECRET ||
     process.env.DATABASE_URL || // stable-ish fallback in prod
-    "amatri-dev-secret-change-me"
+    "trifecta-dev-secret-change-me"
   );
 }
 

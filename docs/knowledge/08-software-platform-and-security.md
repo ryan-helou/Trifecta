@@ -2,7 +2,7 @@
 
 **Realm:** the machine underneath the product — the (forked) Next.js runtime, the
 PWA/offline layer, Railway + Postgres, and the legal-grade handling of sensitive
-health data. This is the doc that keeps AmaTri **reliable, scalable, and lawful**
+health data. This is the doc that keeps Trifecta **reliable, scalable, and lawful**
 as it grows from a few friends to a few hundred thousand athletes.
 
 **Audience:** any engineer touching infra, auth, data storage, the service
@@ -50,7 +50,7 @@ seven-figure.
 
 ## §1 — This is not the Next.js you know (the fork/version reality)
 
-AmaTri runs **Next.js 16.2.10**. Most models and many engineers carry Next
+Trifecta runs **Next.js 16.2.10**. Most models and many engineers carry Next
 13/14/15 mental models; several things in 16 are renamed, async, or new. The
 authoritative source is the docs **shipped inside the package**:
 `node_modules/next/dist/docs/` (an `01-app/` App-Router tree and an `02-pages/`
@@ -63,12 +63,12 @@ comments. **Read them before writing code.**
   (`proxy.ts` in the project root, exporting `proxy` or a default). Same
   mechanism, new name and framing. The docs are explicit that Proxy is *not* a
   session/authorization boundary — it's for "optimistic checks," header rewrites,
-  and redirects only. **AmaTri has no `proxy.ts`** (auth is enforced per-route via
+  and redirects only. **Trifecta has no `proxy.ts`** (auth is enforced per-route via
   `getUserIdFromRequest`), which is fine — but it means there is **no central
   edge to hang security headers, global rate limiting, or a WAF-style filter on**.
 - **Async request APIs.** `cookies()`, `headers()`, `params`, and `searchParams`
   are **async** in the App Router and must be `await`ed (e.g.
-  `const { id } = await ctx.params`). Older synchronous usage is gone. AmaTri
+  `const { id } = await ctx.params`). Older synchronous usage is gone. Trifecta
   reads cookies off `NextRequest` (`req.cookies.get(...)`) inside Route Handlers,
   which sidesteps this — but any new Server Component that reaches for `cookies()`
   must await it.
@@ -77,7 +77,7 @@ comments. **Read them before writing code.**
   and a `use cache` directive (`cacheLife`, `cacheTag`, `updateTag`). When
   enabled, **GET Route Handlers follow the page prerender model** and any
   non-deterministic op (`Date.now()`, `Math.random()`, `crypto.randomUUID()`)
-  must be guarded by `connection()` or cached. **AmaTri does not enable Cache
+  must be guarded by `connection()` or cached. **Trifecta does not enable Cache
   Components**, and every data route sets `export const dynamic = "force-dynamic"`
   + `export const runtime = "nodejs"`, i.e. it deliberately opts out into simple,
   always-dynamic Node handlers. That's the right call for a
@@ -125,7 +125,7 @@ comments. **Read them before writing code.**
 
 ## §2 — PWA architecture: install, update, offline, sync, push
 
-AmaTri is an **installable PWA** (README: "no App Store required"). This is a
+Trifecta is an **installable PWA** (README: "no App Store required"). This is a
 strategic moat (ship instantly, no 30% tax, no review gate) *and* a set of hard
 constraints — especially on iOS.
 
@@ -144,7 +144,7 @@ We hand-write `public/sw.js` (no Workbox/next-pwa). Strategy:
 - **Network-first, cache-fallback** for same-origin GETs; **never caches `/api/`**
   (correct — you don't want stale/authenticated JSON in the CDN-less SW cache).
 - **Cache-busting on every deploy:** `scripts/stamp-sw.mjs` (a `prebuild` step)
-  rewrites `const CACHE = "amatri-<gitSha|timestamp>"` so the worker's bytes
+  rewrites `const CACHE = "trifecta-<gitSha|timestamp>"` so the worker's bytes
   change each deploy and the browser installs the new one; `activate` deletes old
   caches and `clients.claim()`s.
 - **`components/ServiceWorker.tsx`** registers with `updateViaCache: "none"` (the
@@ -279,7 +279,7 @@ restore.** Snapshot-only, single-instance Postgres is a *development* database.
   **httpOnly, SameSite=Lax, Secure-in-prod** cookie (60-day TTL); SQL is fully
   parameterized. Good bones.
 - **🔴 P0 — session-secret fallback chain.**
-  `secret() = SESSION_SECRET || DATABASE_URL || "amatri-dev-secret-change-me"`.
+  `secret() = SESSION_SECRET || DATABASE_URL || "trifecta-dev-secret-change-me"`.
   - If `SESSION_SECRET` is unset in prod, the signing key becomes the
     **`DATABASE_URL`** — a value that's shared with other subsystems, more likely
     to leak (logs, error text, subprocessor dashboards), and whose rotation would
@@ -372,7 +372,7 @@ wearables it's even more clearly health data. Treat all of it as sensitive.
   **separate from and not bundled into** the ToS/privacy policy, referencing the
   health processing. A checkbox buried in signup is not enough.
 - **Data-subject rights** (access, portability/export, erasure, rectification,
-  objection). **AmaTri implements none** — there is no account-deletion endpoint,
+  objection). **Trifecta implements none** — there is no account-deletion endpoint,
   no data export, and logout doesn't delete anything. This is a gap to close
   before EU launch.
 - **Subprocessor DPAs** required with everyone who touches the data: **Railway**
@@ -399,7 +399,7 @@ Covered Entity**, and without a **Business Associate Agreement (BAA)** it is not
 Business Associate — so **HIPAA does not apply**, *even though we hold HR and
 injury data*. The same heart-rate reading is PHI in a hospital's hands and *not*
 PHI in a consumer app with no Covered-Entity relationship. **The nuance:** HIPAA
-*would* attach if AmaTri contracts with a provider/health plan (corporate-wellness
+*would* attach if Trifecta contracts with a provider/health plan (corporate-wellness
 prescribed by a clinic, remote patient monitoring, care coordination) and signs a
 BAA. If a B2B2C health deal ever appears, revisit this — it changes everything.
 
@@ -415,7 +415,7 @@ things make it dangerous for us:
    piping health data to Facebook/Google for ads, and against **Flo Health**.
 2. **Notification duties:** on a breach of **≥500 records**, notify the **FTC and
    consumers without undue delay, no later than 60 days**, and notify the media.
-- **Implications for AmaTri, concretely:**
+- **Implications for Trifecta, concretely:**
   - **No ad-tech / analytics SDKs on any screen that sees health data.** No
     Meta/Google pixels, no session-replay that captures injuries/HR.
   - **Our LLM disclosure must be *authorized*** — i.e. consented and disclosed —
@@ -424,7 +424,7 @@ things make it dangerous for us:
     + media templates) *before* you need it.
 
 ### 4.6 Apple / Google platform policy — advantage today, guardrail tomorrow
-- AmaTri is a **PWA, not App-Store distributed**, so **Apple App Store / Google
+- Trifecta is a **PWA, not App-Store distributed**, so **Apple App Store / Google
   Play health-data review does not gate us today**. That's a genuine advantage
   (ship fast, no review) — but also means **no platform guardrail**, so §4.1–4.5
   discipline is entirely on us.
