@@ -1,6 +1,6 @@
-# The Wearable & Data Ecosystem — how AmaTri gets real athlete data
+# The Wearable & Data Ecosystem — how Trifecta gets real athlete data
 
-> **What this is.** AmaTri's plan engine ([lib/planEngine.ts](../../lib/planEngine.ts)) is
+> **What this is.** Trifecta's plan engine ([lib/planEngine.ts](../../lib/planEngine.ts)) is
 > only as good as the data it adapts to. To be genuinely *injury-aware* and
 > *readiness-adaptive* — the whole thesis versus Runna
 > ([docs/research/runna-competitive-analysis.md](../research/runna-competitive-analysis.md)) —
@@ -8,7 +8,7 @@
 > pace) and how recovered they are (HRV, resting HR, sleep). This document is the standing
 > reference for the entire wearable & data-integration surface: every platform's API and
 > its gotchas, the file formats, the aggregators, the honest build-vs-buy math, and — the
-> part that constrains everything — the fact that **AmaTri is a PWA and the best device
+> part that constrains everything — the fact that **Trifecta is a PWA and the best device
 > data effectively requires a native app or a partner approval we don't have yet.**
 >
 > Sync breadth and reliability are an unglamorous but real moat. Runna's own edge is deep
@@ -39,7 +39,7 @@
 3. **Apple HealthKit has no server API — at all.** It is on-device only. The *only* way to
    read Apple Watch HR/HRV/sleep/workouts is a **native iOS app** running on the user's
    phone that reads HealthKit and uploads it. A PWA fundamentally cannot. This is the
-   single biggest structural constraint on AmaTri's data strategy. `[4][5]` (§1.3, §8)
+   single biggest structural constraint on Trifecta's data strategy. `[4][5]` (§1.3, §8)
 4. **Garmin is the gatekeeper of the best multisport data, and the gate is shut.** The
    Garmin Connect Developer Program has been **on hold since ~2024/2025 — new applications
    are not being accepted** as of mid-2026. Existing partners keep working; new entrants
@@ -88,7 +88,7 @@
 
 ## 1. The platforms and their APIs
 
-Triathletes are the most device-heavy athletes in endurance sport. A typical AmaTri user
+Triathletes are the most device-heavy athletes in endurance sport. A typical Trifecta user
 owns a **Garmin or COROS multisport watch**, maybe a **bike power meter + head unit
 (Garmin/Wahoo)**, and increasingly a **recovery device (Oura ring or WHOOP band)**. Each
 has its own API with its own auth model, delivery model, limits, and approval friction.
@@ -155,7 +155,7 @@ richest in the game — but access is the hardest.
 
 ### 1.3 Apple HealthKit — the one that breaks the PWA model
 
-Apple Watch is, alongside Garmin, the device most AmaTri users own — and Runna leans on it
+Apple Watch is, alongside Garmin, the device most Trifecta users own — and Runna leans on it
 heavily. But Apple's architecture is categorically different.
 
 - **What you get (on device).** Workouts (with route, HR, active energy), heart rate,
@@ -165,7 +165,7 @@ heavily. But Apple's architecture is categorically different.
   redirect, no server token. HealthKit data lives on the device and can only be read by
   **native iOS/watchOS code with the HealthKit entitlement and the user's per-type
   permission**, which then uploads whatever it read to your backend. `[4][5]`
-- **The PWA implication (this is the whole point).** AmaTri is a PWA. **A PWA cannot touch
+- **The PWA implication (this is the whole point).** Trifecta is a PWA. **A PWA cannot touch
   HealthKit.** Safari/WebKit exposes no HealthKit bridge. So Apple Watch data is reachable
   *only* by (a) shipping a native/hybrid iOS app (or a thin native "health sync" companion),
   or (b) using an aggregator whose **iOS SDK** you embed in such a native shell, or (c)
@@ -246,7 +246,7 @@ heavily. But Apple's architecture is categorically different.
 These aren't primarily data *sources* for us; they're where structured workouts *go*.
 - **TrainingPeaks Partner API:** approved commercial developers only (partners include
   Garmin, Polar, Wahoo, Zwift). Push structured workouts, pull completed ones; accepts
-  `.fit/.tcx/.pwx`. Relevant if we ever want to publish AmaTri plans into TP or ingest
+  `.fit/.tcx/.pwx`. Relevant if we ever want to publish Trifecta plans into TP or ingest
   TP-tracked athletes. `[17]`
 - **Zwift structured-training API (2024):** lets a service send structured workouts
   (Duration / Threshold-power / Target) into a Zwift account without bespoke per-partner
@@ -258,7 +258,7 @@ These aren't primarily data *sources* for us; they're where structured workouts 
 
 Data richness, auth, delivery, limits, approval friction, cost, and the one gotcha that
 bites — for the platforms that matter to a triathlon app. (Ordered roughly by relevance to
-AmaTri.)
+Trifecta.)
 
 | Platform | Data you can get | Auth | Push vs poll | Rate limits | Approval friction | Cost | The gotcha |
 |---|---|---|---|---|---|---|---|
@@ -278,7 +278,7 @@ AmaTri.)
 
 ## 3. The Strava API policy changes (Nov 2024) — what they mean for us
 
-On **11 November 2024** Strava updated its API agreement. Two clauses matter to AmaTri
+On **11 November 2024** Strava updated its API agreement. Two clauses matter to Trifecta
 `[1][2][3]`:
 
 1. **"Third-party apps may now only display a user's Strava activity data to that specific
@@ -294,20 +294,20 @@ existing use cases are still allowed." `[1][3]` The apps that got hit were publi
 feeds/heatmaps/leaderboards and model-training pipelines (e.g. tools like VeloViewer,
 TrainerRoad-style leaderboards, and any resale/AI use). `[2]`
 
-**Implications for AmaTri — read carefully:**
+**Implications for Trifecta — read carefully:**
 
 - **Our plan engine is safe.** [lib/planEngine.ts](../../lib/planEngine.ts) is a
   *deterministic* rules engine (§4 of [04-planning-engine-algorithm-design.md](04-planning-engine-algorithm-design.md)),
   not a trained model, and our calibration ([lib/calibrate.ts](../../lib/calibrate.ts))
   nudges pace targets from the athlete's *own* HR/RPE shown back to that *same* athlete.
   Neither is "AI/ML trained on Strava data," and neither shows one user's data to another.
-- **Our social feed is the exposure.** AmaTri has a follows/kudos surface
+- **Our social feed is the exposure.** Trifecta has a follows/kudos surface
   ([lib/social.ts](../../lib/social.ts), `follows`/`kudos` tables in
   [lib/db.ts](../../lib/db.ts)). Today it shows *planned-session completion* and kudos —
   fine. But the moment we render **Strava-derived actuals** (activity name, distance, HR,
   map) on a *follower's* feed, we would violate clause #1. **Rule going forward: never
   display Strava-sourced fields to anyone but their owner.** Anything shown cross-user must
-  be AmaTri-native (the plan/session the athlete completed inside AmaTri), not the Strava
+  be Trifecta-native (the plan/session the athlete completed inside Trifecta), not the Strava
   payload.
 - **If we ever add AI features on top of workout data** (auto-summaries, anomaly/injury
   detection, an LLM coach that reasons over history — see the cheap-AI hooks in
@@ -406,7 +406,7 @@ requirement*.
 
 ---
 
-## 6. Build vs buy — the honest recommendation for AmaTri
+## 6. Build vs buy — the honest recommendation for Trifecta
 
 **The numbers `[8]`:**
 
@@ -417,7 +417,7 @@ requirement*.
 - **Buy (SaaS): ~$3.6k–$15k per 1,000 active users per year** — **3–5× cheaper** below the
   crossover, which lands around **10k–20k active users**.
 
-**Applied to AmaTri's situation specifically:**
+**Applied to Trifecta's situation specifically:**
 
 - We are a **small team, pre-scale, and a PWA**. Both facts point hard at **buy** for the
   hard providers (Garmin, Apple Health), because building them is either *impossible right
@@ -505,9 +505,9 @@ input becomes objective rather than self-reported.
 
 ---
 
-## 8. The PWA constraint and AmaTri's honest options
+## 8. The PWA constraint and Trifecta's honest options
 
-AmaTri is a **PWA on Next.js** (great for reach, install-free, one codebase). But the best
+Trifecta is a **PWA on Next.js** (great for reach, install-free, one codebase). But the best
 device data — Apple Watch via HealthKit, and richest Garmin — sits behind a **native-app or
 partner wall**. The honest option space:
 
@@ -527,7 +527,7 @@ inheriting their partnerships. *Pros:* unblocks Garmin (frozen program) and give
 Health SDK. *Cons:* cost at scale; still needs a native shell to *use* the HealthKit SDK; a
 dependency.
 
-**D. Native / hybrid wrapper app (Capacitor/React Native shell, or a thin "AmaTri Health
+**D. Native / hybrid wrapper app (Capacitor/React Native shell, or a thin "Trifecta Health
 Sync" companion).** The *only* path to **HealthKit** (Apple Watch) and to Health Connect
 (Android). *Pros:* unlocks the single most-owned device's full dataset; enables real
 background sync and push-to-watch UX like Runna's. *Cons:* real native build + App Store
@@ -542,7 +542,7 @@ the connect step is also an onboarding/retention lever, not just a data one
 
 ---
 
-## 9. Where AmaTri is today — honest assessment of our ingest
+## 9. Where Trifecta is today — honest assessment of our ingest
 
 Grounded in [lib/strava.ts](../../lib/strava.ts), [lib/db.ts](../../lib/db.ts),
 [lib/fit.ts](../../lib/fit.ts), [lib/api.ts](../../lib/api.ts),
@@ -630,7 +630,7 @@ this generalizes our current Strava flow:
 
 ---
 
-## 11. Recommended roadmap for AmaTri
+## 11. Recommended roadmap for Trifecta
 
 A concrete, sequenced plan that respects the PWA constraint and the Nov-2024 Strava terms:
 
@@ -679,7 +679,7 @@ buy the gated providers, and keep ingest idempotent, deduped, and honest about f
 18. DC Rainmaker — "Zwift's New Structured Training API." https://www.dcrainmaker.com/2024/04/structured-training-interesting.html
 
 *Also consulted: Suunto developer portal (apizone.suunto.com), Wahoo Cloud API
-(developers.wahooligan.com/cloud), Open Wearables provider guides, and AmaTri source
+(developers.wahooligan.com/cloud), Open Wearables provider guides, and Trifecta source
 (`lib/strava.ts`, `lib/fit.ts`, `lib/db.ts`, `lib/api.ts`, `lib/types.ts`, `lib/calibrate.ts`,
 `app/api/strava/*`, `STRAVA_SETUP.md`).*
 

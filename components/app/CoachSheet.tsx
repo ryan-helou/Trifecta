@@ -69,7 +69,7 @@ export function CoachSheet({
   return (
     <Sheet
       onClose={onClose}
-      label="AmaTri coach chat"
+      label="Trifecta coach chat"
       panelClassName="h-[82vh]"
       header={
         <div className="flex items-center gap-2 border-b border-line px-5 py-3">

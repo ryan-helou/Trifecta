@@ -13,11 +13,11 @@ const id =
     .replace(/[^a-z0-9]/gi, "") || String(Date.now());
 
 const src = readFileSync(swPath, "utf8");
-const next = src.replace(/const CACHE = "[^"]*";/, `const CACHE = "amatri-${id}";`);
+const next = src.replace(/const CACHE = "[^"]*";/, `const CACHE = "trifecta-${id}";`);
 
 if (next === src) {
   console.warn("[stamp-sw] cache line not found — service worker not stamped");
 } else {
   writeFileSync(swPath, next);
-  console.log(`[stamp-sw] service worker cache → amatri-${id}`);
+  console.log(`[stamp-sw] service worker cache → trifecta-${id}`);
 }

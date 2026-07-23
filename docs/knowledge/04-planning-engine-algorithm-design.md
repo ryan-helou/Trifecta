@@ -1,6 +1,6 @@
 # 04 · Planning-Engine Algorithm & Systems Design
 
-> **What this is.** The canonical engineering doc for AmaTri's plan-generation engine — the
+> **What this is.** The canonical engineering doc for Trifecta's plan-generation engine — the
 > single most important piece of code in the product ([`lib/planEngine.ts`](../../lib/planEngine.ts)).
 > It explains *why* we generate plans with a deterministic rule/constraint engine instead of an
 > LLM, *how the code actually works today* (a fast, annotated walkthrough a new engineer can
@@ -32,7 +32,7 @@
    still rule-based precisely because rules are inspectable and their failure modes are bounded. `[MDPI-XAI, PMC-CDSS]`
 2. **ML earns its keep at the edges, not the center.** Use it to *infer* (readiness, FTP drift),
    to *tune parameters* (calibration nudges), and to *talk* (natural-language coaching, parsing
-   free-text injuries). Never to *author the workout*. AmaTri already draws this line: the engine
+   free-text injuries). Never to *author the workout*. Trifecta already draws this line: the engine
    emits every session; the optional Gemini/Haiku "coach" only annotates, converses, and structures
    user text ([`lib/ai.ts`](../../lib/ai.ts), `app/api/{coach,plan-summary,intake}/route.ts`).
 3. **This is a constraint-satisfaction + scheduling problem, and a greedy heuristic is the right
@@ -63,7 +63,7 @@
 
 Three families of "generate a plan" architecture:
 
-| Property | Deterministic rule/constraint engine (**AmaTri**) | Per-plan LLM generation | Learned model (supervised/RL on training data) |
+| Property | Deterministic rule/constraint engine (**Trifecta**) | Per-plan LLM generation | Learned model (supervised/RL on training data) |
 |---|---|---|---|
 | **Explainability** | Total. Every session traces to a rule you can point at. | Post-hoc rationalization only; the real "why" is inscrutable. | Feature attributions at best; opaque in practice. |
 | **Testability** | Property tests + golden files pin behaviour exactly. | You can only test *distributions* of outputs; no invariants hold. | Statistical eval; no hard guarantees. |
@@ -91,7 +91,7 @@ Draw the line at **who authors the training load.**
 **Legitimate ML/LLM uses (edges):**
 - **Readiness inference.** Turning noisy signals (HRV, sleep, RHR, subjective check-ins) into a
   single "how ready are you" scalar is a genuine inference problem where a model beats a hand rule.
-  Today AmaTri uses a transparent scored check-in (`ReadinessInput` → 0–100; see
+  Today Trifecta uses a transparent scored check-in (`ReadinessInput` → 0–100; see
   [`02-training-load-and-readiness.md`](02-training-load-and-readiness.md)); an inferred readiness is
   a defensible future ML addition *as an input to* the deterministic engine.
 - **Parameter calibration.** Nudging a pace anchor because sessions ran hot is a small regression
@@ -111,9 +111,9 @@ Draw the line at **who authors the training load.**
   can approach more safely by *exposing more parameters* to the deterministic engine (§5).
 
 **The engineering rule of thumb:** *the engine decides the load; models may inform the inputs and
-narrate the output.* AmaTri honours this today.
+narrate the output.* Trifecta honours this today.
 
-### 1.3 How AmaTri's engine works today — annotated data flow
+### 1.3 How Trifecta's engine works today — annotated data flow
 
 Read this section with [`lib/planEngine.ts`](../../lib/planEngine.ts) open. The whole pipeline is a
 pure-ish function `generatePlan(profile: Profile): Plan`. Data flows:
@@ -130,8 +130,10 @@ Profile
   │
   ▼
   ── plan length & phase split ──────────────────────────────────────────────
-  weeksUntil = weeksBetween(mondayOf(today), mondayOf(raceDate)) + 1
-  totalWeeks = weeksUntil, starting the sign-up week   (< PLAN_MIN[cat] ⇒ compressed;
+  anchor = generatePlan's optional start date (onboarding lets the athlete pick one; default
+           today, never the past); rebuilds omit it ⇒ today
+  weeksUntil = weeksBetween(mondayOf(anchor), mondayOf(raceDate)) + 1
+  totalWeeks = weeksUntil, starting the anchor week   (< PLAN_MIN[cat] ⇒ compressed;
               > MAX_PLAN_WEEKS(104), i.e. a mistyped date >2 yr out ⇒ delayedStart — the only delay case)
   taperWeeks = min(TAPER_WEEKS[cat], floor(totalWeeks·0.18))
   buildWeeks = bounded specific-prep block (≤ BUILD_MAX[cat], ~6–12 wk); peakWeeks ∈ {0,1,2};
@@ -266,7 +268,7 @@ bet against.
 
 **The synthesis:** almost nobody in endurance uses an LLM to author workouts. The credible players are
 **rules engines (Runna, template stores) or physiological optimizers (TriDot, WKO modeling)**, with ML
-concentrated on *adaptation and inference*, exactly where §1 says it belongs. AmaTri is squarely in the
+concentrated on *adaptation and inference*, exactly where §1 says it belongs. Trifecta is squarely in the
 credible camp; our differentiation is multisport-native + injury-aware + $0-to-run + auditable.
 
 ---
@@ -316,7 +318,7 @@ The solution space, cheapest to most powerful:
    into corners because it can't undo an early bad placement. SA is the workhorse fix in the
    rostering literature — start from the greedy solution, then propose swaps and accept worse states
    probabilistically to escape local minima. `[Springer-NRP, ScienceDirect-NRP]` This is the natural
-   *next* step for AmaTri and would be a drop-in around `assignDays` (greedy seed → SA polish against
+   *next* step for Trifecta and would be a drop-in around `assignDays` (greedy seed → SA polish against
    a penalty function that includes cross-day hard spacing and 80/20).
 3. **Exact optimization (ILP / CP-SAT).** Model days×sessions as binary vars with linear
    hard-constraints and a weighted-penalty objective; hand it to a solver (OR-Tools CP-SAT). Gives
@@ -590,7 +592,7 @@ personalization they paid for in attention.
 
 ## 6. Adaptivity architecture — regenerate vs patch
 
-The central adaptivity question is **regenerate the whole plan, or patch it in place?** AmaTri
+The central adaptivity question is **regenerate the whole plan, or patch it in place?** Trifecta
 deliberately does *both*, at different scopes ([`lib/adapt.ts`](../../lib/adapt.ts)):
 
 - **Patch (local, in-place, undoable).** `setStatus`, `logInstead`, `logCheckin`, `moveWorkout`,
@@ -662,7 +664,7 @@ against LLM-compute cost.
 ### 7.3 Where to spend the AI budget for maximum perceived value
 
 Spend it on the **cheap, high-perceived-value, low-risk** slice — narration and inference — never on
-authoring load. AmaTri's three touch points are exactly right, all default-off and degrading to a
+authoring load. Trifecta's three touch points are exactly right, all default-off and degrading to a
 working app with no key ([`lib/ai.ts`](../../lib/ai.ts) `aiEnabled()` gates everything):
 
 1. **`/api/plan-summary`** — one JSON-mode call at plan creation: a 3–5 sentence "why this plan" +

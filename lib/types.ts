@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// AmaTri domain model
+// Trifecta domain model
 // ---------------------------------------------------------------------------
 
 // "fitness" = no target race; the athlete just wants to get fitter. The engine

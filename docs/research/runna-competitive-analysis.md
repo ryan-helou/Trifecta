@@ -1,12 +1,12 @@
-# Runna — Deep Competitive Analysis (reference for building AmaTri)
+# Runna — Deep Competitive Analysis (reference for building Trifecta)
 
-> **What this is.** Runna is the closest thing to AmaTri's business model in an adjacent
+> **What this is.** Runna is the closest thing to Trifecta's business model in an adjacent
 > niche: a consumer app that replaces a $100+/month human running coach with an
 > affordable, adaptive, phone-first training plan. They did for **running** what we are
 > doing for **triathlon**. This document is the standing reference — consult it whenever
 > we design a feature, a screen, a plan-engine behaviour, or a pricing/onboarding
 > decision. It captures how Runna works, why it won, what users love, what they hate, and
-> the concrete playbook for AmaTri.
+> the concrete playbook for Trifecta.
 >
 > **Compiled:** 2026-07-21. **Method:** multi-source web research (press, professional
 > reviews, Runna's own support/press pages, business/funding databases, and community
@@ -54,7 +54,7 @@
 11. **Where Runna is weak on purpose or by neglect:** no true readiness/auto-regulation,
     thin for very advanced athletes, plan-rigidity risk, and repeated **billing/customer-service
     complaints** on Trustpilot. `[Trustpilot, Autonomous]`
-12. **AmaTri's thesis in one line:** *be "Runna for triathlon" — same consumer polish and
+12. **Trifecta's thesis in one line:** *be "Runna for triathlon" — same consumer polish and
     adaptive-plan wedge, but multisport-native and genuinely injury-aware — in a niche
     where no Runna-quality player exists.*
 
@@ -76,7 +76,7 @@
 - Total raised **~£8M** (some sources ~$9.8M): pre-seed ~$0.7M → seed ~$2.35M → later
   round; investors include **Eka Ventures, JamJar, Venrex, Creator Ventures**. `[Sifted, Crunchbase-style]`
 - **Profitable since ~2023.** ~150 employees at acquisition. This is a *capital-efficient*
-  business, not a burn-for-growth one — important context for how AmaTri should think about
+  business, not a burn-for-growth one — important context for how Trifecta should think about
   spend. `[Sifted, DCRainmaker]`
 
 ### Scale (numbers conflict — treat as a trajectory, not gospel)
@@ -104,7 +104,7 @@
   some internal overlap. `[Strava-press, Forbes-Sept, RunningGenie]`
 - **Why it matters for us:** the acquisition *validates the category* and confirms the moat
   is **the adaptive-coaching engagement layer**, not tracking. It also means the running
-  niche is now consolidated under a giant — reinforcing that AmaTri's opening is the
+  niche is now consolidated under a giant — reinforcing that Trifecta's opening is the
   **underserved multisport niche**, not head-on running.
 
 ---
@@ -254,7 +254,7 @@
 
 ## 5. What users COMPLAIN about / WISH it had (the gaps — our opportunity map)
 
-> These are the exploitable weaknesses. Each maps to a concrete AmaTri advantage in §6.
+> These are the exploitable weaknesses. Each maps to a concrete Trifecta advantage in §6.
 
 1. **Plans run too aggressive / "too spicy" too early**, especially for beginners who
    "don't yet understand the limits of their own bodies." Speed sessions and long-run paces
@@ -299,7 +299,7 @@
 
 ---
 
-## 7. THE AMATRI PLAYBOOK — copy / avoid / exploit
+## 7. THE TRIFECTA PLAYBOOK — copy / avoid / exploit
 
 > Mapped onto our actual codebase so this is a build reference, not generic advice.
 > Key files: [lib/planEngine.ts](../../lib/planEngine.ts),
@@ -362,7 +362,7 @@
 6. **Don't pretend to serve elites.** Pick beginner→committed-age-grouper, like Runna picked
    beginner→intermediate. Depth for pros can come later.
 
-### 7C. EXPLOIT (the gaps — where AmaTri wins)
+### 7C. EXPLOIT (the gaps — where Trifecta wins)
 
 1. **★ Injury-aware, readiness-adaptive planning — our flagship moat.** Runna's open flank
    is exactly our existing strength: [planEngine.ts](../../lib/planEngine.ts) already does
@@ -374,7 +374,7 @@
 2. **★★ Multisport is a category Runna structurally cannot enter.** Runna is running-only
    and just got absorbed into Strava. Triathletes are underserved by consumer-grade apps —
    the incumbents (TrainingPeaks, TriDot, TrainerRoad-for-bike) are expensive, clunky, and
-   coach/desktop-oriented. AmaTri already owns **swim + bike + run + bricks + transitions +
+   coach/desktop-oriented. Trifecta already owns **swim + bike + run + bricks + transitions +
    per-sport balancing + equipment substitution (no-pool/no-gym)** in
    [planEngine.ts](../../lib/planEngine.ts). **"Runna for triathlon" is an open lane.**
 3. **Physiology-driven plans.** DC Rainmaker's critique of Runna (no HR/power/elevation) is

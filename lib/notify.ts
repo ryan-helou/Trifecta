@@ -74,11 +74,11 @@ export async function refreshReminders(plan: Plan, today: string, prefs: NotifPr
     );
     if (!undone.length) continue;
     const titles = undone.map((w) => w.title).slice(0, 2).join(", ");
-    const body = `${titles}${undone.length > 2 ? ` +${undone.length - 2} more` : ""}. Tap to open AmaTri.`;
+    const body = `${titles}${undone.length > 2 ? ` +${undone.length - 2} more` : ""}. Tap to open Trifecta.`;
     try {
       await reg.showNotification("Time to train", {
         body,
-        tag: `amatri-reminder-${date}`,
+        tag: `trifecta-reminder-${date}`,
         icon: "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
         data: { url: "/" },
@@ -89,13 +89,13 @@ export async function refreshReminders(plan: Plan, today: string, prefs: NotifPr
   }
 }
 
-/** Cancel any pending AmaTri reminders (on disable). */
+/** Cancel any pending Trifecta reminders (on disable). */
 export async function clearReminders(): Promise<void> {
   if (!notifSupported()) return;
   const reg = await navigator.serviceWorker.getRegistration();
   if (!reg) return;
   try {
     const pending = await reg.getNotifications({ includeTriggered: true } as unknown as GetNotificationOptions);
-    pending.filter((n) => n.tag?.startsWith("amatri-reminder-")).forEach((n) => n.close());
+    pending.filter((n) => n.tag?.startsWith("trifecta-reminder-")).forEach((n) => n.close());
   } catch {}
 }
