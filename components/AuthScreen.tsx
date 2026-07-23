@@ -111,6 +111,7 @@ export function AuthScreen({ onBack }: { onBack?: () => void }) {
             Build your plan
           </button>
         </p>
+        <p className="pb-3 text-center text-[10px] text-muted">native build · http-b3</p>
       </div>
     </div>
   );
