@@ -1,0 +1,48 @@
+# Trifecta iOS — onboarding coverage walk (Maestro).
+#
+# Screenshots EVERY screen of the new-user flow so the vision "eye test" sees the whole
+# onboarding, not just login. Every question defaults (canNext is true except the "custom"
+# race step, which we don't enter), so we tap "Continue" straight through, then generate a
+# plan and stop at the account screen WITHOUT creating an account (repeatable, no DB writes).
+#
+# Each "Continue" is guarded by extendedWaitUntil because the button can be slow to enter
+# the accessibility snapshot after a step's entrance animation.
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- tapOn: "Create your plan"
+- extendedWaitUntil:
+    visible: "What are you training for?"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: onb-01-race
+- repeat:
+    times: 6
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Continue"
+          direction: DOWN
+          timeout: 12000
+      - tapOn: "Continue"
+      - waitForAnimationToEnd
+      - takeScreenshot: onb-step
+- takeScreenshot: onb-07-review
+- scrollUntilVisible:
+    element:
+      text: "Build my plan"
+    direction: DOWN
+    timeout: 12000
+- tapOn: "Build my plan"
+- extendedWaitUntil:
+    visible: "Your plan is ready"
+    timeout: 30000
+- waitForAnimationToEnd
+- takeScreenshot: onb-08-ready
