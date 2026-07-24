@@ -1,0 +1,38 @@
+# Trifecta iOS — end-to-end login smoke test (Maestro).
+#
+# Proves the whole native login path works on a clean install: the app boots in the
+# WKWebView from capacitor://localhost, the welcome + login screens render, and a real
+# POST /api/auth/login through CapacitorHttp (native URLSession) succeeds — landing a
+# fresh account on the onboarding questionnaire.
+#
+# Selectors match VISIBLE text / input placeholders, because on iOS Maestro sees the
+# Capacitor WKWebView through the accessibility tree (no DOM ids/CSS). Keep the login
+# screen's copy (labels "Username"/"Password", button "Sign in") in sync with this file.
+#
+# Test account (throwaway, on the live Railway API): simtest_qa / simpass123
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true       # wipe WebView storage → force the logged-out welcome screen
+    clearKeychain: true     # drop any persisted Bearer token
+    permissions:
+      all: deny             # no permission dialog should block the login flow
+- assertVisible: "Create your plan"        # welcome screen rendered in the WKWebView
+- takeScreenshot: 01-welcome
+# Maestro anchors text as a full-string regex, so match the whole "Already have an
+# account? Sign in" control (and the submit button) with .* wildcards.
+- tapOn: ".*Sign in.*"                       # welcome → login
+- assertVisible: "Username"                 # login screen rendered
+- takeScreenshot: 02-login
+# Tap each input by its placeholder text (what the empty field exposes to a11y).
+- tapOn: "ironmike"                          # username field
+- inputText: "simtest_qa"
+- assertVisible: "simtest_qa"               # confirm the field actually received the text
+- tapOn: "••••••••"                          # password field
+- inputText: "simpass123"
+- hideKeyboard
+# Exact "Sign in" hits ONLY the submit button — the regex would also match the
+# "Sign in to pick up your plan…" subtitle and tap the wrong element.
+- tapOn: "Sign in"                           # submit → POST /api/auth/login
+- assertVisible: "What are you training for?"   # onboarding = auth succeeded + state loaded
+- takeScreenshot: 03-loggedin
