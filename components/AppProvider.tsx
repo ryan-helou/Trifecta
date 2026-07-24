@@ -77,6 +77,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const safety = setTimeout(() => {
       if (!cancelled) setBooted(true);
     }, 6000);
+    // If we booted offline and connectivity returns, clear the offline banner even when the
+    // user only views (no save to trigger the clear) — otherwise it stuck on screen forever.
+    const onOnline = () => setOffline(false);
+    window.addEventListener("online", onOnline);
     (async () => {
       try {
         // don't let a hung native Keychain read block boot
@@ -107,6 +111,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       clearTimeout(safety);
+      window.removeEventListener("online", onOnline);
     };
   }, []);
 

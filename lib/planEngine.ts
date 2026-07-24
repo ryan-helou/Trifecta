@@ -181,7 +181,10 @@ export const MIN_WORKOUTS = 1;
 export const MAX_WORKOUTS = 21;
 
 export function clampWorkouts(n: number | undefined): number {
-  const v = Math.round(Number(n) || 6);
+  // Default only on non-finite input (undefined/NaN). A real 0 must flow through and
+  // clamp to MIN_WORKOUTS — `Number(0) || 6` wrongly treated 0 as "unset" and returned 6.
+  const num = Number(n);
+  const v = Math.round(Number.isFinite(num) ? num : 6);
   return Math.max(MIN_WORKOUTS, Math.min(MAX_WORKOUTS, v));
 }
 
@@ -619,7 +622,15 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
   }
 
   // start Monday chosen so the last week contains race day
-  const startMonday = addDays(raceMonday, -(totalWeeks - 1) * 7);
+  let startMonday = addDays(raceMonday, -(totalWeeks - 1) * 7);
+  // Never begin in the past. A race sooner than the category minimum inflates totalWeeks
+  // (Math.max(4, …)) above, which would back-date startMonday before the athlete's actual
+  // start — clamp to start0 and recompute the span from the real runway so the plan starts
+  // now and the race still lands in the last week.
+  if (startMonday < start0) {
+    startMonday = start0;
+    totalWeeks = weeksBetween(startMonday, raceMonday) + 1;
+  }
 
   // phase split. Build is a *bounded* specific-prep block; base — the aerobic development
   // that determines long-course performance — is the residual, so extra lead time lengthens
