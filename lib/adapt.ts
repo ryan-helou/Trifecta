@@ -606,10 +606,10 @@ function goalLine(plan: Plan): string {
 
 export function summarizeForCoach(plan: Plan, todayISO: string): string {
   const p = plan.profile;
-  const wk = plan.weeks.find((week) => {
-    const s = fromISO(week.startDate).getTime();
-    return fromISO(todayISO).getTime() >= s && fromISO(todayISO).getTime() < s + 7 * 86400000;
-  });
+  // Calendar comparison, not fixed-ms: after spring-forward a 7*86400000ms window overshoots
+  // the next local Monday midnight by an hour and mis-buckets that Monday (same DST hazard
+  // reindexWeeks was fixed against). Match assessAdaptation's safe string form.
+  const wk = plan.weeks.find((week) => todayISO >= week.startDate && todayISO < addDays(week.startDate, 7));
   const today = Object.values(plan.workouts).filter((w) => w.date === todayISO);
   const lines: string[] = [];
   lines.push(goalLine(plan));
