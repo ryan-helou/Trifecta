@@ -16,6 +16,28 @@ function weeksFromToday(w: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// The demo athlete is ~8 weeks INTO the plan (not on day one), so the app looks like a
+// working product: a banked fitness curve, a fuller volume chart, a real streak. We do
+// that by anchoring the plan 8 weeks in the past and putting race day 8 weeks out — today
+// lands mid-plan. (The plan always runs anchor -> race; with anchor at "now" the athlete
+// is forever week 1 with an empty Progress curve.)
+const WEEKS_IN = 8;
+const SHIFT_DAYS = WEEKS_IN * 7; // shift the whole plan this far into the past
+const ANCHOR = weeksFromToday(-WEEKS_IN); // plan-created reference, 8 weeks ago
+
+/** Subtract `days` from an ISO date (YYYY-MM-DD or full ISO), return YYYY-MM-DD. */
+function shiftISO(iso: string, days: number): string {
+  const d = new Date(iso.slice(0, 10) + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Realistic RPE per training zone so completed sessions read "on track" rather than
+// "consistently overreaching" (a flat rpe=5 on easy Z1/Z2 work trips the ease-off nudge
+// — strain = rpe - zoneMid — and stamps that banner on every screen). Within-band values
+// keep avg strain ~0, so no false adaptation banner clutters the shots.
+const ZONE_RPE: Record<number, number> = { 1: 2, 2: 3, 3: 5, 4: 7, 5: 9 };
+
 const profile: Profile = {
   username: USER,
   raceType: "half",
@@ -28,14 +50,29 @@ const profile: Profile = {
   ftp: 240,
   restDayPreference: 0,
   longSessionDay: 5,
-  createdAtISO: new Date().toISOString(),
+  createdAtISO: new Date(ANCHOR + "T08:00:00Z").toISOString(),
 };
 
 async function main() {
   const plan = generatePlan(profile);
-  // Make the demo athlete look ON-TRACK for the App Store screenshots: mark every session
-  // up to today as completed (so no "you missed sessions / ease off" nudge, and Progress
-  // shows a streak + banked volume instead of an empty shell).
+  // The engine always starts a plan "today", so a fresh athlete is forever week 1 with an
+  // empty Progress curve. To make the demo look like a working product mid-journey, uniformly
+  // time-shift the whole plan 8 weeks into the past — every week, every workout, and the race
+  // date move together — so "today" lands ~week 9 of 17 with real banked history behind it.
+  for (const wk of plan.weeks) wk.startDate = shiftISO(wk.startDate, SHIFT_DAYS);
+  for (const w of Object.values(plan.workouts)) w.date = shiftISO(w.date, SHIFT_DAYS);
+  if ((plan as { startDateISO?: string }).startDateISO) {
+    (plan as { startDateISO?: string }).startDateISO = shiftISO((plan as { startDateISO?: string }).startDateISO!, SHIFT_DAYS);
+  }
+  const shiftedRace = shiftISO(profile.raceDateISO, SHIFT_DAYS);
+  profile.raceDateISO = shiftedRace;
+  if (plan.profile) plan.profile = { ...plan.profile, raceDateISO: shiftedRace };
+  // the Today race widget reads plan.raceDateISO (the plan's OWN top-level copy, not the
+  // embedded profile), so it must move too or the countdown desyncs from the week position.
+  (plan as { raceDateISO?: string }).raceDateISO = shiftedRace;
+
+  // Mark every session up to today as completed (so no "you missed sessions" nudge, and
+  // Progress shows a streak + banked volume + a real fitness curve instead of an empty shell).
   const today = new Date().toISOString().slice(0, 10);
   let done = 0;
   for (const w of Object.values(plan.workouts)) {
@@ -43,7 +80,8 @@ async function main() {
       w.status = "done";
       w.actualDurationSec = w.estDurationSec;
       if (w.estDistanceM) w.actualDistanceM = w.estDistanceM;
-      w.rpe = 5;
+      w.rpe = ZONE_RPE[w.primaryZone] ?? 4; // felt appropriate for the zone → strain ~0
+      w.feel = "ok";
       done++;
     }
   }
