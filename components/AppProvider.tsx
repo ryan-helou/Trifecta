@@ -132,7 +132,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const signup = useCallback(async (u: string, p: string): Promise<string | null> => {
     const { ok, data } = await apiSignup(u, p);
     if (!ok) return data.error || "Could not sign up.";
-    if (data.token) await setToken(data.token); // native: persist the Bearer token
+    if (data.token) setToken(data.token); // native: cache now + persist in the background
     setUsername(data.user.username);
     setProfile(null);
     setPlan(null);
@@ -144,7 +144,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (u: string, p: string): Promise<string | null> => {
     const { ok, data } = await apiLogin(u, p);
     if (!ok) return data.error || "Could not sign in.";
-    if (data.token) await setToken(data.token); // native: persist the Bearer token
+    if (data.token) setToken(data.token); // native: cache now + persist to Keychain in the background
     const st = data.state ?? {};
     setUsername(data.user.username);
     setProfile((st.profile as Profile) ?? null);
@@ -162,7 +162,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async (u: string, p: string, prof: Profile, pl: Plan): Promise<string | null> => {
       const { ok, data } = await apiSignup(u, p);
       if (!ok) return data.error || "Could not create your account.";
-      if (data.token) await setToken(data.token); // native: persist the Bearer token
+      if (data.token) setToken(data.token); // native: cache now + persist in the background
       const uname = data.user.username;
       const profNamed: Profile = { ...prof, username: uname };
       const planNamed: Plan = { ...pl, profile: profNamed };
@@ -179,7 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await apiLogout().catch(() => {});
-    await clearToken(); // native: drop the Keychain token
+    clearToken(); // native: drop the cached + Keychain token
     try {
       localStorage.removeItem(CACHE_KEY);
     } catch {}
@@ -191,7 +191,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deleteAccount = useCallback(async (): Promise<string | null> => {
     const { ok, data } = await apiDeleteAccount();
     if (!ok) return data.error || "Could not delete your account.";
-    await clearToken();
+    clearToken();
     try {
       localStorage.removeItem(CACHE_KEY);
     } catch {}
