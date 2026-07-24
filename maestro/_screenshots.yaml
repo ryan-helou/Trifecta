@@ -1,0 +1,38 @@
+# App Store screenshot capture (not a gate — depends on the seeded `trifectademo` account,
+# so it's prefixed `_` to stay out of verify-ios.sh's suite). Logs in to the populated demo
+# account and captures the main-app tabs. Also serves as a live check that the Plan tab
+# renders without the stale-index crash. Seed with: npx tsx scripts/seed-demo.ts
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- tapOn: ".*Sign in.*"
+- extendedWaitUntil:
+    visible: "Username"
+    timeout: 15000
+- tapOn: "ironmike"
+- inputText: "trifectademo"
+- tapOn: "••••••••"
+- inputText: "demopass123"
+- pressKey: Enter
+# demo account has a plan → lands in the main app; a tab label means the shell rendered
+- extendedWaitUntil:
+    visible: "Progress"
+    timeout: 30000
+- waitForAnimationToEnd
+- takeScreenshot: store-1-today
+- tapOn: "Plan"
+- waitForAnimationToEnd
+- takeScreenshot: store-2-plan
+- tapOn: "Progress"
+- waitForAnimationToEnd
+- takeScreenshot: store-3-progress
+- tapOn: "Profile"
+- waitForAnimationToEnd
+- takeScreenshot: store-4-profile
