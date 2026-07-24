@@ -11,8 +11,12 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "==> gate: iOS self-test on the simulator"
+echo "==> gate 1: engine invariant tests (plan correctness)"
+# shellcheck disable=SC1090
+( cd "$REPO" && source ~/.nvm/nvm.sh && nvm use 22 >/dev/null && npm test )
+
+echo "==> gate 2: iOS self-test on the simulator"
 "$REPO/scripts/verify-ios.sh"
 
-echo "==> gate passed — building + uploading to TestFlight (fastlane beta)"
+echo "==> gates passed — building + uploading to TestFlight (fastlane beta)"
 cd "$REPO/ios/App" && fastlane beta
