@@ -14,7 +14,8 @@
     "icons": "node scripts/gen-icons.mjs",
     "assets:native": "node scripts/gen-native-assets.mjs",
     "build:static": "node scripts/build-static.mjs",
-    "ota": "npm run build:static && npx @capgo/cli bundle upload --path out --channel production"
+    "ota": "npm run build:static && npx @capgo/cli bundle upload --path out --channel production",
+    "test": "tsx test/engine.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",
