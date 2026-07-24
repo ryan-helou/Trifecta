@@ -175,4 +175,248 @@ platform :ios do
       UI.success("tester #{email} id=#{t.id} state=#{t.state.inspect} groups=#{groups.inspect} apps=#{apps.inspect}")
     end
   end
+
+  # ---- App Store listing / submission (via the ASC API key; no Apple-ID/2FA) ----
+
+  desc "Diagnostic: dump the editable App Store version state + submission gates."
+  lane :asc_status do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    UI.success("App: #{app.name} (#{app.id})")
+    v = (app.get_edit_app_store_version rescue nil)
+    if v
+      UI.message("editable version #{v.version_string} state=#{v.app_store_state}")
+      b = (v.get_build rescue nil)
+      UI.message("  build attached: #{b ? b.version : 'NONE'}")
+    else
+      UI.important("no editable version (Prepare for Submission) found")
+    end
+    (app.get_app_infos rescue []).each do |ai|
+      pc = (ai.primary_category rescue nil); sc = (ai.secondary_category rescue nil)
+      UI.message("appInfo state=#{ai.app_store_state rescue '?'} primary=#{pc && pc.id} secondary=#{sc && sc.id}")
+    end
+  end
+
+  desc "Create the App Store review detail (Apple's demo login + contact) — also fixes deliver's first-version 'No data' crash on fetch_app_store_review_detail."
+  lane :store_reviewinfo do |opts|
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    version = app.get_edit_app_store_version
+    existing = (version.fetch_app_store_review_detail rescue nil)
+    if existing
+      UI.success("review detail already exists (#{existing.id})")
+    else
+      d = version.create_app_store_review_detail(attributes: {
+        contactFirstName: "Ryan",
+        contactLastName: "Helou",
+        contactPhone: opts[:phone] || "+1 000 000 0000",
+        contactEmail: "ryan.helou@gmail.com",
+        demoAccountRequired: true,
+        demoAccountName: "trifectademo",
+        demoAccountPassword: "demopass123",
+        notes: "Triathlon training app. Sign in with the demo account above — it has a fully populated IRONMAN 70.3 plan (Today / Plan / Progress). Apple Health access is optional and not needed to review core features."
+      })
+      UI.success("created review detail #{d.id}")
+    end
+  end
+
+  desc "Enable HealthKit on the App ID + regenerate the App Store profile. Fixes the entitlement mismatch that FAILED builds 2-5 in processing."
+  lane :fix_healthkit do
+    asc_key
+    bid = Spaceship::ConnectAPI::BundleId.all(includes: "bundleIdCapabilities").find { |b| b.identifier == "app.trifecta.mobile" }
+    has_hk = (bid.get_capabilities rescue []).any? { |c| (c.capability_type rescue "").to_s.include?("HEALTH") }
+    if has_hk
+      UI.success("HealthKit already enabled on the App ID")
+    else
+      Spaceship::ConnectAPI::BundleIdCapability.create(bundle_id_id: bid.id, capability_type: "HEALTHKIT")
+      UI.success("enabled HEALTHKIT capability on App ID #{bid.identifier}")
+    end
+    # regenerate the App Store profile so the exported IPA carries the HealthKit entitlement
+    get_provisioning_profile(
+      api_key: asc_key,
+      app_identifier: "app.trifecta.mobile",
+      provisioning_name: "app.trifecta.mobile AppStore",
+      force: true,
+      output_path: "build/profiles"
+    )
+    UI.success("regenerated App Store provisioning profile (now includes HealthKit)")
+  end
+
+  desc "Set the age-rating declaration to a clean 4+ (all content descriptors NONE). No submit."
+  lane :store_agerating do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    decl = app.fetch_edit_app_info.fetch_age_rating_declaration
+    decl.update(attributes: {
+      "alcoholTobaccoOrDrugUseOrReferences" => "NONE",
+      "contests" => "NONE",
+      "gamblingSimulated" => "NONE",
+      "gunsOrOtherWeapons" => "NONE",
+      "horrorOrFearThemes" => "NONE",
+      "matureOrSuggestiveThemes" => "NONE",
+      "medicalOrTreatmentInformation" => "NONE",
+      "profanityOrCrudeHumor" => "NONE",
+      "sexualContentGraphicAndNudity" => "NONE",
+      "sexualContentOrNudity" => "NONE",
+      "violenceCartoonOrFantasy" => "NONE",
+      "violenceRealistic" => "NONE",
+      "violenceRealisticProlongedGraphicOrSadistic" => "NONE",
+      "gambling" => false,
+      "unrestrictedWebAccess" => false,
+      "lootBox" => false,
+      "advertising" => false,
+      "messagingAndChat" => false,
+      "parentalControls" => false,
+      "userGeneratedContent" => false,
+      "healthOrWellnessTopics" => false,
+      "ageAssurance" => false,
+      "kidsAgeBand" => nil
+    })
+    UI.success("age rating set → 4+ (all descriptors NONE)")
+  end
+
+  desc "Set App Store text metadata (name/subtitle/desc/keywords/urls) + category via Spaceship. Bypasses deliver's first-version review-detail crash. No submit."
+  lane :store_text do
+    asc_key
+    md = File.join(__dir__, "metadata", "en-US")
+    rd = ->(f) { p = File.join(md, f); File.exist?(p) ? File.read(p).strip : "" }
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+
+    # version-level copy
+    version = app.get_edit_app_store_version
+    vlocs = version.get_app_store_version_localizations
+    vloc = vlocs.find { |l| l.locale == "en-US" } || vlocs.first
+    vattrs = {
+      description: rd.call("description.txt"),
+      keywords: rd.call("keywords.txt"),
+      promotionalText: rd.call("promotional_text.txt"),
+      supportUrl: rd.call("support_url.txt"),
+      marketingUrl: rd.call("marketing_url.txt")
+    }.reject { |_, v| v.to_s.empty? }
+    vloc.update(attributes: vattrs)
+    UI.success("version copy set (#{vloc.locale}): #{vattrs.keys.join(', ')}")
+
+    # app-level copy (name / subtitle / privacy url)
+    app_info = app.fetch_edit_app_info
+    ilocs = app_info.get_app_info_localizations
+    iloc = ilocs.find { |l| l.locale == "en-US" } || ilocs.first
+    iattrs = {
+      name: rd.call("name.txt"),
+      subtitle: rd.call("subtitle.txt"),
+      privacyPolicyUrl: rd.call("privacy_url.txt")
+    }.reject { |_, v| v.to_s.empty? }
+    iloc.update(attributes: iattrs)
+    UI.success("app info copy set (#{iloc.locale}): #{iattrs.keys.join(', ')}")
+
+    begin
+      app_info.update_categories(category_id_map: { primary_category_id: "HEALTH_AND_FITNESS", secondary_category_id: "SPORTS" })
+      UI.success("categories set: Health & Fitness / Sports")
+    rescue => e
+      UI.important("category set skipped: #{e.message}")
+    end
+  end
+
+  desc "Upload ONLY screenshots via deliver (screenshot path doesn't hit the review-detail bug). No submit."
+  lane :store_shots do
+    deliver(
+      api_key: asc_key,
+      app_identifier: "app.trifecta.mobile",
+      force: true,
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_screenshots: false,
+      overwrite_screenshots: true,
+      submit_for_review: false,
+      run_precheck_before_submit: false
+    )
+  end
+
+  desc "Upload the App Store listing (metadata + screenshots). Does NOT submit. Idempotent."
+  lane :store_meta do
+    deliver(
+      api_key: asc_key,
+      app_identifier: "app.trifecta.mobile",
+      force: true,                 # no interactive HTML preview
+      skip_binary_upload: true,    # build already on TestFlight
+      skip_metadata: false,
+      skip_screenshots: false,
+      overwrite_screenshots: true,
+      submit_for_review: false,
+      automatic_release: false,
+      primary_category: "HEALTH_AND_FITNESS",
+      secondary_category: "SPORTS",
+      precheck_include_in_app_purchases: false,
+      run_precheck_before_submit: false
+    )
+  end
+
+  desc "Attach the latest VALID build to the editable version + answer export compliance (Spaceship, reliable)."
+  lane :store_attach do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, sort: "-uploadedDate", limit: 10)
+    UI.message("builds: " + builds.map { |b| "#{b.version}(#{b.processing_state})" }.join(", "))
+    build = builds.find { |b| b.processing_state == "VALID" } || builds.find(&:processed?) || builds.first
+    UI.user_error!("no build available to attach") unless build
+    begin
+      build.update(attributes: { usesNonExemptEncryption: false })
+      UI.success("export compliance answered (uses no non-exempt encryption)")
+    rescue => e
+      UI.important("export-compliance set skipped: #{e.message}")
+    end
+    version = app.get_edit_app_store_version
+    version.select_build(build_id: build.id)
+    UI.success("attached build #{build.version} (#{build.processing_state}) to version #{version.version_string}")
+  end
+
+  desc "Poll until a SPECIFIC build number (default 5) finishes Apple processing (VALID), then attach it + answer export compliance. Usage: fastlane store_finish build:5"
+  lane :store_finish do |opts|
+    asc_key
+    target = (opts[:build] || "5").to_s
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    build = nil
+    90.times do |i|
+      builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, sort: "-uploadedDate", limit: 8)
+      b = builds.find { |x| x.version.to_s == target }
+      st = b&.processing_state
+      UI.message("poll #{i}: build ##{target} = #{st || 'not visible yet'}")
+      if st == "VALID"
+        build = b; break
+      elsif %w[INVALID FAILED].include?(st)
+        UI.user_error!("build ##{target} failed Apple processing: #{st}")
+      end
+      sleep(30)
+    end
+    UI.user_error!("build ##{target} did not become VALID within ~20 min") unless build
+    begin
+      build.update(attributes: { usesNonExemptEncryption: false })
+      UI.success("export compliance answered")
+    rescue => e
+      UI.important("export compliance already set / skipped: #{e.message}")
+    end
+    version = app.get_edit_app_store_version
+    version.select_build(build_id: build.id)
+    UI.success("attached build ##{build.version} to version #{version.version_string}")
+  end
+
+  desc "Submit the editable version (with its already-attached build) for App Store review."
+  lane :store_submit do
+    deliver(
+      api_key: asc_key,
+      app_identifier: "app.trifecta.mobile",
+      force: true,
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_screenshots: true,
+      submit_for_review: true,
+      automatic_release: true,
+      precheck_include_in_app_purchases: false,
+      run_precheck_before_submit: false,
+      submission_information: {
+        export_compliance_uses_encryption: false,
+        content_rights_contains_third_party_content: false,
+        add_id_info_uses_idfa: false
+      }
+    )
+  end
 end
