@@ -9,6 +9,11 @@
 # Capacitor WKWebView through the accessibility tree (no DOM ids/CSS). Keep the login
 # screen's copy (labels "Username"/"Password", button "Sign in") in sync with this file.
 #
+# extendedWaitUntil (not assertVisible) guards every screen transition: a COLD
+# fresh-install launch (WebView boot + React hydrate + entrance animations + the login
+# network round-trip) can take much longer than Maestro's default element wait, and a
+# too-short wait was a source of false failures.
+#
 # Test account (throwaway, on the live Railway API): simtest_qa / simpass123
 appId: app.trifecta.mobile
 ---
@@ -17,12 +22,19 @@ appId: app.trifecta.mobile
     clearKeychain: true     # drop any persisted Bearer token
     permissions:
       all: deny             # no permission dialog should block the login flow
-- assertVisible: "Create your plan"        # welcome screen rendered in the WKWebView
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000          # cold first launch: boot + hydrate + animations
 - takeScreenshot: 01-welcome
 # Maestro anchors text as a full-string regex, so match the whole "Already have an
-# account? Sign in" control (and the submit button) with .* wildcards.
+# account? Sign in" control with .* wildcards; wait for it to animate in first.
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 10000
 - tapOn: ".*Sign in.*"                       # welcome → login
-- assertVisible: "Username"                 # login screen rendered
+- extendedWaitUntil:
+    visible: "Username"
+    timeout: 15000          # login screen rendered
 - takeScreenshot: 02-login
 # Tap each input by its placeholder text (what the empty field exposes to a11y).
 - tapOn: "ironmike"                          # username field
@@ -30,9 +42,11 @@ appId: app.trifecta.mobile
 - assertVisible: "simtest_qa"               # confirm the field actually received the text
 - tapOn: "••••••••"                          # password field
 - inputText: "simpass123"
-- hideKeyboard
-# Exact "Sign in" hits ONLY the submit button — the regex would also match the
-# "Sign in to pick up your plan…" subtitle and tap the wrong element.
-- tapOn: "Sign in"                           # submit → POST /api/auth/login
-- assertVisible: "What are you training for?"   # onboarding = auth succeeded + state loaded
+# Submit by pressing Enter in the password field (the <form> submits on Enter). More
+# reliable than tapping the "Sign in" button, which can sit below the keyboard / fall
+# out of the accessibility snapshot right after the keyboard dismisses.
+- pressKey: Enter                            # submit → POST /api/auth/login
+- extendedWaitUntil:
+    visible: "What are you training for?"    # onboarding = auth succeeded + state loaded
+    timeout: 30000          # login round-trip (incl. possible Railway cold start) + render
 - takeScreenshot: 03-loggedin
