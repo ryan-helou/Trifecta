@@ -24,8 +24,11 @@ export function PlanTab() {
     pillRow.current?.querySelector<HTMLElement>(`[data-w="${sel}"]`)?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
   }, [sel]);
 
-  if (!plan) return null;
-  const week = plan.weeks[sel];
+  if (!plan || !plan.weeks.length) return null;
+  // Clamp the selected index: `sel` is seeded once and isn't re-clamped when the plan
+  // changes, so after a rebuild/compress to fewer weeks a stale `sel` would index past
+  // the array and white-screen the tab (week undefined → weekProgress/DayStrip throw).
+  const week = plan.weeks[Math.min(sel, plan.weeks.length - 1)];
   const prog = weekProgress(plan, week);
 
   return (
