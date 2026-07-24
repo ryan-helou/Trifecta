@@ -9,7 +9,7 @@
  * phases in order, and keep intensity polarized (mostly easy). Thresholds are calibrated
  * to the engine's real output with margin, so a correct plan never false-fails.
  */
-import { generatePlan, MAX_WORKOUTS } from "../lib/planEngine";
+import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts } from "../lib/planEngine";
 import type { Profile, Plan, Injury } from "../lib/types";
 
 let checks = 0;
@@ -123,6 +123,24 @@ section("injuries: a run niggle reduces run volume vs the same athlete uninjured
   const hurt = generatePlan(profile({ raceType: "half", raceDateISO: weeksFrom(20), injuries: [kneeInjury] }), ANCHOR);
   const runSec = (p: Plan) => Object.values(p.workouts).filter((w) => w.discipline === "run").reduce((s, w) => s + w.estDurationSec, 0);
   ok(runSec(hurt) < runSec(base), `injured run volume (${Math.round(runSec(hurt) / 60)}m) < healthy (${Math.round(runSec(base) / 60)}m)`);
+}
+
+// ---- 6. clampWorkouts edge cases (regression: clampWorkouts(0) returned 6) ----
+section("clampWorkouts edge cases");
+{
+  ok(clampWorkouts(0) === MIN_WORKOUTS, `clampWorkouts(0) clamps to ${MIN_WORKOUTS}, not 6`);
+  ok(clampWorkouts(undefined) === 6, "clampWorkouts(undefined) defaults to 6");
+  ok(clampWorkouts(-3) === MIN_WORKOUTS, "clampWorkouts(-3) clamps to MIN");
+  ok(clampWorkouts(100) === MAX_WORKOUTS, "clampWorkouts(100) clamps to MAX");
+  ok(clampWorkouts(6) === 6, "clampWorkouts(6) stays 6");
+}
+
+// ---- 7. a race sooner than the minimum span never back-dates the start ----
+section("compressed plan: start is never back-dated into the past");
+{
+  const soon = generatePlan(profile({ raceType: "olympic", raceDateISO: weeksFrom(2) }), ANCHOR); // race ~2 wk out
+  ok(soon.weeks[0].startDate >= weeksFrom(-1), `first week not back-dated (start ${soon.weeks[0].startDate}, anchor ${ANCHOR})`);
+  ok(soon.weeks[soon.weeks.length - 1].isRaceWeek, "race still lands in the last week");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
