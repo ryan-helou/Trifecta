@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { CountUp, useMounted } from "./motion";
@@ -185,9 +186,15 @@ export function ProgressTab() {
   fitness leads, warning where fatigue does, split at every crossing. No axes,
   no gridlines: the shape plus today's word are the whole reading.
 */
+const W = 100, H = 100, PAD = 5; // the chart's viewBox, stretched to the box by preserveAspectRatio="none"
+
 function PmcChart({ points, band, mounted }: { points: PmcPoint[]; band: FormBand; mounted: boolean }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  // the fitness line's drawn length in CSS pixels, once measured; null = draw it solid
+  const [dash, setDash] = useState<number | null>(null);
+  const [drawn, setDrawn] = useState(false);
+
   const n = points.length;
-  const W = 100, H = 100, PAD = 5;
   const max = Math.max(1, ...points.map((p) => Math.max(p.ctl, p.atl)));
   const x = (i: number) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
   const y = (v: number) => H - PAD - (v / max) * (H - PAD * 2);
@@ -224,9 +231,58 @@ function PmcChart({ points, band, mounted }: { points: PmcPoint[]; band: FormBan
   }
   close();
 
+  /* The fitness line draws itself in — but the dash that does it has to be sized
+     in the space it's actually measured in. `vector-effect: non-scaling-stroke`
+     puts the stroke (dashes included) in screen pixels, while the points live in
+     viewBox units that `preserveAspectRatio="none"` stretches by a different
+     factor on each axis. So `pathLength={100}` + `strokeDasharray={100}` described
+     a dash far shorter than the ~210-point daily path and WebKit simply repeated
+     it — two visible gaps in the line. Measure the drawn length instead, and
+     re-measure on resize (a rotation would otherwise reopen the gaps). When we
+     can't measure — reduced motion, no ResizeObserver, a zero-size box — `dash`
+     stays null and the line is solid from the start, fading in like the fatigue
+     one. A solid line beats a clever one. */
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    // the reduced-motion kill-switch in globals.css silences keyframes only —
+    // a transition has to opt out here
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const coords = ctlLine.split(" ").map((p) => p.split(",").map(Number));
+    const measure = () => {
+      const box = svg.getBoundingClientRect();
+      if (!box.width || !box.height) return;
+      const sx = box.width / W;
+      const sy = box.height / H;
+      let len = 0;
+      for (let i = 1; i < coords.length; i++) {
+        len += Math.hypot((coords[i][0] - coords[i - 1][0]) * sx, (coords[i][1] - coords[i - 1][1]) * sy);
+      }
+      if (len > 0) setDash(Math.ceil(len) + 1); // a pixel of slack so rounding can't reopen a gap
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(svg);
+    return () => ro.disconnect();
+  }, [ctlLine]);
+
+  // hold the undrawn state for one painted frame, then let the transition run
+  useEffect(() => {
+    if (dash == null || drawn) return;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setDrawn(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [dash, drawn]);
+
   return (
     <div className="relative">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-28 w-full overflow-visible" aria-hidden>
+      <svg ref={svgRef} viewBox="0 0 100 100" preserveAspectRatio="none" className="h-28 w-full overflow-visible" aria-hidden>
         {regions.map((r, i) => (
           <polygon
             key={i}
@@ -254,10 +310,12 @@ function PmcChart({ points, band, mounted }: { points: PmcPoint[]; band: FormBan
           strokeLinejoin="round"
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
-          pathLength={100}
-          strokeDasharray={100}
-          strokeDashoffset={mounted ? 0 : 100}
-          style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(.4,.1,.2,1)" }}
+          strokeDasharray={dash ?? undefined}
+          strokeDashoffset={dash != null && !drawn ? dash : 0}
+          style={{
+            opacity: mounted ? 1 : 0,
+            transition: "opacity .45s ease, stroke-dashoffset 1.1s cubic-bezier(.4,.1,.2,1)",
+          }}
         />
       </svg>
       {/* today — the fitness line's terminus, tinted by the state word above */}

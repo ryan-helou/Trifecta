@@ -201,6 +201,36 @@ export interface Injury {
   note?: string;
 }
 
+// ---- pre-participation screening & consent (the safety / liability floor) ----
+//
+// See docs/knowledge/03-injury-and-load-management.md §4H: knowing the athlete's
+// relevant history before prescribing training is exactly what a negligence
+// claim turns on, so we screen PAR-Q-style at onboarding and record it. It is
+// screening, never diagnosis — a "yes" points at a doctor, it never blocks the
+// app or silently reshapes the plan.
+
+/** A PAR-Q-style screening item's answer. Unanswered items are simply absent. */
+export type HealthAnswer = "yes" | "no";
+
+export interface HealthScreen {
+  /** which question set was answered, so old answers stay readable as it evolves */
+  version: string;
+  /** itemId → answer. Nothing here is required; a skipped screen has {} */
+  answers: Record<string, HealthAnswer>;
+  /** the ids answered "yes" — the ones worth a word with a doctor */
+  flagged: string[];
+  /** true once they ticked "got it — I'll check with my doctor before I start" */
+  acknowledged?: boolean;
+  completedAtISO: string;
+}
+
+/** What the athlete agreed to, captured at the moment the account is created. */
+export interface Consent {
+  termsAcceptedAtISO: string;
+  /** the version (last-updated date) of the terms + privacy text they accepted */
+  documentVersion: string;
+}
+
 // A stretch of days the athlete can't train (vacation, work, life).
 export interface DateRange {
   startISO: string; // yyyy-mm-dd
@@ -245,6 +275,8 @@ export interface Profile {
   perSport?: SportFreq; // explicit swim/bike/run sessions per week
   strength?: StrengthPref; // resistance training preference
   injuries?: Injury[]; // injuries/aches to train around
+  healthScreen?: HealthScreen; // PAR-Q-style pre-participation screening (onboarding)
+  consent?: Consent; // terms + privacy agreement recorded at account creation
   blackouts?: DateRange[]; // days off (vacation, work travel)
   equipment?: EquipmentAccess; // what the athlete can actually access
   intakeNotes?: string; // free-text "anything else" the athlete told us
