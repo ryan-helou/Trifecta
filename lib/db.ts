@@ -45,6 +45,8 @@ export interface Store {
   setDataIf(userId: string, data: AppState, expectedVersion: number): Promise<number | null>;
   /** Erase the user and all their data (GDPR right to erasure). */
   deleteUser(userId: string): Promise<void>;
+  /** Append product events. Best-effort: analytics must never fail a request. */
+  recordEvents(userId: string, events: { name: string; props?: unknown; atISO?: string }[]): Promise<void>;
   // Strava
   getStravaByUser(userId: string): Promise<StravaConn | null>;
   getStravaByAthlete(athleteId: number): Promise<StravaConn | null>;
@@ -144,6 +146,26 @@ class PgStore implements Store {
              )`,
           ),
         )
+        .then(() =>
+          // Product events. Deliberately its own table, NOT the user blob — that
+          // blob is wholly client-writable via PUT /api/state, so anything stored
+          // there can be rewritten or erased by the client it's measuring.
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS events (
+               id BIGSERIAL PRIMARY KEY,
+               user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               name TEXT NOT NULL,
+               props JSONB,
+               at TIMESTAMPTZ NOT NULL DEFAULT now()
+             )`,
+          ),
+        )
+        .then(() =>
+          // the two queries this exists to answer: per-user timelines (retention
+          // curves, activation funnels) and per-event rollups
+          this.pool.query("CREATE INDEX IF NOT EXISTS events_user_at_idx ON events (user_id, at DESC)"),
+        )
+        .then(() => this.pool.query("CREATE INDEX IF NOT EXISTS events_name_at_idx ON events (name, at DESC)"))
         .then(() => undefined);
     }
     return this.ready;
@@ -323,8 +345,21 @@ class PgStore implements Store {
 
   async deleteUser(userId: string): Promise<void> {
     await this.init();
-    // FK ON DELETE CASCADE removes strava_connections, follows, and kudos too.
+    // FK ON DELETE CASCADE removes strava_connections, follows, kudos and events too.
     await this.pool.query("DELETE FROM users WHERE id = $1", [userId]);
+  }
+
+  async recordEvents(userId: string, events: { name: string; props?: unknown; atISO?: string }[]): Promise<void> {
+    if (!events.length) return;
+    await this.init();
+    // one multi-row INSERT — a batch of events costs a single round trip
+    const vals: unknown[] = [];
+    const rows = events.map((e, i) => {
+      const b = i * 4;
+      vals.push(userId, e.name, e.props ?? null, e.atISO ?? new Date().toISOString());
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4})`;
+    });
+    await this.pool.query(`INSERT INTO events (user_id, name, props, at) VALUES ${rows.join(", ")}`, vals);
   }
 }
 
@@ -342,6 +377,7 @@ class MemoryStore implements Store {
   private users = new Map<string, UserRow>(); // keyed by id
   private byName = new Map<string, string>(); // lower -> id
   private dataVersions = new Map<string, number>(); // keyed by id — mirrors users.data_version
+  private events = new Map<string, { name: string; props?: unknown; at: string }[]>(); // mirrors the events table
   private strava = new Map<string, StravaConn>(); // keyed by userId
   private follows = new Set<string>(); // "followerId::followingId"
   private kudos = new Set<string>(); // "fromId::ownerId::workoutId"
@@ -387,10 +423,18 @@ class MemoryStore implements Store {
     this.dataVersions.set(userId, cur + 1);
     return cur + 1;
   }
+  async recordEvents(userId: string, events: { name: string; props?: unknown; atISO?: string }[]): Promise<void> {
+    if (!this.users.has(userId)) return;
+    const list = this.events.get(userId) ?? [];
+    for (const e of events) list.push({ ...e, at: e.atISO ?? new Date().toISOString() });
+    // dev store: keep it bounded so a long session can't grow without limit
+    this.events.set(userId, list.slice(-500));
+  }
   async deleteUser(userId: string): Promise<void> {
     const u = this.users.get(userId);
     if (u) this.byName.delete(u.username.toLowerCase());
     this.users.delete(userId);
+    this.events.delete(userId);
     this.dataVersions.delete(userId);
     this.strava.delete(userId);
     for (const f of [...this.follows]) {

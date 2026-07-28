@@ -12,6 +12,7 @@ import { Plan, Profile } from "@/lib/types";
 import { apiDeleteAccount, apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
 import { clearToken, loadToken, setToken } from "@/lib/tokenStore";
 import { notifyAppReady } from "@/lib/ota";
+import { disableTracking, flush as flushEvents, track } from "@/lib/analytics";
 
 type Screen = "loading" | "anon" | "onboarding" | "app";
 
@@ -163,6 +164,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Capgo OTA (Path B): confirm the current bundle booted so it isn't rolled back.
   useEffect(() => {
     notifyAppReady();
+    track("app_opened");
   }, []);
 
   // One save attempt with optimistic concurrency: on a 409 (a Strava webhook/sync
@@ -244,9 +246,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // backgrounding (native/mobile) fires visibilitychange:hidden; closing a web
     // tab fires pagehide — flush the debounced save before the page dies
     const onHide = () => {
-      if (document.visibilityState === "hidden") flushPending(true);
+      if (document.visibilityState === "hidden") {
+        flushPending(true);
+        void flushEvents(true);
+      }
     };
-    const onPageHide = () => flushPending(true);
+    const onPageHide = () => {
+      flushPending(true);
+      void flushEvents(true);
+    };
     document.addEventListener("visibilitychange", onHide);
     window.addEventListener("pagehide", onPageHide);
     return () => {
@@ -266,6 +274,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPlan(null);
     setOffline(false);
     writeCache(data.user.username, null, null);
+    track("signup");
     return null;
   }, []);
 
@@ -283,6 +292,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPlan(pl);
     setOffline(false);
     writeCache(data.user.username, prof, pl);
+    track("login", { hasPlan: !!pl });
     return null;
   }, []);
 
@@ -306,6 +316,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setOffline(false);
       writeCache(uname, profNamed, planNamed);
       void doSave(uname, profNamed, planNamed, false);
+      // the activation moment: account created AND a plan committed in one step
+      track("signup");
+      track("onboarding_completed", {
+        weeks: planNamed.totalWeeks,
+        sessionsPerWeek: profNamed.workoutsPerWeek ?? 0,
+        hasRace: !!profNamed.raceDateISO,
+      });
+      track("plan_created", { weeks: planNamed.totalWeeks });
       return null;
     },
     [doSave],
@@ -339,6 +357,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveTimer.current = null;
     }
     pendingRef.current = null;
+    disableTracking(); // erasing the account means we stop measuring it, immediately
     const { ok, data } = await apiDeleteAccount();
     if (!ok) return data.error || "Could not delete your account.";
     latestRef.current = { username: null, profile: null, plan: null };
