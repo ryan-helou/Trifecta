@@ -8,6 +8,16 @@
 > best-in-class patterns we copy (TrainingPeaks, Intervals.icu, WHOOP, Strava, Garmin, Zwift,
 > Runna) and the traps we avoid.
 >
+> ⚠️ **Method limitation, added 2026-07-28 — read this before trusting a clean bill of health here.**
+> This doc was compiled by **reading source**, never by running the app on a device. That blind spot
+> is not theoretical: a device pass on 2026-07-28 found that the **race-date step renders as an empty
+> grey box on iOS** — `<input type="date">` with no value shows a placeholder in desktop browsers and
+> **nothing at all** in WKWebView. Step 2 of 10, the field the whole plan counts back from, and it
+> looks broken. The same screen shows a raw iOS system-blue picker against our black-and-white
+> "Paper" system, and ~50% dead vertical space. **None of this is visible from the code.**
+> Rule going forward: a UX claim about how a screen *looks* is not verified until it has been seen
+> on the simulator. Audit every `type="date"` / `type="time"` input for the same empty-state defect.
+>
 > **Compiled:** 2026-07-22. **Method:** read of the live app (`app/`, `components/`, `lib/`) plus
 > UX research (NN/g, WCAG 2.2, fitness-app case studies, wearable UI breakdowns). Grounded in the
 > `Paper` design system (`app/globals.css`) as it stands on the `polish/onboarding-colour-racedate`

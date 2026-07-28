@@ -41,10 +41,15 @@ These are the highest-signal findings:
 1. **The engine plans from *prescription*, never from *reality*.** Load/fitness are
    computed off the *planned* zone, not what the athlete actually did — even though we
    already collect RPE, feel, and Strava actuals. (Realms 1, 2, 4.)
-2. **The flagship moat — "readiness-adaptive vs Runna" — is not yet *visible*.** We have
-   a good daily readiness system but **no fitness–fatigue–form (CTL/ATL/TSB) chart**, so
-   the product can't answer "am I fresh enough to race?" and can't *show* its edge.
-   (Realms 2, 4, 7 all point here — it's the single most-recommended build.)
+2. **The flagship moat — "readiness-adaptive vs Runna" — is now *visible* but still
+   *inert*.** ✅ The fitness–fatigue–form chart shipped 2026-07-27 (`lib/load.ts`: sRPE,
+   exact-EWMA CTL/ATL/TSB, form bands; rendered on Today + Progress). ⚠️ **But planning
+   never reads it.** Verified 2026-07-28: `pmc` / `formStateFor` / CTL / ATL / TSB appear
+   in `TodayTab.tsx` and `ProgressTab.tsx` and in **no engine file** — not `planEngine.ts`,
+   not `adapt.ts`. `assessAdaptation()` still decides purely on 14-day miss-rate and
+   session strain. `rampRate()` is exported and consumed by nothing. So the app can tell an
+   athlete "you're Deep in it" and hand them the identical week. The chart was half the
+   job; wiring form into the adaptation decision is the other half. (Realms 2, 4, 7.)
 3. **We're injury-*aware* but not injury-*safe* or rehab-*aware*.** No start-date/
    trajectory on injuries (flat tax, not a recovery curve), no pain sensor, mechanism-
    blind severity (tendinopathy wants load; bone stress wants offload), and the "won't
@@ -71,13 +76,30 @@ Ranked, roughly, by leverage-per-effort:
   GDPR Art. 9 + FTC Health Breach exposure. Needs a no-training tier + consent + DPA. (Doc 8.)
 - 🟠 **Taper bug (full-Ironman).** `baseFraction`'s 3-week taper is non-monotone
   (0.42 → 0.55 → 0.32) — eases, loads back up, then eases. One-line fix + a property test. (Doc 4.)
-- 🟠 **`weeklyHoursCap` not enforced** and **"no two hard days back-to-back" not
-  implemented** — both promises the engine doesn't currently keep. (Doc 4.)
-- 🟠 **Sweet-spot zone mislabel.** 88–94% FTP intervals tagged `primaryZone: 3` while Z3
-  is 76–90% — wrong zone dot/label. (Doc 1.)
-- 🟠 **iOS notifications silently no-op.** `lib/notify.ts` uses a Chromium/Android-only API;
-  our core iPhone user never gets the habit trigger. No analytics instrumentation exists
-  either, so nothing is measurable. (Doc 6.)
+- ✅ **`weeklyHoursCap` not enforced** — FIXED 2026-07-28 (session budget + post-build
+  enforcement, so the cap *shapes* the week rather than truncating its tail).
+- 🟠 **"No two hard days back-to-back" not implemented** — still open, now **measured**
+  (2026-07-28, walking the real calendar incl. empty days): **6 Z4+ adjacencies** in an
+  Oly plan, **10** in a 70.3, **14** in a full — with 2–5 three-in-a-row runs. Doc 4's
+  diagnosis was exactly right, including that swim quality carries `hard:false` so a Z4
+  CSS set doesn't even enter the same-day penalty — which is why `CSS Threshold Set Z4`
+  dominates the measured adjacent pairs. Note: long-ride→long-run adjacency (17–31 per
+  plan) is *deliberate* and must stay allowed. (Doc 4.)
+- 🔴 **Sweet-spot zone mislabel — re-rated from 🟠 on 2026-07-28.** Not a cosmetic dot
+  problem: a **niggle** sets `capZone: 3`, which routes to `bikeSweetSpot` at **88–94%
+  FTP**, so the injury cap reduces the label and not the load. Also shows the athlete
+  "76–90% FTP" and "88–94% FTP" on the same screen. (Doc 1 §5.)
+- 🔴 **NEW 2026-07-28 — no rest-day floor.** A guaranteed day off is opt-in; the −1000
+  guard is behind `restDayPreference != null`. Harmless at the 6-session default, but at
+  8 sessions/week a 70.3 plan yields **14 off days in 147 with a 30-day unbroken streak**
+  (containing a 188-min brick followed next day by a 120-min run); at 11 sessions, **6 off
+  days in 224**. Most damaging default in the engine for an injury-aware product. (Doc 1.)
+- ✅ **iOS notifications silently no-op** — FIXED 2026-07-27 via
+  `@capacitor/local-notifications` (real OS-scheduled reminders; static import — a lazy
+  `import()` of a Capacitor plugin hangs forever in the bundled WKWebView). **Analytics
+  also shipped** (self-hosted `lib/analytics.ts` + `/api/events`, allowlisted names,
+  numbers/booleans/short-enums only). *Caveat: an actual notification firing at its
+  scheduled hour has not been observed — that needs a wall-clock wait.* (Doc 6.)
 - 🟡 **No clock seam / zero tests** in the engine — `generatePlan` reads `Date.now()`
   internally, blocking golden tests for the product's core. (Doc 4.)
 - 🟡 **Strength (halves overuse injury; Lauersen 2014) is off by default and un-nudged.** (Doc 3.)
