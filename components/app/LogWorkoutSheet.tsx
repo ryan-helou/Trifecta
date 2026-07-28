@@ -8,28 +8,9 @@ import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 import { fmtFullDate, addDays } from "@/lib/dates";
+import { parseClock } from "@/lib/format";
 
 const M_PER_MILE = 1609.34;
-
-// h:mm:ss / mm:ss / bare minutes / colon-less digits (mmss) → seconds
-function parseClock(str: string): number | null {
-  const s = str.trim();
-  if (!s) return null;
-  if (s.includes(":")) {
-    const parts = s.split(":").map((x) => Number(x));
-    if (parts.some((x) => isNaN(x) || x < 0)) return null;
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    if (parts.length === 1) return parts[0] * 60;
-    return null;
-  }
-  if (!/^\d+$/.test(s)) return null;
-  if (s.length <= 2) return Number(s) * 60; // 1–2 digits = minutes
-  const sec = Number(s.slice(-2));
-  const min = Number(s.slice(0, -2));
-  if (sec >= 60) return null;
-  return min * 60 + sec;
-}
 
 const DISCIPLINES: { key: Discipline; label: string }[] = [
   { key: "swim", label: "Swim" },
@@ -74,8 +55,8 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
   const distUnit = isSwim ? "m" : unit === "imperial" ? "mi" : "km";
   const toMeters = (v: number) => (isSwim ? v : unit === "imperial" ? v * M_PER_MILE : v * 1000);
 
-  const durationSec = parseClock(timeStr);
-  const canSave = !!durationSec && durationSec > 0;
+  const durationSec = parseClock(timeStr); // null when unparseable or zero
+  const canSave = durationSec != null;
 
   const minDate = plan.startDateISO < today ? plan.startDateISO : addDays(today, -30);
 

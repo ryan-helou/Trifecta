@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({
     user: { username: user.username },
     state: {},
+    version: 1, // fresh row — data_version defaults to 1
     token: createSessionToken(user.id),
   });
   res.cookies.set(sessionCookie(user.id));

@@ -268,7 +268,7 @@ export function defaultSportSplit(p: Profile): { swim: number; bike: number; run
 
 type InjuryMod = { capZone: Zone; volMult: number; avoid: boolean };
 
-function injuryMods(p: Profile): Record<Sport, InjuryMod> {
+export function injuryMods(p: Profile): Record<Sport, InjuryMod> {
   const fresh = (): InjuryMod => ({ capZone: 5, volMult: 1, avoid: false });
   const mods: Record<Sport, InjuryMod> = { swim: fresh(), bike: fresh(), run: fresh() };
   for (const inj of p.injuries ?? []) {

@@ -91,13 +91,29 @@ async function refreshTokens(refreshToken: string): Promise<{ accessToken: strin
   return { accessToken: j.access_token, refreshToken: j.refresh_token, expiresAt: Number(j.expires_at) };
 }
 
+// Strava rotates the refresh token on every refresh, so two concurrent refreshes
+// (webhook racing a manual sync) are fatal: the loser persists an already-revoked
+// pair and bricks the connection. Single-flight per user — concurrent callers
+// share one in-flight POST. Entries clear on settle so a failure never poisons
+// the map, and the rotated pair is persisted before anyone gets the new token.
+const inflightRefresh = new Map<string, Promise<{ accessToken: string; refreshToken: string; expiresAt: number }>>();
+
 /** Return a valid access token for the connection, refreshing + persisting if it
  *  is expired or about to (Strava access tokens live ~6h). */
 export async function validAccessToken(store: Store, conn: StravaConn): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   if (conn.expiresAt - now > 60) return conn.accessToken;
-  const t = await refreshTokens(conn.refreshToken);
-  await store.updateStravaTokens(conn.userId, t);
+  let refresh = inflightRefresh.get(conn.userId);
+  if (!refresh) {
+    refresh = refreshTokens(conn.refreshToken)
+      .then(async (t) => {
+        await store.updateStravaTokens(conn.userId, t);
+        return t;
+      })
+      .finally(() => inflightRefresh.delete(conn.userId));
+    inflightRefresh.set(conn.userId, refresh);
+  }
+  const t = await refresh;
   return t.accessToken;
 }
 
@@ -110,6 +126,7 @@ export interface StravaActivity {
   sport_type?: string; // newer, more granular, e.g. "TrailRun"
   start_date?: string; // UTC ISO
   start_date_local?: string; // athlete-local ISO
+  utc_offset?: number; // seconds east of UTC (e.g. -25200 for PDT)
   distance?: number; // meters
   moving_time?: number; // seconds
   elapsed_time?: number; // seconds
@@ -170,13 +187,26 @@ export interface Match {
   confidence: "high" | "medium";
 }
 
+/** Calendar day (yyyy-mm-dd) the athlete experienced the activity on. Prefer
+ *  start_date_local; when only UTC is present, shift by utc_offset so a 7pm
+ *  PDT ride doesn't land on tomorrow's plan. Pure — unit-testable. */
+export function activityLocalDay(a: StravaActivity): string | null {
+  const local = (a.start_date_local || "").slice(0, 10);
+  if (local) return local;
+  if (!a.start_date) return null;
+  const startMs = Date.parse(a.start_date);
+  if (Number.isNaN(startMs)) return null;
+  const offsetMs = typeof a.utc_offset === "number" ? a.utc_offset * 1000 : 0;
+  return new Date(startMs + offsetMs).toISOString().slice(0, 10);
+}
+
 /** Find the planned workout an activity most likely completes: same local day,
  *  matching discipline (bricks also accept a run/bike), still un-done. With
  *  several candidates, the closest by duration wins. Pure — unit-testable. */
 export function matchActivityToWorkout(plan: Plan, a: StravaActivity): Match | null {
   const disc = disciplineOf(a);
   if (!disc) return null;
-  const day = (a.start_date_local || a.start_date || "").slice(0, 10);
+  const day = activityLocalDay(a);
   if (!day) return null;
 
   const candidates = Object.values(plan.workouts).filter((w) => {
@@ -202,44 +232,73 @@ export interface ApplyResult {
   workoutId?: string;
   title?: string;
   alreadyDone?: boolean;
+  /** true when a Strava "update" event refreshed the stored actuals in place */
+  updated?: boolean;
 }
 
 /** Match one activity to the user's plan and, if it lands, mark that session done
  *  and attach the actuals — writing the mutated plan back to the store. Idempotent:
- *  re-applying the same activity is a no-op. */
+ *  one activity completes at most one session, ever; re-delivery of an activity a
+ *  workout already carries refreshes that workout's actuals in place (crop/trim/
+ *  rename on Strava) instead of matching again. Writes go through a CAS retry —
+ *  webhook, manual sync and the connect backfill all race each other and the
+ *  client's autosave over the same blob. */
 export async function applyActivityToUser(store: Store, userId: string, a: StravaActivity): Promise<ApplyResult> {
-  const data = await store.getData(userId);
-  const plan = (data.plan ?? null) as Plan | null;
-  if (!plan || !plan.workouts) return { matched: false };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const row = await store.getDataV(userId);
+    if (!row) return { matched: false };
+    const { state: data, version } = row;
+    const plan = (data.plan ?? null) as Plan | null;
+    if (!plan || !plan.workouts) return { matched: false };
 
-  const match = matchActivityToWorkout(plan, a);
-  if (!match) return { matched: false };
-
-  const existing = plan.workouts[match.workoutId];
-  if (!existing) return { matched: false };
-  // already completed by this exact activity → nothing to do
-  if (existing.actuals?.activityId === a.id && existing.status === "done") {
-    return { matched: true, workoutId: match.workoutId, title: existing.title, alreadyDone: true };
-  }
-
-  const done = setStatus(plan, match.workoutId, "done");
-  const acts = actualsFromActivity(a);
-  const target = done.workouts[match.workoutId];
-  const withActuals = {
-    ...done,
-    workouts: {
-      ...done.workouts,
-      [match.workoutId]: {
-        ...target,
+    // One activity, one session: whatever its status now, a workout that already
+    // carries this activity id owns it — update in place, never match a second.
+    const carrier = Object.values(plan.workouts).find((w) => w.actuals?.activityId === a.id);
+    if (carrier) {
+      const acts = actualsFromActivity(a);
+      const refreshed = {
+        ...carrier,
         actuals: acts,
-        // Also populate the flat fields the credit/stats/UI read (creditedSeconds,
-        // Progress, WorkoutDetail) — otherwise a device-synced session counts only
-        // its planned estimate and the real duration/distance from Strava are lost.
-        actualDurationSec: acts.durationSec ?? target.actualDurationSec,
-        actualDistanceM: acts.distanceM ?? target.actualDistanceM,
+        actualDurationSec: acts.durationSec ?? carrier.actualDurationSec,
+        actualDistanceM: acts.distanceM ?? carrier.actualDistanceM,
+      };
+      // nothing changed (webhook retry / already-synced backfill) → pure no-op
+      if (JSON.stringify(refreshed) === JSON.stringify(carrier)) {
+        return { matched: true, workoutId: carrier.id, title: carrier.title, alreadyDone: true };
+      }
+      const withRefreshed = { ...plan, workouts: { ...plan.workouts, [carrier.id]: refreshed } };
+      const next = await store.setDataIf(userId, { ...data, plan: withRefreshed, updatedAtISO: new Date().toISOString() }, version);
+      if (next !== null) return { matched: true, workoutId: carrier.id, title: carrier.title, alreadyDone: true, updated: true };
+      continue; // lost the write race — re-read and re-apply
+    }
+
+    const match = matchActivityToWorkout(plan, a);
+    if (!match) return { matched: false };
+    const existing = plan.workouts[match.workoutId];
+    if (!existing) return { matched: false };
+
+    const done = setStatus(plan, match.workoutId, "done");
+    const acts = actualsFromActivity(a);
+    const target = done.workouts[match.workoutId];
+    const withActuals = {
+      ...done,
+      workouts: {
+        ...done.workouts,
+        [match.workoutId]: {
+          ...target,
+          actuals: acts,
+          // Also populate the flat fields the credit/stats/UI read (creditedSeconds,
+          // Progress, WorkoutDetail) — otherwise a device-synced session counts only
+          // its planned estimate and the real duration/distance from Strava are lost.
+          actualDurationSec: acts.durationSec ?? target.actualDurationSec,
+          actualDistanceM: acts.distanceM ?? target.actualDistanceM,
+        },
       },
-    },
-  };
-  await store.setData(userId, { ...data, plan: withActuals, updatedAtISO: new Date().toISOString() });
-  return { matched: true, workoutId: match.workoutId, title: existing.title };
+    };
+    const next = await store.setDataIf(userId, { ...data, plan: withActuals, updatedAtISO: new Date().toISOString() }, version);
+    if (next !== null) return { matched: true, workoutId: match.workoutId, title: existing.title };
+    // lost the write race — re-read and re-apply
+  }
+  console.warn(`strava: gave up applying activity ${a.id} for ${userId} after 3 version conflicts`);
+  return { matched: false };
 }

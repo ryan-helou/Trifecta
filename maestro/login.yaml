@@ -31,21 +31,42 @@ appId: app.trifecta.mobile
 - extendedWaitUntil:
     visible: ".*Sign in.*"
     timeout: 10000
-- tapOn: ".*Sign in.*"                       # welcome → login
-- extendedWaitUntil:
-    visible: "Username"
-    timeout: 15000          # login screen rendered
+# The control animates in (fade-up, 640ms delay) and React hydrates its onClick a
+# beat after the text is painted — a tap that lands in that gap is swallowed and
+# the flow dies on a healthy app. Settle first, then retry the tap until the login
+# screen actually appears.
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"                 # welcome → login
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 15000    # login screen rendered
 - takeScreenshot: 02-login
 # Tap each input by its placeholder text (what the empty field exposes to a11y).
+# CRITICAL: dismiss the keyboard between fields. While it's up, the page is
+# reflowed and the two inputs' reported bounds overlap by ~9pt, so the tap meant
+# for the password lands back in the username field — both strings end up
+# concatenated there ("simtest_qasimpass123"), the app rightly rejects the empty
+# password, and the flow dies far downstream on the onboarding assertion, blaming
+# the wrong step. Hiding the keyboard restores the base layout so each tap
+# resolves against stable coordinates.
+# (hideKeyboard can't dismiss a WKWebView keyboard — Maestro errors. Tapping inert
+# copy blurs the focused input, which drops the keyboard and restores the layout.)
 - tapOn: "ironmike"                          # username field
 - inputText: "simtest_qa"
+- tapOn: "Password"                          # inert label: blurs input → keyboard down
 - assertVisible: "simtest_qa"               # confirm the field actually received the text
 - tapOn: "••••••••"                          # password field
 - inputText: "simpass123"
-# Submit by pressing Enter in the password field (the <form> submits on Enter). More
-# reliable than tapping the "Sign in" button, which can sit below the keyboard / fall
-# out of the accessibility snapshot right after the keyboard dismisses.
-- pressKey: Enter                            # submit → POST /api/auth/login
+- tapOn: "Password"                          # blur again before locating the button
+# Submit via the button now that the keyboard is down and it's fully on-screen.
+# Exact match on purpose: the arrow is aria-hidden so the button reads as just
+# "Sign in", while a wildcard would also match the lede "Sign in to pick up your
+# plan…" and tap inert copy instead of submitting.
+- tapOn: "Sign in"                           # submit → POST /api/auth/login
 - extendedWaitUntil:
     visible: "What are you training for?"    # onboarding = auth succeeded + state loaded
     timeout: 30000          # login round-trip (incl. possible Railway cold start) + render

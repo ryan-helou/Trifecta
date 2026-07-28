@@ -29,6 +29,37 @@ export function fmtClock(totalSec: number): string {
   return `${m}:${pad(sec)}`;
 }
 
+/**
+ * fmtClock's inverse: "h:mm:ss" / "mm:ss" / bare minutes / colon-less digits → seconds.
+ * Returns null when unparseable — or when the total is zero, so a typed "0" reads
+ * as "no time" rather than a zero-second session.
+ */
+export function parseClock(str: string): number | null {
+  const s = str.trim();
+  if (!s) return null;
+  let total: number;
+  if (s.includes(":")) {
+    const parts = s.split(":").map((x) => Number(x));
+    if (parts.some((x) => isNaN(x) || x < 0)) return null;
+    if (parts.length === 3) total = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    else if (parts.length === 2) total = parts[0] * 60 + parts[1];
+    else if (parts.length === 1) total = parts[0] * 60;
+    else return null;
+  } else {
+    // No colon (a phone's numeric keypad has none): 1–2 digits are minutes, 3+ digits
+    // are m…mss with the last two as seconds — so "4230" is 42:30, not 4230 minutes.
+    if (!/^\d+$/.test(s)) return null;
+    if (s.length <= 2) {
+      total = Number(s) * 60;
+    } else {
+      const sec = Number(s.slice(-2));
+      if (sec >= 60) return null;
+      total = Number(s.slice(0, -2)) * 60 + sec;
+    }
+  }
+  return total > 0 ? total : null;
+}
+
 /** meters → "5.0 km" / "400 m" (metric) or "3.1 mi" / "400 m" (imperial). Sub-km stays in metres in both. */
 export function fmtDistance(m: number, unit: Unit = "metric"): string {
   if (m >= 1000) {

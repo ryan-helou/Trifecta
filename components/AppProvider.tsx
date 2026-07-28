@@ -61,6 +61,38 @@ function writeCache(username: string, profile: Profile | null, plan: Plan | null
   }
 }
 
+/** Fold the server's copy into ours after a 409 save conflict. Server-side writers
+ *  (Strava webhook/sync) only ever mark sessions done + attach device actuals, so
+ *  that narrow field set is all we adopt; local wins everywhere else. Returns the
+ *  input plan unchanged (same reference) when there's nothing to merge. */
+function mergeServerPlan(local: Plan | null, server: Plan | null | undefined): Plan | null {
+  if (!local || !server) return local;
+  let changed = false;
+  const workouts = { ...local.workouts };
+  for (const [id, sw] of Object.entries(server.workouts ?? {})) {
+    const lw = workouts[id];
+    if (!lw || lw.status !== "planned" || sw.status !== "done") continue;
+    workouts[id] = {
+      ...lw,
+      status: sw.status,
+      actuals: sw.actuals ?? lw.actuals,
+      actualDurationSec: sw.actualDurationSec ?? lw.actualDurationSec,
+      actualDistanceM: sw.actualDistanceM ?? lw.actualDistanceM,
+    };
+    changed = true;
+  }
+  // union the date-keyed readiness log + eased weeks; local wins a same-key clash
+  const readiness = { ...(server.readiness ?? {}), ...(local.readiness ?? {}) };
+  if (Object.keys(readiness).length !== Object.keys(local.readiness ?? {}).length) changed = true;
+  const easedWeeks = [...new Set([...(local.easedWeeks ?? []), ...(server.easedWeeks ?? [])])].sort((a, b) => a - b);
+  if (easedWeeks.length !== (local.easedWeeks ?? []).length) changed = true;
+  if (!changed) return local;
+  const merged: Plan = { ...local, workouts };
+  if (Object.keys(readiness).length) merged.readiness = readiness;
+  if (easedWeeks.length) merged.easedWeeks = easedWeeks;
+  return merged;
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [booted, setBooted] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
@@ -68,6 +100,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [offline, setOffline] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // state queued behind the debounce, so a hide/close flush can send exactly it
+  const pendingRef = useRef<{ uname: string; prof: Profile | null; pl: Plan | null } | null>(null);
+  // optimistic-concurrency version of our server-side state blob (#66)
+  const versionRef = useRef(0);
+  // latest committed state — the flush + 409-merge handlers read this (never a
+  // debounced snapshot), so a merge can't resurrect stale data
+  const latestRef = useRef<{ username: string | null; profile: Profile | null; plan: Plan | null }>({
+    username: null,
+    profile: null,
+    plan: null,
+  });
+  latestRef.current = { username, profile, plan };
 
   // hydrate
   useEffect(() => {
@@ -88,6 +132,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const me = await apiMe();
         if (cancelled) return;
         if (me.authenticated && me.user) {
+          versionRef.current = me.version ?? 0;
           setUsername(me.user.username);
           const st = me.state ?? {};
           setProfile((st.profile as Profile) ?? null);
@@ -120,24 +165,102 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     notifyAppReady();
   }, []);
 
+  // One save attempt with optimistic concurrency: on a 409 (a Strava webhook/sync
+  // wrote while our copy was stale) fold the server's completions into the freshest
+  // local state and retry ONCE — capped so two live writers can't ping-pong.
+  const doSave = useCallback(
+    async (uname: string, prof: Profile | null, pl: Plan | null, keepalive: boolean) => {
+      const r = await apiSaveState(prof, pl, { baseVersion: versionRef.current, keepalive });
+      // signed out (or switched account) while in flight — never write across sessions
+      if (latestRef.current.username !== uname) return;
+      if (r.ok) {
+        if (r.version != null) versionRef.current = r.version;
+        setOffline(false); // a save that lands means we're back online — clear the banner
+        return;
+      }
+      if (r.status === 409 && r.serverVersion != null) {
+        const cur = latestRef.current;
+        const merged = mergeServerPlan(cur.plan, r.serverState?.plan);
+        versionRef.current = r.serverVersion;
+        if (merged !== cur.plan) {
+          latestRef.current = { ...cur, plan: merged };
+          setPlan(merged);
+          writeCache(uname, cur.profile, merged);
+        }
+        const retry = await apiSaveState(cur.profile, merged, { baseVersion: versionRef.current, keepalive });
+        if (latestRef.current.username !== uname) return;
+        if (retry.ok) {
+          if (retry.version != null) versionRef.current = retry.version;
+        } else if (retry.status === 409 && retry.serverVersion != null) {
+          // still conflicting — keep the local copy, adopt the server's version so
+          // the next edit's save wins
+          versionRef.current = retry.serverVersion;
+          console.warn("state save conflicted twice; keeping the local copy for the next save");
+        }
+        setOffline(!retry.ok && retry.status === 0);
+        return;
+      }
+      // only a network-level failure is "offline" — a 4xx/5xx still reached the server
+      setOffline(r.status === 0);
+    },
+    [],
+  );
+
   const persist = useCallback(
     (uname: string | null, prof: Profile | null, pl: Plan | null) => {
       if (!uname) return;
       writeCache(uname, prof, pl);
+      pendingRef.current = { uname, prof, pl };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        apiSaveState(prof, pl)
-          .then(() => setOffline(false)) // a save that lands means we're back online — clear the banner
-          .catch(() => setOffline(true));
+        saveTimer.current = null;
+        const p = pendingRef.current;
+        if (!p) return;
+        pendingRef.current = null;
+        void doSave(p.uname, p.prof, p.pl, false);
       }, 700);
     },
-    [],
+    [doSave],
   );
+
+  // Send whatever's still queued NOW — the page/app is going away (#68). fetch
+  // keepalive lets the PUT outlive the page and still carries the Bearer header
+  // the native app needs (sendBeacon wouldn't).
+  const flushPending = useCallback(
+    (keepalive: boolean) => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      const p = pendingRef.current;
+      if (!p) return;
+      pendingRef.current = null;
+      void doSave(p.uname, p.prof, p.pl, keepalive);
+    },
+    [doSave],
+  );
+
+  useEffect(() => {
+    // backgrounding (native/mobile) fires visibilitychange:hidden; closing a web
+    // tab fires pagehide — flush the debounced save before the page dies
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushPending(true);
+    };
+    const onPageHide = () => flushPending(true);
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [flushPending]);
 
   const signup = useCallback(async (u: string, p: string): Promise<string | null> => {
     const { ok, data } = await apiSignup(u, p);
     if (!ok) return data.error || "Could not sign up.";
     if (data.token) setToken(data.token); // native: cache now + persist in the background
+    versionRef.current = typeof data.version === "number" ? data.version : 1; // fresh row = 1
+    latestRef.current = { username: data.user.username, profile: null, plan: null };
     setUsername(data.user.username);
     setProfile(null);
     setPlan(null);
@@ -151,11 +274,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!ok) return data.error || "Could not sign in.";
     if (data.token) setToken(data.token); // native: cache now + persist to Keychain in the background
     const st = data.state ?? {};
+    const prof = (st.profile as Profile) ?? null;
+    const pl = (st.plan as Plan) ?? null;
+    versionRef.current = typeof data.version === "number" ? data.version : 0;
+    latestRef.current = { username: data.user.username, profile: prof, plan: pl };
     setUsername(data.user.username);
-    setProfile((st.profile as Profile) ?? null);
-    setPlan((st.plan as Plan) ?? null);
+    setProfile(prof);
+    setPlan(pl);
     setOffline(false);
-    writeCache(data.user.username, (st.profile as Profile) ?? null, (st.plan as Plan) ?? null);
+    writeCache(data.user.username, prof, pl);
     return null;
   }, []);
 
@@ -171,18 +298,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const uname = data.user.username;
       const profNamed: Profile = { ...prof, username: uname };
       const planNamed: Plan = { ...pl, profile: profNamed };
+      versionRef.current = typeof data.version === "number" ? data.version : 1; // fresh row = 1
+      latestRef.current = { username: uname, profile: profNamed, plan: planNamed };
       setUsername(uname);
       setProfile(profNamed);
       setPlan(planNamed);
       setOffline(false);
       writeCache(uname, profNamed, planNamed);
-      apiSaveState(profNamed, planNamed).catch(() => setOffline(true));
+      void doSave(uname, profNamed, planNamed, false);
       return null;
     },
-    [],
+    [doSave],
   );
 
   const logout = useCallback(async () => {
+    // kill the queued autosave BEFORE any await — the timer could fire during the
+    // logout round-trip, and if another user signs in within the debounce window
+    // the pending state would be PUT under THEIR freshly-set token
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    pendingRef.current = null;
+    latestRef.current = { username: null, profile: null, plan: null };
+    versionRef.current = 0;
     await apiLogout().catch(() => {});
     clearToken(); // native: drop the cached + Keychain token
     try {
@@ -194,8 +333,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteAccount = useCallback(async (): Promise<string | null> => {
+    // as with logout: drop the queued autosave before any await (cross-user hazard)
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    pendingRef.current = null;
     const { ok, data } = await apiDeleteAccount();
     if (!ok) return data.error || "Could not delete your account.";
+    latestRef.current = { username: null, profile: null, plan: null };
+    versionRef.current = 0;
     clearToken();
     try {
       localStorage.removeItem(CACHE_KEY);
@@ -236,15 +383,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = useCallback(
     (prof: Profile) => {
+      // keep the plan's embedded profile copy in sync — computed OUTSIDE the
+      // setPlan updater (updaters must stay pure; StrictMode double-invokes them)
+      // and from latestRef so back-to-back calls never see a stale plan
+      const cur = latestRef.current;
+      const next = cur.plan ? { ...cur.plan, profile: prof } : cur.plan;
+      latestRef.current = { ...cur, profile: prof, plan: next };
       setProfile(prof);
-      // keep the copy embedded in the plan in sync so both read the same prefs
-      setPlan((pl) => {
-        const next = pl ? { ...pl, profile: prof } : pl;
-        persist(username, prof, next);
-        return next;
-      });
+      setPlan(next);
+      persist(cur.username, prof, next);
     },
-    [username, persist],
+    [persist],
   );
 
   const resetPlan = useCallback(() => {

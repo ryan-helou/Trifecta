@@ -9,8 +9,8 @@ export async function GET(req: NextRequest) {
   const uid = getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const store = getStore();
-  const data = await store.getData(uid);
-  return NextResponse.json({ state: data ?? {} });
+  const dv = await store.getDataV(uid);
+  return NextResponse.json({ state: dv?.state ?? {}, version: dv?.version ?? 0 });
 }
 
 // The whole blob is stored per user and re-read by the social feed, so validate
@@ -31,6 +31,23 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "State is too large to save." }, { status: 413 });
   }
   const store = getStore();
-  await store.setData(uid, { profile, plan, updatedAtISO: new Date().toISOString() });
+  const next = { profile, plan, updatedAtISO: new Date().toISOString() };
+  // baseVersion rides in the body (NOT a header — proxy.ts CORS only allows
+  // Content-Type/Authorization). When present, write only if the client's copy
+  // is current; on conflict return the server copy so the client can merge.
+  const baseVersion = body.baseVersion;
+  if (typeof baseVersion === "number" && Number.isInteger(baseVersion)) {
+    const version = await store.setDataIf(uid, next, baseVersion);
+    if (version === null) {
+      const dv = await store.getDataV(uid);
+      return NextResponse.json(
+        { error: "conflict", state: dv?.state ?? {}, version: dv?.version ?? 0 },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ ok: true, version });
+  }
+  // legacy blind write — old bundles (App Store review lag) send no baseVersion
+  await store.setData(uid, next);
   return NextResponse.json({ ok: true });
 }

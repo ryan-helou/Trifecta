@@ -15,7 +15,7 @@
     "assets:native": "node scripts/gen-native-assets.mjs",
     "build:static": "node scripts/build-static.mjs",
     "ota": "npm run build:static && npx @capgo/cli bundle upload --path out --channel production",
-    "test": "tsx test/engine.test.ts"
+    "test": "tsx test/engine.test.ts && tsx test/load.test.ts && tsx test/why.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",

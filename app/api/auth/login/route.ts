@@ -37,9 +37,11 @@ export async function POST(req: NextRequest) {
   }
 
   // token in the body for the native/bundled app (Bearer); cookie for the web PWA.
+  const dv = await store.getDataV(user.id);
   const res = NextResponse.json({
     user: { username: user.username },
-    state: user.data ?? {},
+    state: dv?.state ?? user.data ?? {},
+    version: dv?.version ?? 1,
     token: createSessionToken(user.id),
   });
   res.cookies.set(sessionCookie(user.id));

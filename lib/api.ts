@@ -16,15 +16,16 @@ async function jsonFetch(url: string, opts?: RequestInit) {
     const token = getTokenSync();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
-  // Hard timeout so a stalled WebView fetch can never hang the UI forever.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
+  // Hard timeout so a stalled WebView fetch can never hang the UI forever —
+  // except keepalive sends (page is going away; aborting defeats the purpose).
+  const controller = opts?.keepalive ? null : new AbortController();
+  const timer = controller ? setTimeout(() => controller.abort(), 12000) : null;
   try {
     const res = await fetch(API_BASE + url, {
       ...opts,
       headers,
       credentials: IS_NATIVE ? "omit" : "same-origin",
-      signal: controller.signal,
+      ...(controller ? { signal: controller.signal } : {}),
     });
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, data };
@@ -33,7 +34,7 @@ async function jsonFetch(url: string, opts?: RequestInit) {
     const msg = e instanceof Error ? (e.name === "AbortError" ? "request timed out" : e.message) : String(e);
     return { ok: false, status: 0, data: { error: `Can't reach the server (${msg}).` } };
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -41,6 +42,8 @@ export interface MeResponse {
   authenticated: boolean;
   user?: { username: string };
   state?: { profile?: Profile; plan?: Plan };
+  /** optimistic-concurrency version of `state` — echo as baseVersion on saves */
+  version?: number;
 }
 
 export async function apiMe(): Promise<MeResponse> {
@@ -70,11 +73,37 @@ export async function apiDeleteAccount() {
   return jsonFetch("/api/account", { method: "DELETE" });
 }
 
-export async function apiSaveState(profile: Profile | null, plan: Plan | null) {
-  return jsonFetch("/api/state", {
+export interface SaveStateResult {
+  ok: boolean;
+  status: number;
+  /** new version after a successful CAS save */
+  version?: number;
+  /** the server's current copy, returned with a 409 so the caller can merge + retry */
+  serverState?: { profile?: Profile; plan?: Plan };
+  serverVersion?: number;
+}
+
+export async function apiSaveState(
+  profile: Profile | null,
+  plan: Plan | null,
+  opts?: { baseVersion?: number; keepalive?: boolean },
+): Promise<SaveStateResult> {
+  // baseVersion rides in the body — proxy.ts CORS doesn't allow custom headers
+  const body: Record<string, unknown> = { profile, plan };
+  if (opts?.baseVersion != null) body.baseVersion = opts.baseVersion;
+  const { ok, status, data } = await jsonFetch("/api/state", {
     method: "PUT",
-    body: JSON.stringify({ profile, plan }),
+    body: JSON.stringify(body),
+    keepalive: opts?.keepalive,
   });
+  const d = data as { version?: number; state?: { profile?: Profile; plan?: Plan } };
+  return {
+    ok,
+    status,
+    version: ok && typeof d.version === "number" ? d.version : undefined,
+    serverState: status === 409 ? d.state : undefined,
+    serverVersion: status === 409 && typeof d.version === "number" ? d.version : undefined,
+  };
 }
 
 export async function apiCoach(context: string, question: string) {

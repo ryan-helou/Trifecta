@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Feel, Plan, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
-import { fmtClock, fmtDistance } from "@/lib/format";
+import { fmtClock, fmtDistance, parseClock } from "@/lib/format";
 import { celebrationFor, computeStreak } from "@/lib/stats";
 import { Sheet } from "./Sheet";
 import { Celebration } from "./Celebration";
@@ -22,28 +22,6 @@ const PRAISE = [
 ];
 
 const M_PER_MILE = 1609.34;
-
-// h:mm:ss / mm:ss / bare minutes / colon-less digits (mmss) → seconds
-function parseClock(str: string): number | null {
-  const s = str.trim();
-  if (!s) return null;
-  if (s.includes(":")) {
-    const parts = s.split(":").map((x) => Number(x));
-    if (parts.some((x) => isNaN(x) || x < 0)) return null;
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    if (parts.length === 1) return parts[0] * 60;
-    return null;
-  }
-  // No colon (a phone's numeric keypad has none): 1–2 digits are minutes, 3+ digits
-  // are m…mss with the last two as seconds — so "4230" is 42:30, not 4230 minutes.
-  if (!/^\d+$/.test(s)) return null;
-  if (s.length <= 2) return Number(s) * 60;
-  const sec = Number(s.slice(-2));
-  const min = Number(s.slice(0, -2));
-  if (sec >= 60) return null;
-  return min * 60 + sec;
-}
 
 const EFFORTS: { label: string; rpe: number; zone: Zone }[] = [
   { label: "Easy", rpe: 2, zone: 1 },
@@ -101,7 +79,7 @@ export function CheckinSheet({
     const actualDurationSec = parseClock(timeStr) ?? undefined;
     const distNum = parseFloat(distStr);
     const actualDistanceM =
-      distStr.trim() && !isNaN(distNum) && distNum >= 0 ? Math.round(toMeters(distNum)) : undefined;
+      distStr.trim() && !isNaN(distNum) && distNum > 0 ? Math.round(toMeters(distNum)) : undefined;
     actions.logCheckin(workout.id, {
       rpe,
       feel,

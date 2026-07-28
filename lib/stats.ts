@@ -4,21 +4,19 @@
 // fires a celebration when a session is finished. All pure — read a Plan, no I/O.
 // ---------------------------------------------------------------------------
 
-import { Discipline, Plan, Workout, Zone } from "./types";
+import { Discipline, Plan, Workout } from "./types";
 import { addDays } from "./dates";
 import { creditedSeconds, creditedDiscipline } from "./adapt";
+import { PmcPoint, pmc, sessionLoad } from "./load";
 import { DISCIPLINE_META } from "./zones";
 import { fmtDuration } from "./format";
 
 const isDone = (w: Workout) => w.status === "done" || w.status === "swapped";
 
-// Rough TRIMP-style intensity weighting so a hard hour counts for more than an easy one.
-const ZONE_WEIGHT: Record<Zone, number> = { 1: 0.6, 2: 1, 3: 1.6, 4: 2.2, 5: 3 };
-
-/** Training load of a single completed session, in weighted minutes. 0 if not done. */
-export function workoutLoad(w: Workout): number {
-  if (!isDone(w)) return 0;
-  return (creditedSeconds(w) / 60) * (ZONE_WEIGHT[w.primaryZone] ?? 1);
+/** Training load of a single completed session (Foster session-RPE AU — see
+ *  lib/load.ts for the intensity ladder). 0 if not done. */
+export function workoutLoad(w: Workout, lthr: number | null = null): number {
+  return sessionLoad(w, lthr).load;
 }
 
 type DayState = "kept" | "missed" | "pending";
@@ -76,7 +74,8 @@ export function computeStreak(plan: Plan, today: string): StreakInfo {
 
 export interface TrainingStats {
   weekLoad: number[]; // completed training load per plan week
-  fitness: number[]; // smoothed cumulative "fitness" per week (EWMA of load)
+  fitness: number[]; // CTL sampled at each week's last banked day (legacy weekly curve)
+  pmc: PmcPoint[]; // daily CTL/ATL/TSB through today — the real form story
   doneHrsByWeek: number[];
   bankedSec: number;
   bankedCount: number;
@@ -85,18 +84,21 @@ export interface TrainingStats {
 }
 
 /** Everything the Progress tab needs to tell an improvement story. */
-export function trainingStats(plan: Plan): TrainingStats {
+export function trainingStats(plan: Plan, todayISO: string): TrainingStats {
+  const lthr = plan.paces.hr.lthr;
   const weekLoad = plan.weeks.map((wk) =>
-    wk.workoutIds.reduce((a, id) => a + workoutLoad(plan.workouts[id]), 0),
+    wk.workoutIds.reduce((a, id) => a + workoutLoad(plan.workouts[id], lthr), 0),
   );
 
-  // fitness = exponentially-weighted running load — rises as you train, sags when you don't
-  const fitness: number[] = [];
-  let f = 0;
-  for (const l of weekLoad) {
-    f = f + (l - f) * 0.35;
-    fitness.push(f);
-  }
+  // the daily PMC through today; the legacy weekly "fitness" curve is CTL
+  // sampled at each week's last banked day, so FitnessChart keeps rendering
+  // one point per week until the PMC card replaces it
+  const series = pmc(plan, todayISO);
+  const ctlByDate = new Map(series.map((p) => [p.dateISO, p.ctl]));
+  const fitness = plan.weeks.map((wk) => {
+    const end = addDays(wk.startDate, 6);
+    return ctlByDate.get(end <= todayISO ? end : todayISO) ?? 0;
+  });
 
   const doneHrsByWeek = plan.weeks.map((wk) =>
     wk.workoutIds.reduce((a, id) => {
@@ -115,6 +117,7 @@ export function trainingStats(plan: Plan): TrainingStats {
   return {
     weekLoad,
     fitness,
+    pmc: series,
     doneHrsByWeek,
     bankedSec,
     bankedCount: done.length,
