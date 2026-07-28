@@ -143,6 +143,115 @@ section("compressed plan: start is never back-dated into the past");
   ok(soon.weeks[soon.weeks.length - 1].isRaceWeek, "race still lands in the last week");
 }
 
+// ---- 9. weeklyHoursCap is a HARD ceiling on emitted work ----
+// Regression: the cap only limited the notional target. Fixed sessions were built at
+// their intrinsic durations and the minMin floor re-inflated the scalables, so a 3 h
+// cap with 8 sessions emitted a 6 h week — double what the athlete asked for, while
+// the AI coach prompt asserted the cap was being honoured.
+section("weeklyHoursCap: no week ever exceeds an explicit cap");
+{
+  const sweep: { sessions: number; cap: number; over?: Partial<Profile> }[] = [
+    { sessions: 6, cap: 6 },
+    { sessions: 10, cap: 6 },
+    { sessions: 12, cap: 6 },
+    { sessions: 10, cap: 4 },
+    { sessions: 8, cap: 3 },
+    { sessions: 14, cap: 8, over: { raceType: "full", level: "advanced", raceDateISO: weeksFrom(24) } },
+  ];
+  for (const { sessions, cap, over } of sweep) {
+    const p = generatePlan(profile({ workoutsPerWeek: sessions, weeklyHoursCap: cap, ...over }), ANCHOR);
+    let worst = 0;
+    for (const w of p.weeks) {
+      if (w.isRaceWeek) continue; // the race itself is not "training hours"
+      const hrs = w.workoutIds.reduce((a, id) => a + (p.workouts[id]?.estDurationSec ?? 0), 0) / 3600;
+      worst = Math.max(worst, hrs);
+    }
+    ok(worst <= cap + 0.01, `${sessions} sessions @ ${cap}h cap → worst week ${worst.toFixed(2)}h`);
+  }
+  // and with no cap set, nothing changes (the enforcement must be opt-in)
+  const uncapped = generatePlan(profile({ workoutsPerWeek: 10 }), ANCHOR);
+  ok(Object.keys(uncapped.workouts).length > 0, "no cap set → plan still generates normally");
+}
+
+// ---- 10. a niggling sport never ABSORBS freed volume ----
+// Regression: the "healthy" filter was `volMult >= 0.85`, but a niggle sets volMult to
+// exactly 0.85 — so a complaining sport qualified as healthy and soaked up the sessions
+// freed from worse-injured sports. A shin niggle DOUBLED that athlete's runs.
+section("injuries: a niggling sport never absorbs volume freed from other sports");
+{
+  const runCount = (p: Plan) =>
+    Object.values(p.workouts).filter((w) => w.discipline === "run").length;
+  const healthy = generatePlan(profile({ raceType: "half", raceDateISO: weeksFrom(20), workoutsPerWeek: 9 }), ANCHOR);
+  const multi = generatePlan(
+    profile({
+      raceType: "half",
+      raceDateISO: weeksFrom(20),
+      workoutsPerWeek: 9,
+      injuries: [
+        { id: "i1", area: "left shoulder", disciplines: ["swim"], severity: "severe" },
+        { id: "i2", area: "left knee", disciplines: ["bike"], severity: "moderate" },
+        { id: "i3", area: "right shin", disciplines: ["run"], severity: "niggle" },
+      ],
+    }),
+    ANCHOR,
+  );
+  ok(
+    runCount(multi) <= runCount(healthy),
+    `niggling run volume (${runCount(multi)} sessions) never exceeds uninjured (${runCount(healthy)})`,
+  );
+}
+
+// ---- 11. race week honours injuries + equipment ----
+// Regression: buildRaceWeek consulted neither, so an athlete whose plan had avoided
+// running all block was handed a Z4 threshold run six days out, and a pool-less
+// athlete was given a swim.
+section("race week respects injury caps and equipment");
+{
+  // ANCHOR is a Monday, so a race on weeksFrom(n) is ALSO a Monday — raceDayIndex 0,
+  // which skips every opener and would make these assertions pass vacuously. Race on
+  // the Sunday so the Tue/Wed/Thu openers genuinely exist.
+  const sunday = (n: number) => {
+    const d = new Date(weeksFrom(n) + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + 6);
+    return d.toISOString().slice(0, 10);
+  };
+  const openersOf = (p: Plan) => {
+    const rw = p.weeks[p.weeks.length - 1];
+    return rw.workoutIds.map((id) => p.workouts[id]).filter((w) => w.type === "race_prep");
+  };
+
+  const healthy = generatePlan(profile({ raceType: "olympic", raceDateISO: sunday(12) }), ANCHOR);
+  ok(openersOf(healthy).length > 0, `healthy athlete still gets race-week openers (${openersOf(healthy).length})`);
+
+  const hurt = generatePlan(
+    profile({
+      raceType: "olympic",
+      raceDateISO: sunday(12),
+      injuries: [{ id: "i1", area: "right achilles", disciplines: ["run"], severity: "severe" }],
+      equipment: { pool: false, trainer: true, gym: true },
+    }),
+    ANCHOR,
+  );
+  const o = openersOf(hurt);
+  ok(!o.some((w) => w.discipline === "run"), "no run opener for a severe run injury (avoid)");
+  ok(!o.some((w) => w.discipline === "swim"), "no swim opener when the athlete has no pool");
+  ok(o.every((w) => w.primaryZone <= 3), "race-week openers stay out of Z4+ when the sport is capped");
+}
+
+// ---- 12. the taper is monotonically easier ----
+// The historical non-monotone full-IM taper (0.42 → 0.55 → 0.32) slipped past the ramp
+// check by 2 points. Assert the property directly so it can never regress.
+section("taper target hours never rise week over week");
+{
+  for (const c of CASES.filter((c) => c.race)) {
+    const p = generatePlan(c.p, ANCHOR);
+    const taper = p.weeks.filter((w) => w.phase === "taper");
+    let monotone = true;
+    for (let i = 1; i < taper.length; i++) if (taper[i].targetHours > taper[i - 1].targetHours) monotone = false;
+    ok(monotone, `${c.name}: taper hours non-increasing (${taper.map((w) => w.targetHours).join(" → ")})`);
+  }
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures > 0) {
   console.error(`\n❌ ${failures} engine invariant(s) FAILED`);

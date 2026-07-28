@@ -7,7 +7,7 @@ import { useToast } from "./Toast";
 import { SwipeableWorkout } from "./SwipeableWorkout";
 import { WorkoutCard } from "./WorkoutCard";
 import { ReadinessSheet } from "./ReadinessSheet";
-import { FormStrip } from "./FormSheet";
+import { FormSheet, FormStrip } from "./FormSheet";
 import { ProgressRing } from "./motion";
 import { Icon } from "./icons";
 import { FitnessHero, PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
@@ -26,6 +26,10 @@ export function TodayTab() {
   const { today, openCoach, openWorkout, openLog, goTab, actions } = useUI();
   const toast = useToast();
   const [readyOpen, setReadyOpen] = useState(false);
+  // Sheet state lives here, never in the strip: the strip sits inside an
+  // `.animate-fade-up` wrapper, and a sheet mounted under a transformed ancestor
+  // resolves its `position: fixed` against that wrapper instead of the viewport.
+  const [formOpen, setFormOpen] = useState(false);
 
   // auto-recalibrate paces at most weekly, once per app session, from how recent
   // sessions actually went. Only surfaces a toast when something moved.
@@ -98,7 +102,7 @@ export function TodayTab() {
       {/* form strip — the moat made visible; absorbs the readiness row once it exists */}
       {form && (
         <div className="animate-fade-up" style={{ animationDelay: "75ms" }}>
-          <FormStrip form={form} readiness={todayReadiness} />
+          <FormStrip form={form} readiness={todayReadiness} onOpen={() => setFormOpen(true)} />
         </div>
       )}
 
@@ -220,7 +224,9 @@ export function TodayTab() {
         <div className="mt-3 text-sm leading-snug text-muted">{wk.focus}</div>
       </button>
 
+      {/* overlays — mounted at the screen's top level, outside every animated wrapper */}
       {readyOpen && <ReadinessSheet onClose={() => setReadyOpen(false)} />}
+      {formOpen && form && <FormSheet form={form} onClose={() => setFormOpen(false)} />}
     </div>
   );
 }

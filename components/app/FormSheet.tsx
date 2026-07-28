@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { createPortal } from "react-dom";
 import { FormBand, FormState } from "@/lib/load";
 import { ReadinessEntry } from "@/lib/types";
 import { Sheet } from "./Sheet";
@@ -23,13 +23,13 @@ const signed = (v: number) => {
 
 /** Today's one-word form state as a tappable strip. Absorbs the readiness row
  *  (score on the right once logged) so the home screen gains a verdict without
- *  gaining a row. Tap → the FormSheet explains what's behind the word. */
-export function FormStrip({ form, readiness }: { form: FormState; readiness?: ReadinessEntry }) {
-  const [open, setOpen] = useState(false);
+ *  gaining a row. Purely presentational: the tap is handed up so the sheet can be
+ *  mounted by the screen, never nested inside this (animated) strip. */
+export function FormStrip({ form, readiness, onOpen }: { form: FormState; readiness?: ReadinessEntry; onOpen: () => void }) {
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={onOpen}
         className="flex w-full items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-left text-sm transition hover:brightness-110 active:scale-[0.995]"
       >
         <span className="flex items-center gap-2">
@@ -46,17 +46,28 @@ export function FormStrip({ form, readiness }: { form: FormState; readiness?: Re
           <span className="text-accent-soft text-lg">›</span>
         )}
       </button>
-      {open && <FormSheet form={form} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-/** The tap-through: the hero word, its one-line reading, and the three numbers
- *  behind it — jargon translated (CTL→Fitness, ATL→Fatigue, TSB→Form), each
- *  defined in one muted clause and nowhere else. */
+/* The tap-through: the hero word, its one-line reading, and the three numbers
+   behind it — jargon translated (CTL→Fitness, ATL→Fatigue, TSB→Form), each
+   defined in one muted clause and nowhere else.
+
+   Portalled to <body> on purpose. A Sheet is `position: fixed`, and ANY
+   transformed ancestor becomes its containing block — so a sheet rendered inside
+   the tab tree resolves against that box instead of the viewport. Two of those
+   sit above us: the `.animate-fade-up` entrance (fill-mode `both` leaves a
+   transform parked on the element forever) and TabDeck's swipe track, which
+   keeps an inline `translateX(0)`. Inside the strip that clipped the sheet to a
+   19px sliver you couldn't dismiss; at the tab's top level it would still hang
+   off the bottom of the scroll content. The portal is what actually escapes
+   both. */
 export function FormSheet({ form, onClose }: { form: FormState; onClose: () => void }) {
   const { goTab } = useUI();
-  return (
+  // never rendered during prerender (it only mounts on a tap), so document is here
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <Sheet
       onClose={onClose}
       label="Form"
@@ -87,7 +98,8 @@ export function FormSheet({ form, onClose }: { form: FormState; onClose: () => v
           <MetricRow label="Form" value={signed(form.tsb)} gloss="the gap between them" />
         </div>
       </div>
-    </Sheet>
+    </Sheet>,
+    document.body,
   );
 }
 

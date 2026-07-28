@@ -237,17 +237,41 @@ function splitTotal(total: number, focus?: Discipline): { swim: number; bike: nu
 }
 
 // Effective per-sport counts for a full, normal week (before phase scaling).
+// Shortest session worth prescribing, used to turn an hours cap into a session budget.
+// A 3 h cap spread over 8 sessions is 22 min each — the honest answer is fewer, longer
+// sessions, so the cap shapes the WEEK rather than truncating whatever didn't fit.
+const MIN_MEANINGFUL_MIN = 40;
+
+/** How many sessions an explicit weeklyHoursCap can actually carry. */
+function sessionBudget(p: Profile): number {
+  const cap = p.weeklyHoursCap;
+  if (!cap || cap <= 0) return MAX_WORKOUTS;
+  return Math.max(MIN_WORKOUTS, Math.floor((cap * 60) / MIN_MEANINGFUL_MIN));
+}
+
 function baseSportCounts(p: Profile): SportCounts {
-  const strength = strengthDaysOf(p);
+  const budget = sessionBudget(p);
+  const strength = Math.min(strengthDaysOf(p), Math.max(0, budget - 3));
   if (p.perSport) {
-    return {
+    const per = {
       swim: clampSport(p.perSport.swim),
       bike: clampSport(p.perSport.bike),
       run: clampSport(p.perSport.run),
-      strength,
     };
+    const asked = per.swim + per.bike + per.run;
+    const room = Math.max(3, budget - strength);
+    if (asked <= room) return { ...per, strength };
+    // Over the hours budget — scale the athlete's own split down, keeping at
+    // least one session of each sport so the week stays a triathlon week.
+    const k = room / asked;
+    const scaled = {
+      swim: Math.max(1, Math.floor(per.swim * k)),
+      bike: Math.max(1, Math.floor(per.bike * k)),
+      run: Math.max(1, Math.floor(per.run * k)),
+    };
+    return { ...scaled, strength };
   }
-  const total = Math.max(1, clampWorkouts(p.workoutsPerWeek) - strength);
+  const total = Math.max(1, Math.min(clampWorkouts(p.workoutsPerWeek), budget) - strength);
   return { ...splitTotal(total, p.focusDiscipline), strength };
 }
 
@@ -316,9 +340,14 @@ function weekSportCounts(
     removed += adj[d] - n;
     adj[d] = n;
   }
-  // shift the freed sessions onto the safest healthy sports (low-impact first)
+  // Shift the freed sessions onto the safest healthy sports (low-impact first).
+  // "Healthy" means NO injury at all (volMult 1) — a niggle already sits at 0.85,
+  // so a >= 0.85 test let a complaining sport absorb the freed load and a shin
+  // niggle ended up DOUBLING that athlete's runs. Never add load to a sport the
+  // athlete has told us hurts; if nothing is fully healthy the volume is simply
+  // dropped, which is the correct answer for an injured athlete.
   if (removed > 0) {
-    const healthy = (["swim", "bike", "run"] as Sport[]).filter((d) => !mods[d].avoid && mods[d].volMult >= 0.85);
+    const healthy = (["swim", "bike", "run"] as Sport[]).filter((d) => !mods[d].avoid && mods[d].volMult >= 1);
     for (const d of healthy) {
       while (removed > 0 && adj[d] < 8) {
         adj[d]++;
@@ -858,9 +887,40 @@ function buildNormalWeek(
     built.set(s, s.build(min));
   }
 
+  // Hard-enforce an explicit weeklyHoursCap. targetHours already respects the cap,
+  // but nothing held the *emitted* sessions to it: fixed sessions are built at their
+  // intrinsic durations regardless of budget, and the minMin floor re-inflates the
+  // scalables — so a 3 h cap with 8 sessions was handing back a 6 h week. The athlete
+  // asked for a ceiling; honour it, shortening first and only then dropping work.
+  let active = slots;
+  const capSec =
+    profile.weeklyHoursCap && profile.weeklyHoursCap > 0 ? profile.weeklyHoursCap * 3600 : null;
+  if (capSec != null) {
+    const FLOOR_SEC = 20 * 60; // below this a session stops being worth doing
+    const totalSec = () => active.reduce((a, s) => a + (built.get(s)?.estDurationSec ?? 0), 0);
+
+    // 1) shrink the scalable sessions proportionally toward the floor
+    if (totalSec() > capSec) {
+      const scal = active.filter((s) => s.scalable);
+      const scalSec = scal.reduce((a, s) => a + built.get(s)!.estDurationSec, 0);
+      const budget = Math.max(0, capSec - (totalSec() - scalSec));
+      if (scalSec > budget && scalSec > 0) {
+        const k = budget / scalSec;
+        for (const s of scal) {
+          const next = Math.max(FLOOR_SEC, Math.round(built.get(s)!.estDurationSec * k));
+          built.set(s, s.build(Math.round(next / 60)));
+        }
+      }
+    }
+    // 2) still over — the fixed work alone blows the budget, so the only honest
+    //    answer is fewer sessions. Slots come out of pickWeekSlots in priority
+    //    order, so the tail is the least important work of the week.
+    while (totalSec() > capSec && active.length > 1) active = active.slice(0, -1);
+  }
+
   // emit workouts. A day can hold up to three sessions, so ids are disambiguated.
   const idSeq: Record<string, number> = {};
-  for (const s of slots) {
+  for (const s of active) {
     const draft = built.get(s)!;
     const day = s.day;
     const idBase = `w-${weekIndex}-${day}-${s.discipline}`;
@@ -902,10 +962,30 @@ function buildRaceWeek(
   // light openers on the days before, rest the day before
   const openers: { day: number; build: () => Draft }[] = [];
   const D = trainingDays(profile);
+  // Race week is the highest-stakes week of the plan, so it honours the same
+  // injury caps and equipment limits every other week does — it used to ignore
+  // both, handing a Z4 threshold run to an athlete whose plan had spent the
+  // whole build avoiding running, and a pool session to someone with no pool.
+  const mods = injuryMods(profile);
+  const openerFor = (d: Sport, sharp: () => Draft, gentle: () => Draft) => {
+    const m = mods[d];
+    if (m.avoid) return null; // the sport we've protected all plan — not now either
+    return m.capZone >= 4 ? sharp : gentle;
+  };
+
   // a couple of short openers
-  if (D.has(1)) openers.push({ day: 1, build: () => W.runThreshold(ctx, 35) });
-  if (D.has(3)) openers.push({ day: 3, build: () => W.bikeSweetSpot(ctx, 45) });
-  if (D.has(2)) openers.push({ day: 2, build: () => W.swimRecovery(ctx, 800) });
+  if (D.has(1)) {
+    const b = openerFor("run", () => W.runThreshold(ctx, 35), () => W.runEasy(ctx, 30));
+    if (b) openers.push({ day: 1, build: b });
+  }
+  if (D.has(3)) {
+    const b = openerFor("bike", () => W.bikeSweetSpot(ctx, 45), () => W.bikeEndurance(ctx, 40));
+    if (b) openers.push({ day: 3, build: b });
+  }
+  if (D.has(2) && profile.equipment?.pool !== false) {
+    const b = openerFor("swim", () => W.swimRecovery(ctx, 800), () => W.swimRecovery(ctx, 800));
+    if (b) openers.push({ day: 2, build: b });
+  }
 
   for (const o of openers) {
     if (o.day >= raceDayIndex) continue; // no sessions on/after race day
