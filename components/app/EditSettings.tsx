@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DateField } from "@/components/app/DateField";
 import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthPref, StrengthSplit, Unit } from "@/lib/types";
 import { generatePlan, defaultSportSplit } from "@/lib/planEngine";
 import { rebuildFromToday } from "@/lib/adapt";
@@ -306,7 +307,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
           {/* date — only when there's a race to count down to */}
           {!fitness && (
           <Field label="Race day">
-            <input className="input" type="date" min={addDays(todayISO(), 1)} value={raceDateISO} onChange={(e) => setRaceDateISO(e.target.value)} />
+            <DateField min={addDays(todayISO(), 1)} value={raceDateISO} placeholder="Pick your race date" onChange={setRaceDateISO} />
             {raceDateISO && (
               <p className={`mt-2 text-xs ${dateOk ? "text-muted" : "text-warning"}`}>
                 {dateOk ? fmtFullDate(raceDateISO) : "Pick a date in the future."}
@@ -485,8 +486,8 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                     <button onClick={() => setBlackouts((xs) => xs.filter((_, j) => j !== i))} aria-label="Remove" className="text-muted transition hover:text-danger">✕</button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <input className="input" type="date" value={b.startISO} onChange={(e) => updBlackout(i, { startISO: e.target.value })} />
-                    <input className="input" type="date" value={b.endISO} onChange={(e) => updBlackout(i, { endISO: e.target.value })} />
+                    <DateField value={b.startISO} placeholder="From" onChange={(v) => updBlackout(i, { startISO: v })} />
+                    <DateField value={b.endISO} placeholder="To" onChange={(v) => updBlackout(i, { endISO: v })} />
                   </div>
                 </div>
               ))}

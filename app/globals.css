@@ -7,7 +7,18 @@
   thin borders, never from glow or gradients. Numbers (splits, paces, countdowns)
   stay the hero, set like a watch dial. Tokens are exposed to Tailwind via
   @theme inline so `bg-surface`, `text-muted`, `border-line`, `text-accent` work
-  as utilities. Zones use a light→dark gray ramp so intensity still reads.
+  as utilities. Intensity zones carry the field-standard blue→green→amber→orange→red
+  ramp (an earlier note here claimed a gray ramp; that stopped being true when zones
+  gained colour).
+
+  DARK MODE follows the system. Everything routes through the tokens below, so the
+  dark theme is a second block rather than a component rewrite — but the zone and
+  discipline ramps are NOT simply inverted. Those hues carry meaning, and the ones
+  tuned for black-on-white go muddy on a dark field: amber Z3 in particular collapses
+  toward green Z2 and orange Z4. The dark ramp below is lightened and separated so the
+  five steps stay distinguishable, including for the deuteranope/protanope confusable
+  pairs (Z2/Z3 and Z4/Z5). Zone number always rides with the colour anyway — colour is
+  never the only channel.
 */
 
 :root {
@@ -51,6 +62,63 @@
   --success: #3f9a5c; /* done — green */
   --warning: #c8871f; /* eased / caution — amber */
   --danger: #c5372f; /* skipped / missed — red */
+}
+
+
+/* ---- dark theme -------------------------------------------------------------
+   Follows the OS by default. Athletes open this app before dawn — a full-white
+   screen in a dark bedroom is the wrong answer for the app's most common moment
+   of use. Surfaces are near-black rather than pure black so the hairline borders
+   that carry the whole "Paper" structure remain visible. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0d0d0e;
+    --surface: #141416;    /* cards lift off the page instead of sinking into it */
+    --surface-2: #1c1c1f;  /* inputs / raised */
+    --surface-3: #26262a;  /* hover */
+    --line: #2c2c31;       /* hairline border — still readable at 1px */
+    --line-soft: #232327;
+
+    --text: #f4f4f2;
+    --text-muted: #a0a09c;
+    --text-faint: #6c6c69;
+
+    /* ink inverts: on dark, the "solid ink" accent is the light one */
+    --accent: #f4f4f2;
+    --accent-2: #ffffff;
+    --accent-soft: #d8d8d4;
+
+    --sun: #a0a09c;
+    --tide: #a0a09c;
+
+    /* disciplines — lifted for contrast on a dark field */
+    --swim: #4bb5e0;
+    --bike: #e0a437;
+    --run: #f0655c;
+    --strength: #a68cf0;
+    --rest: #6c6c69;
+
+    /* zones — lightened AND pulled further apart. On dark, the light-theme amber
+       (#d3a12b) reads close to the green; these keep five distinct steps. */
+    --z1: #6fb6e4;
+    --z2: #52c07a;
+    --z3: #e8c04a;
+    --z4: #ef8f43;
+    --z5: #f0605e;
+
+    --success: #52c07a;
+    --warning: #e8c04a;
+    --danger: #f0605e;
+  }
+}
+
+/* Explicit override wins in both directions, so a future in-app theme toggle can
+   stamp data-theme on the root and beat the media query. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -104,7 +172,10 @@
 }
 
 html {
-  color-scheme: light;
+  /* light dark — not just light. This drives the NATIVE controls (the iOS date
+     picker, scrollbars, form widgets); pinning it to light left them glaring white
+     inside an otherwise dark app. */
+  color-scheme: light dark;
   background: var(--background); /* fill the full document (incl. safe areas) on native */
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;

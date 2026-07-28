@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DateField } from "@/components/app/DateField";
 import { useApp } from "../AppProvider";
 import { LoadingAnimation } from "../LoadingAnimation";
 import { Wordmark } from "../Wordmark";
@@ -53,6 +54,20 @@ interface Draft {
 }
 
 const STEPS = ["race", "custom", "date", "level", "frequency", "strength", "schedule", "prs", "health", "injuries", "review"] as const;
+
+const STEP_LABELS: Record<(typeof STEPS)[number], string> = {
+  race: "Your race",
+  custom: "Distances",
+  date: "Race day",
+  level: "Experience",
+  frequency: "Frequency",
+  strength: "Strength",
+  schedule: "Schedule",
+  prs: "Benchmarks",
+  health: "Health check",
+  injuries: "Injuries",
+  review: "Review",
+};
 
 // When the athlete lets us decide, derive a sensible weekly sport mix from their
 // experience and race distance — more experience means more sessions, and longer
@@ -107,6 +122,51 @@ function newInjuries(parsed: ParsedInjury[]): Injury[] {
     .filter((i) => i.disciplines.length > 0);
 }
 
+const DEFAULT_DRAFT: Draft = {
+  custom: { swimM: 1500, bikeM: 40000, runM: 10000, name: "My Race" },
+  perSport: { swim: 2, bike: 2, run: 2 },
+  strength: { enabled: false, daysPerWeek: 2, split: "full" },
+  equipment: { pool: true, trainer: true, gym: true },
+  blackouts: [],
+  health: { answers: {} },
+  injuries: [],
+};
+
+// --- draft persistence -----------------------------------------------------
+// Ten steps is a long walk before any value is delivered; losing it partway is the
+// worst failure in the funnel. Kept in localStorage (not the server) because none of
+// this belongs to an account yet — the athlete hasn't made one.
+const DRAFT_KEY = "trifecta:onboarding-draft";
+const DRAFT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000; // a fortnight; older is a different intent
+
+function saveDraft(draft: Draft, idx: number) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ draft, idx, savedAt: Date.now() }));
+  } catch {
+    /* private mode / quota — persistence is a nicety, never a blocker */
+  }
+}
+
+function loadDraft(): { draft: Partial<Draft>; idx: number } | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { draft?: Partial<Draft>; idx?: number; savedAt?: number };
+    if (!parsed?.draft || typeof parsed.idx !== "number") return null;
+    if (!parsed.savedAt || Date.now() - parsed.savedAt > DRAFT_MAX_AGE_MS) return null;
+    // never resume ONTO the review/account step — the plan it summarised no longer
+    // exists, so drop back to the last question instead of a screen with nothing behind it
+    const idx = Math.max(0, Math.min(parsed.idx, STEPS.length - 2));
+    return { draft: parsed.draft, idx };
+  } catch {
+    return null;
+  }
+}
+
+export function clearOnboardingDraft() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch {}
+}
+
 export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   const { username, startPlan, applyPlan, signupAndStart } = useApp();
   const [idx, setIdx] = useState(0);
@@ -114,15 +174,40 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   // for anon athletes: the plan is built and held here while they create their
   // account — the account is the last step, after they've watched it forge.
   const [built, setBuilt] = useState<{ profile: Profile; plan: ReturnType<typeof generatePlan> } | null>(null);
-  const [draft, setDraft] = useState<Draft>({
-    custom: { swimM: 1500, bikeM: 40000, runM: 10000, name: "My Race" },
-    perSport: { swim: 2, bike: 2, run: 2 },
-    strength: { enabled: false, daysPerWeek: 2, split: "full" },
-    equipment: { pool: true, trainer: true, gym: true },
-    blackouts: [],
-    health: { answers: {} },
-    injuries: [],
-  });
+  const [draft, setDraft] = useState<Draft>(DEFAULT_DRAFT);
+
+  // Restore an interrupted flow. Onboarding is ten steps and held everything in React
+  // state alone, so a phone call, a force-quit, or iOS reclaiming the WebView threw the
+  // lot away — race date, PRs, injuries — and dropped the athlete back on step 1. That
+  // is the most expensive possible failure, because it lands on the people who were
+  // furthest through.
+  //
+  // The read has to happen on mount, not during render: localStorage doesn't exist on
+  // the server, so reading it in a lazy initialiser would make the first client paint
+  // disagree with the prerendered HTML. A ref (not state) carries the "have we loaded
+  // yet" flag so it can't itself cause a render.
+  const [restored, setRestored] = useState(false);
+  const loadedRef = useRef(false);
+  useEffect(() => {
+    const saved = loadDraft();
+    // A one-time mount restore is the hydration-safe way to read localStorage — it
+    // runs once, on mount, and cannot cascade.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (saved) {
+      setDraft({ ...DEFAULT_DRAFT, ...saved.draft });
+      setIdx(saved.idx);
+      setRestored(true);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    loadedRef.current = true;
+  }, []);
+
+  // Persist as they go — but never before the restore has run, or the empty initial
+  // state would overwrite a good saved draft in the tick before it loads.
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    saveDraft(draft, idx);
+  }, [draft, idx]);
 
   const step = STEPS[idx];
   const isCustom = draft.raceType === "custom";
@@ -239,6 +324,7 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
               })
               .catch(() => {});
           };
+          clearOnboardingDraft(); // the plan exists now; the draft is spent
           if (username) {
             // returning athlete already has an account — commit straight to the app
             startPlan(finalProfile, plan);
@@ -275,7 +361,8 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
         </div>
       )}
 
-      {/* progress bar */}
+      {/* progress bar — named, because ten anonymous segments answer neither
+          "how much longer?" nor "what is this step even about?" */}
       <div className="px-6 pt-4">
         <div className="mx-auto flex max-w-md gap-1.5">
           {Array.from({ length: visibleCount }).map((_, i) => (
@@ -284,6 +371,14 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
               className={`h-1 flex-1 rounded-full transition ${i <= visibleIdx ? "accent-gradient" : "bg-surface-2"}`}
             />
           ))}
+        </div>
+        <div className="mx-auto mt-2 flex max-w-md items-center justify-between">
+          <span className="eyebrow text-[0.66rem] text-muted">
+            Step {visibleIdx + 1} of {visibleCount} · {STEP_LABELS[step]}
+          </span>
+          {restored && (
+            <span className="eyebrow text-[0.66rem] text-muted">Picked up where you left off</span>
+          )}
         </div>
       </div>
 
@@ -656,12 +751,12 @@ function DateStep({ draft, set }: StepProps) {
   return (
     <div>
       <Head title="When's race day?" sub="Your plan counts back from here — with the right taper built in." />
-      <input
-        className="input text-lg"
-        type="date"
+      <DateField
+        className="text-lg"
         min={addDays(todayISO(), 1)}
         value={draft.raceDateISO ?? ""}
-        onChange={(e) => set((d) => ({ ...d, raceDateISO: e.target.value }))}
+        placeholder="Pick your race date"
+        onChange={(v) => set((d) => ({ ...d, raceDateISO: v }))}
       />
       {draft.raceName && (
         <p className="mt-3 text-sm text-muted">
@@ -888,15 +983,12 @@ function ScheduleStep({ draft, set }: StepProps) {
 
       <div className="mb-5">
         <div className="mb-2 eyebrow text-[0.72rem]">When do you want to start?</div>
-        <input
-          className="input"
-          type="date"
+        <DateField
           min={todayISO()}
           max={draft.raceDateISO || undefined}
           value={draft.startDateISO ?? todayISO()}
-          onChange={(e) =>
-            set((d) => ({ ...d, startDateISO: e.target.value && e.target.value > todayISO() ? e.target.value : undefined }))
-          }
+          placeholder="Start today"
+          onChange={(v) => set((d) => ({ ...d, startDateISO: v && v > todayISO() ? v : undefined }))}
         />
         <p className="mt-2 text-xs text-muted">
           Defaults to today — your plan begins now. Pick a later date if you&apos;d rather start then (after a trip, next Monday…).
@@ -980,8 +1072,8 @@ function ScheduleStep({ draft, set }: StepProps) {
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <input className="input" type="date" value={b.startISO} onChange={(e) => updBlackout(i, { startISO: e.target.value })} />
-                <input className="input" type="date" value={b.endISO} onChange={(e) => updBlackout(i, { endISO: e.target.value })} />
+                <DateField value={b.startISO} placeholder="From" onChange={(v) => updBlackout(i, { startISO: v })} />
+                <DateField value={b.endISO} placeholder="To" onChange={(v) => updBlackout(i, { endISO: v })} />
               </div>
             </div>
           ))}

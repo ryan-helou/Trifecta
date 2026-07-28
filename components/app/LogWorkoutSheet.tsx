@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DateField } from "@/components/app/DateField";
 import { Discipline, Feel, Plan, Zone } from "@/lib/types";
 import type { LogResult } from "@/lib/adapt";
 import { DisciplineIcon, Icon, IconName } from "./icons";
@@ -163,7 +164,7 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
             <button onClick={() => setDateISO(today)} className={`chip ${dateISO === today ? "is-selected" : ""}`}>Today</button>
             <button onClick={() => setDateISO(addDays(today, -1))} className={`chip ${dateISO === addDays(today, -1) ? "is-selected" : ""}`}>Yesterday</button>
           </div>
-          <input className="input" type="date" min={minDate} max={today} value={dateISO} onChange={(e) => setDateISO(e.target.value || today)} />
+          <DateField min={minDate} max={today} value={dateISO} placeholder="Today" onChange={(v) => setDateISO(v || today)} />
           <p className="mt-1.5 text-xs text-muted">{fmtFullDate(dateISO)}</p>
         </div>
 
