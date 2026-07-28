@@ -198,7 +198,7 @@ export function WorkoutPlayer({ workout, plan, onClose }: { workout: Workout; pl
             <button
               onClick={() => { haptic("medium"); setPlaying((p) => !p); }}
               aria-label={playing ? "Pause" : "Play"}
-              className="grid h-20 w-20 place-items-center rounded-full text-3xl text-white accent-gradient active:scale-95"
+              className="grid h-20 w-20 place-items-center rounded-full text-3xl text-on-accent accent-gradient active:scale-95"
             >
               {playing ? "❚❚" : "▶"}
             </button>

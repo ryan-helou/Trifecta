@@ -55,7 +55,7 @@ export function PlanTab() {
               data-w={w.index}
               onClick={() => { haptic("select"); setSel(w.index); }}
               className={`flex-shrink-0 rounded-full px-3.5 py-2 text-[0.82rem] font-semibold transition active:brightness-110 ${
-                on ? "bg-accent text-white" : "border border-line bg-surface-2 text-muted"
+                on ? "bg-accent text-on-accent" : "border border-line bg-surface-2 text-muted"
               } ${isCur && !on ? "ring-1 ring-accent/45" : ""}`}
             >
               {w.isRaceWeek ? (

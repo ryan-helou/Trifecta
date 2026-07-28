@@ -190,7 +190,7 @@ function FriendRow({ card, today, onKudos, onUnfollow }: { card: FeedCard; today
 
 function Avatar({ name }: { name: string }) {
   return (
-    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full accent-gradient font-display text-sm font-bold text-white">
+    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full accent-gradient font-display text-sm font-bold text-on-accent">
       {name[0]?.toUpperCase()}
     </div>
   );

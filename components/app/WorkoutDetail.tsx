@@ -65,7 +65,7 @@ function RepBlock({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; un
   const reps = seg.repeat ?? 1;
   return (
     <div className="py-1">
-      <div className="mb-1 inline-flex items-center gap-1.5 rounded-md bg-accent px-2 py-[3px] text-[11px] font-semibold text-white">
+      <div className="mb-1 inline-flex items-center gap-1.5 rounded-md bg-accent px-2 py-[3px] text-[11px] font-semibold text-on-accent">
         <RepeatGlyph /> {reps} ×
       </div>
       <div className="border-l-2 border-line pl-3.5">
@@ -244,7 +244,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
               {canGuide && !done && (
                 <button
                   onClick={() => { haptic("medium"); setPlaying(true); }}
-                  className="btn accent-gradient w-full py-3.5 text-base font-semibold text-white"
+                  className="btn accent-gradient w-full py-3.5 text-base font-semibold text-on-accent"
                 >
                   ▶ Start guided session
                 </button>

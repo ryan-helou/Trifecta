@@ -36,6 +36,9 @@
 
   /* the "accent" is simply black — solid ink for buttons + active states */
   --accent: #111111;
+  /* what sits ON the accent. A token, not a literal: in dark mode the accent
+     inverts to near-white, and any hardcoded white text on it disappears. */
+  --on-accent: #ffffff;
   --accent-2: #000000; /* pressed */
   --accent-soft: #333333; /* hover (lifted ink) */
 
@@ -87,6 +90,7 @@
     --accent: #f4f4f2;
     --accent-2: #ffffff;
     --accent-soft: #d8d8d4;
+    --on-accent: #0d0d0e; /* the ink inverts, so what sits on it must too */
 
     --sun: #a0a09c;
     --tide: #a0a09c;
@@ -136,6 +140,7 @@
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
   --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
   --color-sun: var(--sun);
   --color-tide: var(--tide);
 
@@ -242,7 +247,7 @@ body {
   cursor: pointer; user-select: none;
 }
 .btn:active { transform: translateY(0.5px); }
-.btn-primary { background: var(--accent); color: #ffffff; }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
 .btn-primary:hover { background: var(--accent-soft); }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
 .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
@@ -275,7 +280,7 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 .chip.is-selected {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
