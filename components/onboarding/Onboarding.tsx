@@ -27,6 +27,10 @@ interface Draft {
   raceLocation?: string;
   raceId?: string;
   raceDateISO?: string;
+  // explicit "I haven't got a date yet". The race step says the plan counts back from
+  // race day, so advancing with the field blank used to build a rolling block without
+  // ever saying so. Now it's a choice the athlete makes, with the consequence stated.
+  raceDateUnknown?: boolean;
   // when the athlete wants the plan to begin — default (undefined) is today.
   startDateISO?: string;
   level?: Level;
@@ -88,6 +92,23 @@ function suggestFrequency(level?: Level, raceType?: RaceType): Draft["perSport"]
 // The per-sport counts actually used: the athlete's own, or our suggestion in auto mode.
 function resolvePerSport(d: Draft): Draft["perSport"] {
   return d.autoFrequency ? suggestFrequency(d.level, d.raceType) : d.perSport;
+}
+
+// Physiological bounds for the three typed benchmarks. Blank stays perfectly fine —
+// these exist only to stop a number no human produces. A mistyped 9999 W FTP was
+// accepted without a murmur and would then have set every bike target for four
+// months, so the guard names the plausible range instead of silently clamping.
+const BENCHMARKS = [
+  { key: "ftp", label: "Bike FTP", min: 40, max: 600, typical: "Most age-groupers are 120–300 W" },
+  { key: "thresholdHr", label: "Threshold HR", min: 90, max: 220, typical: "Usually 140–185 bpm" },
+  { key: "maxHR", label: "Max HR", min: 100, max: 230, typical: "Usually 170–200 bpm" },
+] as const;
+
+type Benchmark = (typeof BENCHMARKS)[number];
+
+/** Blank is valid; a number is valid only inside the physiological range. */
+function inRange(v: number | undefined, b: { min: number; max: number }): boolean {
+  return v == null || (v >= b.min && v <= b.max);
 }
 
 function parseTime(str: string): number | null {
@@ -209,6 +230,18 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
     saveDraft(draft, idx);
   }, [draft, idx]);
 
+  // Start every step at the top, and drop the keyboard on the way out.
+  //
+  // Scroll position used to carry across steps, so advancing from a long screen landed
+  // you halfway down the next one with its heading tucked under the clock and the
+  // Dynamic Island — it reads as a rendering fault, not as "you are scrolled". And
+  // because the race-search field was never blurred, iOS kept its autocorrect bubble
+  // floating over the next two steps' labels.
+  useEffect(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    window.scrollTo(0, 0);
+  }, [idx]);
+
   const step = STEPS[idx];
   const isCustom = draft.raceType === "custom";
   const perSport = resolvePerSport(draft);
@@ -290,17 +323,47 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   const next = () => setIdx((i) => skip(1, i));
   const back = () => setIdx((i) => skip(-1, i));
 
-  // Every question is skippable — Continue is always available. The only guard is a
-  // broken custom race (zero distances), which the athlete actively opened. Skipped
-  // answers fall back to sensible defaults in finalProfile (goal → fitness, level →
-  // intermediate, no date → rolling fitness block), and the in-app "finish your
-  // profile" nudge invites them to fill the important ones later.
+  // Almost every question is skippable, and Continue stays available for those. The
+  // exceptions are the answers the plan is literally constructed from, where silently
+  // advancing produced a plan for no race on no date and never said so — the screens
+  // themselves promise "this shapes the whole plan" and "your plan counts back from
+  // here", so letting them through blank was the screen contradicting itself.
+  //
+  // None of these is a dead end. "Just get fitter" IS the skip for the race question,
+  // and the date step carries an explicit "I don't know it yet" that states what
+  // happens instead. Everything else still falls back to a sensible default.
   const canNext = (() => {
     switch (step) {
+      case "race":
+        return !!draft.raceType;
       case "custom":
         return draft.custom.swimM > 0 && draft.custom.bikeM > 0 && draft.custom.runM > 0;
+      case "date":
+        return draft.raceDateUnknown || (!!draft.raceDateISO && draft.raceDateISO > todayISO());
+      case "prs":
+        // a benchmark outside human range would silently mis-set four months of
+        // targets; blank is always fine, absurd is not
+        return BENCHMARKS.every((b) => inRange(draft[b.key], b));
       default:
         return true;
+    }
+  })();
+
+  const blockedReason = (() => {
+    if (canNext) return null;
+    switch (step) {
+      case "race":
+        return "Pick a race — or “Just get fitter” if you haven't got one.";
+      case "custom":
+        return "Enter a distance for all three sports.";
+      case "date":
+        return "Pick a date in the future, or tell us you don't know it yet.";
+      case "prs": {
+        const bad = BENCHMARKS.find((b) => !inRange(draft[b.key], b));
+        return bad ? `${bad.label} looks off — ${bad.typical.toLowerCase()}. Fix it or clear the field.` : null;
+      }
+      default:
+        return null;
     }
   })();
 
@@ -382,22 +445,48 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
         </div>
       </div>
 
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-6 py-6">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-6 pt-6 pb-2">
+        {/* `my-auto` (not justify-center) vertically centres a short step in the space
+            between the progress header and the thumb-anchored buttons — the race-date
+            and level steps were leaving ~45% of the screen blank below their content
+            and read as half-rendered. Auto margins collapse to zero once a step is
+            taller than the space (health screening, review), so those still start at
+            the top and scroll normally; justify-center would have clipped their heads. */}
         <div key={step} className="animate-fade-up flex flex-1 flex-col">
+          <div className="my-auto w-full">
           {step === "race" && <RaceStep draft={draft} set={setDraft} />}
           {step === "custom" && <CustomStep draft={draft} set={setDraft} />}
           {step === "date" && <DateStep draft={draft} set={setDraft} />}
           {step === "level" && <LevelStep draft={draft} set={setDraft} />}
           {step === "frequency" && <FrequencyStep draft={draft} set={setDraft} total={totalSessions} />}
           {step === "strength" && <StrengthStep draft={draft} set={setDraft} />}
-          {step === "schedule" && <ScheduleStep draft={draft} set={setDraft} />}
+          {step === "schedule" && <ScheduleStep draft={draft} set={setDraft} total={totalSessions} />}
           {step === "prs" && <PRStep draft={draft} set={setDraft} parseTime={parseTime} />}
           {step === "health" && <HealthStep draft={draft} set={setDraft} />}
           {step === "injuries" && <InjuriesStep draft={draft} set={setDraft} />}
           {step === "review" && <ReviewStep draft={draft} total={totalSessions} profile={finalProfile} />}
+          </div>
         </div>
 
-        <div className="mt-6 flex items-center gap-3">
+        {/* Sticky, and padded clear of the home indicator — two problems in one.
+            Continue used to sit at the end of a long document: on tall steps it was
+            below the fold entirely, and once you scrolled to it, it landed in the
+            home-indicator strip where iOS claims the touch. Taps there either did
+            nothing or fired the home gesture and threw the athlete out of the app,
+            which from the outside looks exactly like "it crashes when I press
+            Continue". The inset is additive, not max(), so there is always real
+            clearance whether or not the WebView reports a safe area. */}
+        <div
+          className="sticky bottom-0 z-20 -mx-6 mt-4 border-t border-line bg-background px-6 pt-3"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.9rem)" }}
+        >
+          {/* A greyed-out Continue with no explanation is its own kind of dead end —
+              say which answer is missing. */}
+          {!canNext && blockedReason && (
+            <p className="mb-2.5 text-center text-sm text-muted">{blockedReason}</p>
+          )}
+
+          <div className="flex items-center gap-3">
           {idx > 0 && (
             <button onClick={back} className="btn btn-ghost px-5 py-3">
               Back
@@ -412,6 +501,7 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
               Continue
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>
@@ -469,7 +559,12 @@ function AccountStep({
 
   return (
     <div className="flex flex-1 flex-col safe-t">
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-6 py-8">
+      {/* same bottom inset as the questionnaire: the submit button must not land in
+          the home-indicator strip, where iOS eats the touch */}
+      <div
+        className="mx-auto flex w-full max-w-md flex-1 flex-col px-6 pt-8"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)" }}
+      >
         <div className="animate-fade-up">
           <div className="eyebrow text-[0.78rem] text-accent">Your plan is ready</div>
           <h2 className="mt-2 font-display text-3xl font-semibold leading-tight tracking-tight">
@@ -747,16 +842,26 @@ function CustomStep({ draft, set }: StepProps) {
 }
 
 function DateStep({ draft, set }: StepProps) {
-  const min = addDays(todayISO(), 14);
+  const today = todayISO();
+  const tight = addDays(today, 14);
+  const date = draft.raceDateISO;
+  // a date at or before today isn't a race day — the native picker can commit one when
+  // it's dismissed rather than cancelled, so say so instead of counting back from it
+  const inPast = !!date && date <= today;
+  const weeks = date && !inPast ? Math.round((Date.parse(date) - Date.parse(today)) / (7 * 864e5)) : 0;
+
   return (
     <div>
-      <Head title="When's race day?" sub="Your plan counts back from here — with the right taper built in." />
+      <Head
+        title="When's race day?"
+        sub="Your plan counts back from here, so the build lands at the right time and the last two weeks taper — training drops off so you arrive fresh instead of tired."
+      />
       <DateField
         className="text-lg"
-        min={addDays(todayISO(), 1)}
-        value={draft.raceDateISO ?? ""}
+        min={addDays(today, 1)}
+        value={date ?? ""}
         placeholder="Pick your race date"
-        onChange={(v) => set((d) => ({ ...d, raceDateISO: v }))}
+        onChange={(v) => set((d) => ({ ...d, raceDateISO: v || undefined, raceDateUnknown: false }))}
       />
       {draft.raceName && (
         <p className="mt-3 text-sm text-muted">
@@ -764,14 +869,41 @@ function DateStep({ draft, set }: StepProps) {
           official race page, then adjust if needed.
         </p>
       )}
-      {draft.raceDateISO && (
+      {date && !inPast && (
         <p className="mt-3 text-sm text-muted">
-          Racing on <span className="font-semibold text-foreground">{fmtFullDate(draft.raceDateISO)}</span>.
+          Racing on <span className="font-semibold text-foreground">{fmtFullDate(date)}</span> — that&apos;s{" "}
+          <span className="font-semibold text-foreground">{weeks} weeks</span> of training from today.
         </p>
       )}
-      {draft.raceDateISO && draft.raceDateISO < min && (
-        <p className="mt-2 text-sm text-warning">That’s a tight timeline — we’ll compress the plan and keep you safe.</p>
+      {inPast && (
+        <p className="mt-3 text-sm" style={{ color: "var(--danger)" }}>
+          That date has already been and gone. Pick your race day to carry on.
+        </p>
       )}
+      {date && !inPast && date < tight && (
+        <p className="mt-2 text-sm text-warning">
+          That&apos;s a tight timeline — we&apos;ll compress the plan and keep you safe.
+        </p>
+      )}
+
+      {/* The explicit skip. Advancing with an empty field used to build a rolling block
+          with no mention of it, on a screen that had just said the plan counts back
+          from race day. Now the trade is stated and chosen. */}
+      <button
+        onClick={() =>
+          set((d) => ({ ...d, raceDateUnknown: !d.raceDateUnknown, raceDateISO: d.raceDateUnknown ? d.raceDateISO : undefined }))
+        }
+        aria-pressed={!!draft.raceDateUnknown}
+        className={`mt-5 w-full rounded-2xl border p-4 text-left transition ${
+          draft.raceDateUnknown ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2 hover:bg-surface-3"
+        }`}
+      >
+        <div className="font-display font-semibold">I don&apos;t know my race date yet</div>
+        <div className="mt-0.5 text-sm text-muted">
+          We&apos;ll build a rolling block that keeps your fitness climbing. Add the date in your profile whenever you
+          have it and the plan re-shapes around it — including the taper.
+        </div>
+      </button>
     </div>
   );
 }
@@ -815,6 +947,22 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
     { key: "bike", label: "Bike", icon: "bike" },
     { key: "run", label: "Run", icon: "run" },
   ];
+
+  // Sports set to zero that the athlete has to race anyway (or has just named as their
+  // weakest). Warned about, never blocked — no pool is a real constraint.
+  const racing = draft.raceType && draft.raceType !== "fitness";
+  const legName: Record<keyof Draft["perSport"], string> = { swim: "swim", bike: "bike", run: "run" };
+  const gaps = (Object.keys(legName) as (keyof Draft["perSport"])[])
+    .filter((k) => ps[k] === 0 && (racing || draft.focusDiscipline === k))
+    .map((k) => ({
+      key: k,
+      label: legName[k],
+      why:
+        draft.focusDiscipline === k
+          ? `You told us the ${legName[k]} is your weakest sport, and you've set it to zero a week. We can't build it if we never train it — even one session keeps it moving.`
+          : `Your race has a ${legName[k]} leg, and there's nothing scheduled for it. We'll plan the other two, but you'll turn up to the ${legName[k]} untrained.`,
+    }));
+
   return (
     <div>
       <Head title="How often for each sport?" sub="Set your swim, bike, and run sessions a week — or let us pick the mix for you." />
@@ -862,6 +1010,22 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
         {total} session{total === 1 ? "" : "s"} a week{total > 7 ? " — we'll stack some as doubles" : ""}
         {draft.strength.enabled ? " (incl. strength)" : ""}
       </p>
+
+      {/* Zero sessions in a sport you have to race is a decision, not a typo — but it
+          was accepted in total silence, and the athlete most likely to set it is the one
+          avoiding the leg that scares them. Say it out loud; don't block it. */}
+      {gaps.map((g) => (
+        <div
+          key={g.key}
+          className="animate-fade-up mt-3 rounded-2xl border p-3.5"
+          style={{ borderColor: "var(--warning)", background: "color-mix(in oklab, var(--warning) 10%, transparent)" }}
+        >
+          <div className="text-sm font-semibold" style={{ color: "var(--warning)" }}>
+            No {g.label.toLowerCase()} sessions
+          </div>
+          <p className="mt-1 text-sm text-muted">{g.why}</p>
+        </div>
+      ))}
       <div className="mt-6">
         <div className="mb-2 eyebrow text-[0.72rem]">Which sport is your weakness? (optional)</div>
         <div className="flex gap-2">
@@ -902,7 +1066,10 @@ function StrengthStep({ draft, set }: StepProps) {
   const upd = (patch: Partial<Draft["strength"]>) => set((d) => ({ ...d, strength: { ...d.strength, ...patch } }));
   return (
     <div>
-      <Head title="Add resistance training?" sub="Strength work keeps you durable and powerful — optional, but it pays off." />
+      <Head
+        title="Add resistance training?"
+        sub="Strength work keeps you durable and powerful — optional, but it pays off. It costs real time, so here's the number up front."
+      />
       <div className="grid grid-cols-2 gap-2.5">
         <button
           onClick={() => upd({ enabled: true })}
@@ -930,6 +1097,13 @@ function StrengthStep({ draft, set }: StepProps) {
           <div>
             <div className="mb-2 eyebrow text-[0.72rem]">Days a week</div>
             <Stepper label="Strength days" icon="strength" value={s.daysPerWeek} min={1} max={4} onChange={(n) => upd({ daysPerWeek: n })} />
+            {/* "Yes, include it" quietly added sessions on top of the swim/bike/run
+                count — and on this screen we haven't even asked about their time yet. */}
+            <p className="mt-2 text-xs text-muted">
+              That&apos;s <span className="font-semibold text-foreground">{s.daysPerWeek} more session
+              {s.daysPerWeek === 1 ? "" : "s"} a week</span> on top of your swim, bike and run — roughly{" "}
+              {s.daysPerWeek * 45} min. We keep them clear of your hardest days.
+            </p>
           </div>
           <div>
             <div className="mb-2 eyebrow text-[0.72rem]">Which split?</div>
@@ -959,7 +1133,7 @@ function StrengthStep({ draft, set }: StepProps) {
   );
 }
 
-function ScheduleStep({ draft, set }: StepProps) {
+function ScheduleStep({ draft, set, total }: StepProps & { total: number }) {
   const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const eq = draft.equipment;
   const toggleEq = (k: keyof Draft["equipment"]) => set((d) => ({ ...d, equipment: { ...d.equipment, [k]: !d.equipment[k] } }));
@@ -1026,30 +1200,64 @@ function ScheduleStep({ draft, set }: StepProps) {
         <p className="mt-2 text-xs text-muted">The day you have the most time — we&apos;ll anchor your long ride here and the long run the day after.</p>
       </div>
 
+      {/* These are on by default and turning one off changes every session in that
+          sport, but "on" and "off" used to differ by a single hairline border — on the
+          same screen where the rest-day chips fill solid. You could not tell what was
+          selected. Now the state is filled, ticked, and written out in words. */}
       <div className="mb-5">
         <div className="mb-2 eyebrow text-[0.72rem]">What can you access?</div>
         <div className="flex gap-2">
-          {equip.map((e) => (
-            <button
-              key={e.key}
-              onClick={() => toggleEq(e.key)}
-              className={`flex-1 rounded-2xl border py-3 text-center transition ${
-                eq[e.key] ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2"
-              }`}
-            >
-              <div className="flex justify-center"><Icon name={e.icon} size={22} /></div>
-              <div className="mt-1 text-xs font-semibold">{e.label}</div>
-            </button>
-          ))}
+          {equip.map((e) => {
+            const on = eq[e.key];
+            return (
+              <button
+                key={e.key}
+                onClick={() => toggleEq(e.key)}
+                role="switch"
+                aria-checked={on}
+                aria-label={`${e.label}: ${on ? "yes" : "no"}`}
+                className={`relative flex-1 rounded-2xl border py-3 text-center transition ${
+                  on ? "border-accent bg-accent text-on-accent" : "border-line bg-surface-2 text-muted"
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className={`absolute right-2 top-2 text-[0.7rem] font-bold ${on ? "opacity-100" : "opacity-0"}`}
+                >
+                  ✓
+                </span>
+                <div className="flex justify-center"><Icon name={e.icon} size={22} /></div>
+                <div className="mt-1 text-xs font-semibold">{e.label}</div>
+                <div className="text-[0.65rem] font-semibold uppercase tracking-wide opacity-70">
+                  {on ? "Yes" : "No"}
+                </div>
+              </button>
+            );
+          })}
         </div>
+        <p className="mt-2 text-xs text-muted">
+          Tap to turn one off. No pool means open-water and dryland swim work instead; no trainer keeps rides
+          outdoors; no gym moves strength to bodyweight.
+        </p>
       </div>
 
-      <NumFieldOpt
-        label="Cap my weekly hours at (optional)"
-        unit="hrs"
-        value={draft.weeklyHoursCap}
-        onChange={(n) => set((d) => ({ ...d, weeklyHoursCap: n }))}
-      />
+      {/* For a time-crunched athlete this is the single most consequential field on the
+          screen, and it was an unlabelled optional number at the very bottom that said
+          nothing back. It now states what it does and reacts to what they type. */}
+      <div className="mb-5 rounded-2xl border border-line bg-surface-2 p-4">
+        <div className="mb-2 eyebrow text-[0.72rem]">How much time have you actually got?</div>
+        <NumFieldOpt
+          label="Cap my weekly hours at (optional)"
+          unit="hrs"
+          value={draft.weeklyHoursCap}
+          onChange={(n) => set((d) => ({ ...d, weeklyHoursCap: n }))}
+        />
+        <p className="mt-2 text-xs text-muted">
+          {draft.weeklyHoursCap
+            ? `We'll keep every week under ${draft.weeklyHoursCap} h — trimming the longest sessions first, and cutting volume before intensity. That's about ${Math.round((draft.weeklyHoursCap * 60) / Math.max(1, total))} min per session across your ${total}.`
+            : "Leave it blank and we'll size the weeks from your session count. Set it and we'll never write a week you haven't got time for — this is the honest answer to “I can't fit this in”."}
+        </p>
+      </div>
 
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between">
@@ -1130,7 +1338,10 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
 
   return (
     <div>
-      <Head title="Your personal bests" sub="Optional, but the sharper your pace targets. Tap a preset or type any distance. Skip any you don't know." />
+      <Head
+        title="Your personal bests"
+        sub="All optional — the more you fill in, the sharper your pace targets. Tap a preset or type any distance, and skip anything you don't know."
+      />
 
       {/* units — sets how the whole app shows distance & pace */}
       <div className="mb-4 flex items-center justify-between">
@@ -1249,17 +1460,73 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
         </div>
       </div>
 
+      {/* Every one of these was a bare label with a unit. FTP in particular was named
+          three times and defined none — and the one "you can leave this blank" line on
+          the screen was attached to heart rate, so an athlete with no power meter had
+          no idea the field was skippable. They invent a number, and it silently sets
+          every bike target for the whole plan. */}
       <div className="grid grid-cols-2 gap-3">
-        <NumFieldOpt label="Bike FTP" unit="W" value={draft.ftp} onChange={(n) => set((d) => ({ ...d, ftp: n }))} />
-        <NumFieldOpt label="Threshold HR" unit="bpm" value={draft.thresholdHr} onChange={(n) => set((d) => ({ ...d, thresholdHr: n }))} />
-        <NumFieldOpt label="Max HR" unit="bpm" value={draft.maxHR} onChange={(n) => set((d) => ({ ...d, maxHR: n }))} />
+        <NumFieldOpt
+          label="Bike FTP"
+          unit="W"
+          value={draft.ftp}
+          bounds={BENCHMARKS[0]}
+          onChange={(n) => set((d) => ({ ...d, ftp: n }))}
+        />
+        <NumFieldOpt
+          label="Threshold HR"
+          unit="bpm"
+          value={draft.thresholdHr}
+          bounds={BENCHMARKS[1]}
+          onChange={(n) => set((d) => ({ ...d, thresholdHr: n }))}
+        />
+        <NumFieldOpt
+          label="Max HR"
+          unit="bpm"
+          value={draft.maxHR}
+          bounds={BENCHMARKS[2]}
+          onChange={(n) => set((d) => ({ ...d, maxHR: n }))}
+        />
       </div>
-      <p className="mt-2 text-xs text-muted">Your FTP still powers bike pacing — the PR is a benchmark we track your fitness against. Threshold HR (your average HR over a hard, steady 20–30 min effort) sets your heart-rate zones, just like FTP sets bike zones. No test yet? Leave it blank and we'll estimate it from your max HR.</p>
+
+      <div className="mt-3 space-y-2 rounded-2xl border border-line bg-surface-2 p-4 text-xs leading-relaxed text-muted">
+        <p>
+          <span className="font-semibold text-foreground">Bike FTP</span> — functional threshold power: roughly the
+          power in watts you could hold flat out for an hour. It sets your bike zones.{" "}
+          <span className="font-semibold text-foreground">
+            No power meter, or never tested? Leave it blank.
+          </span>{" "}
+          We&apos;ll pace your rides by heart rate and perceived effort instead, and you can add it later.
+        </p>
+        <p>
+          <span className="font-semibold text-foreground">Threshold HR</span> — your average heart rate over a hard,
+          steady 20–30 min effort. It sets your heart-rate zones the way FTP sets bike zones. Blank is fine; we&apos;ll
+          estimate from your max HR.
+        </p>
+        <p>
+          <span className="font-semibold text-foreground">Max HR</span> — the highest number you&apos;ve genuinely seen
+          on a watch. Blank is fine; we&apos;ll estimate it from your age bracket.
+        </p>
+      </div>
     </div>
   );
 }
 
-function NumFieldOpt({ label, value, unit, onChange }: { label: string; value?: number; unit: string; onChange: (n: number | undefined) => void }) {
+function NumFieldOpt({
+  label,
+  value,
+  unit,
+  bounds,
+  onChange,
+}: {
+  label: string;
+  value?: number;
+  unit: string;
+  /** when given, a value outside it is flagged in place (and blocks Continue) */
+  bounds?: Benchmark;
+  onChange: (n: number | undefined) => void;
+}) {
+  const bad = !!bounds && !inRange(value, bounds);
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-xs font-semibold text-muted">{label}</span>
@@ -1270,10 +1537,17 @@ function NumFieldOpt({ label, value, unit, onChange }: { label: string; value?: 
           inputMode="numeric"
           value={value ?? ""}
           placeholder="—"
+          aria-invalid={bad || undefined}
+          style={bad ? { borderColor: "var(--danger)" } : undefined}
           onChange={(e) => { const n = Number(e.target.value); onChange(e.target.value !== "" && n > 0 ? n : undefined); }}
         />
         <span className="text-xs text-muted">{unit}</span>
       </div>
+      {bad && bounds && (
+        <span className="text-xs" style={{ color: "var(--danger)" }}>
+          {bounds.typical}. Clear it if you&apos;re not sure.
+        </span>
+      )}
     </label>
   );
 }
@@ -1293,7 +1567,9 @@ const HEALTH_ITEMS: { id: string; q: string }[] = [
   { id: "heart", q: "Has a doctor ever told you that you have a heart condition?" },
   { id: "chest", q: "Do you get pain or tightness in your chest when you're active?" },
   { id: "dizzy", q: "Do you ever get dizzy, lose your balance, or black out?" },
-  { id: "joint", q: "Do you have a bone or joint problem that gets worse with activity?" },
+  // "bone or joint" made an athlete with shin splints stop and wonder whether that
+  // even counted. Name the soft-tissue cases so the answer is obvious.
+  { id: "joint", q: "Do you have a bone, joint, tendon or muscle problem — shin splints, a bad knee, a dodgy back — that gets worse with activity?" },
   { id: "meds", q: "Are you on prescribed medication for your blood pressure or heart?" },
   { id: "other", q: "Any other reason a doctor would tell you not to train right now?" },
 ];
@@ -1428,13 +1704,17 @@ function InjuriesStep({ draft, set }: StepProps) {
 
   return (
     <div>
+      {/* History matters as much as what hurts today: a shin-splint episode two years
+          ago is a recurrence risk the engine should ramp around, and it previously had
+          nowhere to go — the health screen asks only about a CURRENT problem. Both now
+          go in the same box, because two textareas is two chances to skip. */}
       <Head
         title="Any injuries or aches?"
-        sub="Type it like you'd text a coach — knees, shoulders, a dodgy back, whatever. We'll build the plan around it."
+        sub="Type it like you'd text a coach — what's bothering you now, and anything that's flared up before. We'll build the plan around it."
       />
       <textarea
         className="input min-h-[110px] resize-none"
-        placeholder="e.g. My left knee gets sore on long runs, and my right shoulder aches after hard swim sets."
+        placeholder="e.g. My left knee gets sore on long runs. Had shin splints a couple of years ago that took months to settle."
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -1481,7 +1761,9 @@ function InjuriesStep({ draft, set }: StepProps) {
       )}
 
       <p className="mt-5 text-xs text-muted">
-        Nothing bothering you? Just leave it blank and continue. Trifecta isn’t a medical service — see a professional for real pain.
+        Nothing bothering you and nothing in the past? Leave it blank and continue. Past injuries don&apos;t restrict
+        your plan — we just ramp those sports more carefully. Trifecta isn&apos;t a medical service; see a
+        professional for real pain.
       </p>
     </div>
   );
@@ -1528,7 +1810,14 @@ function ReviewStep({ draft, total, profile }: { draft: Draft; total: number; pr
   const ps = resolvePerSport(draft);
   const rows: [string, string][] = [
     [fitness ? "Goal" : "Race", race],
-    ["Date", fitness ? "No race — training for fitness" : draft.raceDateISO ? fmtFullDate(draft.raceDateISO) : "—"],
+    [
+      "Date",
+      fitness
+        ? "No race — training for fitness"
+        : draft.raceDateISO
+        ? fmtFullDate(draft.raceDateISO)
+        : "Not set yet — rolling block",
+    ],
     ["Starts", draft.startDateISO && draft.startDateISO > todayISO() ? fmtFullDate(draft.startDateISO) : "Today"],
     ["Level", draft.level ?? "intermediate"],
     [
