@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "./icons";
+import { IS_NATIVE } from "@/lib/runtime";
 
 interface BIPEvent extends Event {
   prompt(): Promise<void>;
@@ -14,6 +15,8 @@ export function InstallHint() {
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
+    // already IN the native app — telling them to "Add to Home Screen from Safari" is nonsense
+    if (IS_NATIVE) { setInstalled(true); return; }
     const standalone =
       window.matchMedia?.("(display-mode: standalone)").matches ||
       // @ts-expect-error iOS Safari

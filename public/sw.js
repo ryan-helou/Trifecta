@@ -2,7 +2,7 @@
 // The cache name carries a per-build id (stamped by scripts/stamp-sw.mjs at
 // build time) so the browser sees this file change on every deploy and swaps in
 // the new worker — that's what lets the installed app actually update.
-const CACHE = "trifecta-1785256877131";
+const CACHE = "trifecta-1785257558839";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

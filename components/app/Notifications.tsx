@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
+import { track } from "@/lib/analytics";
 import {
   NotifPrefs,
   clearReminders,
@@ -14,6 +15,7 @@ import {
   requestNotif,
   saveNotifPrefs,
   triggersSupported,
+  syncNativePermission,
 } from "@/lib/notify";
 
 function hourLabel(h: number): string {
@@ -28,10 +30,14 @@ export function Notifications() {
   const toast = useToast();
   const [prefs, setPrefs] = useState<NotifPrefs>({ enabled: false, hour: 7 });
   const [mounted, setMounted] = useState(false);
+  const [, setPermTick] = useState(0); // re-render once the async native permission lands
 
   useEffect(() => {
     setPrefs(loadNotifPrefs());
     setMounted(true);
+    // native permission is async; resolve it in the background and re-render. Never
+    // gate `mounted` on a plugin call — if it stalls, the whole card silently vanishes.
+    void syncNativePermission().then(() => setPermTick((n) => n + 1));
   }, []);
 
   if (!mounted || !notifSupported()) return null; // hide where unsupported / pre-hydration
@@ -39,17 +45,18 @@ export function Notifications() {
   const enable = async () => {
     const p = await requestNotif();
     if (p !== "granted") {
-      toast({ text: "Allow notifications in your browser to get reminders.", tone: "warning" });
+      toast({ text: "Allow notifications to get training reminders.", tone: "warning" });
       return;
     }
     const next = { ...prefs, enabled: true };
     setPrefs(next);
     saveNotifPrefs(next);
     if (plan) await refreshReminders(plan, today, next);
+    track("notifications_enabled");
     toast({
       text: triggersSupported()
         ? "Reminders on — we'll nudge you before your sessions."
-        : "Saved. Scheduled reminders need Chrome/Android; iOS support is coming.",
+        : "Saved. Scheduled reminders need the app or Chrome/Android.",
       tone: triggersSupported() ? "success" : "default",
     });
   };
@@ -104,7 +111,7 @@ export function Notifications() {
 
         {prefs.enabled && perm === "granted" && !triggersSupported() && (
           <div className="border-t border-line px-4 py-2.5 text-xs text-muted">
-            Scheduled reminders fire on Chrome/Android. On iOS they&apos;ll arrive once web-push support lands.
+            Scheduled reminders fire in the Trifecta app and on Chrome/Android. In a mobile browser, install the app to get them.
           </div>
         )}
       </div>
