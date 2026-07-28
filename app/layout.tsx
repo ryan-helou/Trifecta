@@ -40,7 +40,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  // per-scheme, so the iOS status bar and browser chrome follow the theme instead of
+  // staying white above a dark app
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d0d0e" },
+  ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
