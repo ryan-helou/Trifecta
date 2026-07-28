@@ -37,7 +37,12 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
   # shellcheck disable=SC1090
   source ~/.nvm/nvm.sh && nvm use 22 >/dev/null
   CAP_PATH_B=1 npm run build:static
-  CAP_PATH_B=1 npx cap sync ios
+  # CAP_NO_OTA=1 disables Capgo auto-update for the test build. Without it the plugin
+  # downloads the *production* bundle a few seconds after launch and reloads the
+  # WebView — so the suite silently exercised the shipped JS instead of the code being
+  # verified, and any flow longer than ~10s got yanked back to the welcome screen
+  # mid-run. See capacitor.config.ts.
+  CAP_PATH_B=1 CAP_NO_OTA=1 npx cap sync ios
   xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator \
     -configuration Debug -derivedDataPath "$DERIVED" CODE_SIGNING_ALLOWED=NO \
     -destination "id=$UDID" build

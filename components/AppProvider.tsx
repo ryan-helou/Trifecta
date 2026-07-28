@@ -16,12 +16,25 @@ import { disableTracking, flush as flushEvents, track } from "@/lib/analytics";
 
 type Screen = "loading" | "anon" | "onboarding" | "app";
 
+/** A session read back from the server (or the offline cache) during boot. */
+type RestoredSession = { username: string; profile: Profile | null; plan: Plan | null; version: number };
+
 interface Ctx {
   screen: Screen;
   username: string | null;
   profile: Profile | null;
   plan: Plan | null;
   offline: boolean;
+  /** A session that finished restoring AFTER the athlete had already started doing
+   *  something. Never applied behind their back — see `markEngaged`. */
+  pendingSession: { username: string } | null;
+  /** Adopt the restored session, replacing whatever is on screen. */
+  adoptPendingSession(): void;
+  /** Stay where they are; the restored session is dropped for this launch. */
+  dismissPendingSession(): void;
+  /** Called the moment the athlete does something worth protecting (leaves the
+   *  welcome screen). After this, a late session restore has to ask first. */
+  markEngaged(): void;
   signup(u: string, p: string): Promise<string | null>;
   login(u: string, p: string): Promise<string | null>;
   /** create the account AND commit the just-built plan atomically — so the
@@ -45,6 +58,26 @@ export const useApp = () => {
 };
 
 const CACHE_KEY = "amatri:cache";
+
+// Marker for "this install has booted before". It lives in the WebView's localStorage,
+// which iOS deletes with the app container on uninstall — unlike the Keychain, which
+// does NOT. Without this check a delete-and-reinstall silently signs the athlete back
+// into the previous owner's account: the Keychain still holds a valid Bearer token, the
+// boot restores it, and a brand-new onboarding gets replaced by somebody else's plan.
+// (Found exactly that way: a "clean install" for testing came up logged in as the demo
+// account.) A missing marker means a fresh container, so the surviving token is stale
+// by definition — drop it before anything reads it.
+const INSTALL_KEY = "trifecta:install";
+
+function purgeTokenOnFreshInstall() {
+  try {
+    if (localStorage.getItem(INSTALL_KEY)) return;
+    clearToken();
+    localStorage.setItem(INSTALL_KEY, "1");
+  } catch {
+    /* private mode — nothing persisted, so nothing to reconcile */
+  }
+}
 
 function readCache(): { username: string; profile: Profile | null; plan: Plan | null } | null {
   try {
@@ -114,14 +147,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   });
   latestRef.current = { username, profile, plan };
 
+  // --- late session restore, made non-destructive ------------------------------
+  // `engagedRef` flips the moment the athlete leaves the welcome screen. Before that
+  // a restored session is applied silently (a returning athlete just lands in their
+  // app); after it, applying silently would destroy work in progress, so we ask.
+  const engagedRef = useRef(false);
+  const pendingRestoreRef = useRef<RestoredSession | null>(null);
+  const [pendingSession, setPendingSession] = useState<{ username: string } | null>(null);
+
+  const applyRestored = useCallback((r: RestoredSession) => {
+    versionRef.current = r.version;
+    setUsername(r.username);
+    setProfile(r.profile);
+    setPlan(r.plan);
+  }, []);
+
+  const markEngaged = useCallback(() => {
+    engagedRef.current = true;
+  }, []);
+
+  const adoptPendingSession = useCallback(() => {
+    const r = pendingRestoreRef.current;
+    pendingRestoreRef.current = null;
+    setPendingSession(null);
+    if (r) applyRestored(r);
+  }, [applyRestored]);
+
+  const dismissPendingSession = useCallback(() => {
+    pendingRestoreRef.current = null;
+    setPendingSession(null);
+  }, []);
+
   // hydrate
   useEffect(() => {
     let cancelled = false;
+    purgeTokenOnFreshInstall();
     // Never let a slow/failed boot (a hung Keychain read or API call) leave the app
-    // stuck on the loading screen — fall through to login/app after 6s no matter what.
+    // stuck on the loading screen — fall through to login/app after 3s no matter what.
+    // Landing early is now safe: a session that arrives after the athlete has started
+    // doing something goes to `pendingSession` instead of overwriting them.
     const safety = setTimeout(() => {
       if (!cancelled) setBooted(true);
-    }, 6000);
+    }, 3000);
     // If we booted offline and connectivity returns, clear the offline banner even when the
     // user only views (no save to trigger the clear) — otherwise it stuck on screen forever.
     const onOnline = () => setOffline(false);
@@ -133,21 +200,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const me = await apiMe();
         if (cancelled) return;
         if (me.authenticated && me.user) {
-          versionRef.current = me.version ?? 0;
-          setUsername(me.user.username);
           const st = me.state ?? {};
-          setProfile((st.profile as Profile) ?? null);
-          setPlan((st.plan as Plan) ?? null);
-          writeCache(me.user.username, (st.profile as Profile) ?? null, (st.plan as Plan) ?? null);
+          const restored = {
+            username: me.user.username,
+            profile: (st.profile as Profile) ?? null,
+            plan: (st.plan as Plan) ?? null,
+            version: me.version ?? 0,
+          };
+          writeCache(restored.username, restored.profile, restored.plan);
+          // The race that made onboarding feel broken: the safety timeout drops the
+          // athlete onto the welcome screen, they start answering questions, and then
+          // this resolves and swaps `screen` out from under them — ten steps of work
+          // gone, with no crash and no explanation. If they've already engaged, offer
+          // the session instead of imposing it.
+          if (engagedRef.current) {
+            pendingRestoreRef.current = restored;
+            setPendingSession({ username: restored.username });
+          } else {
+            applyRestored(restored);
+          }
         }
       } catch {
-        // offline — fall back to last cached session
+        // offline — fall back to last cached session, under the same rule: it may
+        // not evict an athlete who has already started doing something.
         const cache = readCache();
         if (cache && !cancelled) {
           setOffline(true);
-          setUsername(cache.username);
-          setProfile(cache.profile);
-          setPlan(cache.plan);
+          const restored = { ...cache, version: versionRef.current };
+          if (engagedRef.current) {
+            pendingRestoreRef.current = restored;
+            setPendingSession({ username: restored.username });
+          } else {
+            applyRestored(restored);
+          }
         }
       } finally {
         if (!cancelled) setBooted(true);
@@ -159,7 +244,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(safety);
       window.removeEventListener("online", onOnline);
     };
-  }, []);
+  }, [applyRestored]);
 
   // Capgo OTA (Path B): confirm the current bundle booted so it isn't rolled back.
   useEffect(() => {
@@ -431,7 +516,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider
-      value={{ screen, username, profile, plan, offline, signup, login, signupAndStart, logout, deleteAccount, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
+      value={{ screen, username, profile, plan, offline, pendingSession, adoptPendingSession, dismissPendingSession, markEngaged, signup, login, signupAndStart, logout, deleteAccount, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
     >
       {children}
     </AppCtx.Provider>

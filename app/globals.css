@@ -98,7 +98,10 @@
     /* disciplines — lifted for contrast on a dark field */
     --swim: #4bb5e0;
     --bike: #e0a437;
-    --run: #f0655c;
+    /* the red sat noticeably darker than its two neighbours on black — the "RUN" label
+       under the welcome chart read as dimmed next to SWIM and BIKE. Lifted to match
+       their luminance so the three legs carry equal weight. */
+    --run: #ff8177;
     --strength: #a68cf0;
     --rest: #6c6c69;
 
@@ -322,6 +325,24 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 /* safe-area padding for installed PWA on notched phones */
 .safe-b { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
 .safe-t { padding-top: max(env(safe-area-inset-top), 0px); }
+
+/* Status-bar scrim. `safe-t` pads a screen's content down past the notch, but the
+   page still SCROLLS under it — so on device the clock and battery ended up sitting
+   directly on top of cards and chips (caught on the onboarding health-screening
+   step, where "9:41" overlapped a Yes/No pill and read as a rendering bug). This
+   paints the inset with the app background so anything scrolling beneath it is
+   masked. z-40 clears the page and the bottom nav (z-30) but stays under sheets
+   (z-50) and the workout player (z-60), which own their own top edge. */
+.status-scrim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--background);
+  z-index: 40;
+  pointer-events: none;
+}
 
 /* ---------- interaction layer: sheets, toasts, tabs, gestures ---------- */
 

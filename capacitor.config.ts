@@ -19,6 +19,14 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const PATH_B = process.env.CAP_PATH_B === "1";
 
+// Local verification builds must NOT take OTA bundles. Capgo's auto-update pulls the
+// production bundle and reloads the WebView a few seconds after launch, which (a) wipes
+// whatever the athlete was doing — caught on the simulator as the login screen silently
+// reverting to the welcome screen mid-typing — and (b) means an on-device test would be
+// exercising the *shipped* JS instead of the code you just built. scripts/verify-ios.sh
+// sets this so what it tests is what's in the working tree.
+const NO_OTA = process.env.CAP_NO_OTA === "1";
+
 const config: CapacitorConfig = {
   // Bundle identifier — locked to the App Store record; do not change.
   appId: "app.trifecta.mobile",
@@ -38,7 +46,7 @@ const config: CapacitorConfig = {
           CapacitorHttp: { enabled: true },
           // Capgo OTA: auto-download a new JS/HTML/CSS bundle and apply it on the next
           // launch. lib/ota.ts calls notifyAppReady() so a good bundle isn't rolled back.
-          CapacitorUpdater: { autoUpdate: true },
+          CapacitorUpdater: { autoUpdate: !NO_OTA },
         },
       }
     : {
@@ -46,7 +54,12 @@ const config: CapacitorConfig = {
         server: { url: "https://amatri-production.up.railway.app", cleartext: false },
       }),
 
-  ios: { contentInset: "always" },
+  // `never`, NOT `always`. Every screen already pads itself with the CSS
+  // env(safe-area-inset-*) values, so letting WKWebView *also* inset its scroll view
+  // applied the notch twice: measured on an iPhone 17, content started ~134pt down
+  // (59 native + 59 CSS + 16 of our own) and roughly 15% of the screen above the fold
+  // was blank on Today, Friends and Profile. CSS is now the single source of truth.
+  ios: { contentInset: "never" },
 };
 
 export default config;

@@ -59,10 +59,17 @@ export function RaceCatalogPicker({
 
   return (
     <div>
+      {/* Race and place names aren't dictionary words, so iOS autocorrect offered a
+          "correction" for every one of them — and its bubble outlived the step, hanging
+          over the next two screens' labels because the field was never blurred. */}
       <input
         className="input"
         placeholder="Search race, city, or country…"
         value={q}
+        autoCorrect="off"
+        autoCapitalize="words"
+        spellCheck={false}
+        enterKeyHint="search"
         onChange={(e) => setQ(e.target.value)}
       />
       <div className="mt-2.5 flex gap-2">

@@ -62,6 +62,8 @@ export default function RootLayout({
       className={`${display.variable} ${body.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* masks the notch inset so scrolling content never collides with the clock */}
+        <div className="status-scrim" aria-hidden />
         {children}
         <ServiceWorker />
       </body>
