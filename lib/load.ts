@@ -18,7 +18,7 @@
 
 import { Feel, Plan, Workout, Zone } from "./types";
 import { addDays } from "./dates";
-import { creditedSeconds } from "./adapt";
+import { creditedSeconds } from "./credit";
 import { ZONES } from "./zones";
 
 // EWMA horizons (days) — the field-standard 42/7 convention, not a law.
@@ -41,6 +41,11 @@ export const FORM_BANDS = { freshMin: 5, freshMax: 25, buildingMin: -30, detrain
 
 // History gate before a form verdict exists — a one-session PMC is noise.
 export const MIN_LEDGER_DAYS = 5;
+// How far below the plan's own prescribed form an athlete must drift before the next
+// week is softened. Calibrated on simulated athletes: a compliant one measures exactly
+// 0%, a persistent +1 RPE lands near −12 to −15%, +2 RPE near −20 to −26%. Set so real
+// overreaching fires while ordinary build-phase depth does not.
+export const FORM_DEBT_EASE_PCT = -12;
 export const MIN_LOADED_SESSIONS = 2;
 
 export type LoadSource = "rpe" | "hr" | "feel" | "zone";
@@ -131,9 +136,38 @@ export function computePmc(days: DailyLoad[], seed?: { ctl: number; atl: number 
   return points;
 }
 
-/** The full PMC series for a plan through today. */
+/**
+ * The athlete's assumed starting fitness, as an average daily load.
+ *
+ * Without this the PMC starts from CTL = ATL = 0, and because CTL's time constant is
+ * 42 days it takes months to catch up — so ATL towers over CTL and TSB reads
+ * catastrophically negative for the whole early plan. Measured on a fully-compliant
+ * 70.3 athlete: form% of −247 in week 2, and still "Deep in it" at week 15. Every
+ * athlete was told they were buried from their first week, and any planning decision
+ * keyed on form would have eased everyone, forever.
+ *
+ * The engine already assumes the athlete can handle the week it prescribes them, so
+ * seed with exactly that: week one's prescribed daily load. TSB then starts near zero
+ * and measures what it should — how the athlete is tracking against *their own plan*
+ * — rather than against a fictional couch-to-70.3 cold start.
+ */
+export function seedLoad(plan: Plan): number {
+  const wk = plan.weeks[0];
+  if (!wk) return 0;
+  let total = 0;
+  for (const id of wk.workoutIds) {
+    const w = plan.workouts[id];
+    if (!w || w.discipline === "rest") continue;
+    // prescribed, not logged: zone RPE midpoint × the estimated duration
+    total += zoneRpeMid(w.primaryZone) * (w.estDurationSec / 60);
+  }
+  return total / 7;
+}
+
+/** The full PMC series for a plan through today, seeded so day one isn't a cliff. */
 export function pmc(plan: Plan, todayISO: string): PmcPoint[] {
-  return computePmc(dailyLoads(plan, todayISO));
+  const seed = seedLoad(plan);
+  return computePmc(dailyLoads(plan, todayISO), { ctl: seed, atl: seed });
 }
 
 /** Band a day's form. CTL-relative so the thresholds survive the sRPE unit scale. */
@@ -156,16 +190,62 @@ export function formStateFor(plan: Plan, todayISO: string): FormState | null {
     if (w.date <= todayISO && sessionLoad(w, lthr).load > 0) loaded++;
   }
   if (loaded < MIN_LOADED_SESSIONS) return null;
-  const today = computePmc(days)[days.length - 1];
+  // seeded, exactly as pmc() is — an unseeded fold here is what made the Form card
+  // announce "Deep in it" to every athlete from their very first week
+  const seed = seedLoad(plan);
+  const today = computePmc(days, { ctl: seed, atl: seed })[days.length - 1];
   const band = formBand(today);
   return { band, ...FORM_COPY[band], ctl: today.ctl, atl: today.atl, tsb: today.tsb };
 }
 
-/** ΔCTL over the trailing 7 days (~3-8/wk is a sane ramp; a don't-spike
- *  heuristic, deliberately NOT an ACWR ratio). */
-export function rampRate(points: PmcPoint[]): number {
-  if (points.length === 0) return 0;
-  const last = points[points.length - 1];
-  const back = points[Math.max(0, points.length - 1 - 7)];
-  return last.ctl - back.ctl;
+/**
+ * How deep the athlete actually is, versus how deep this plan MEANT to put them.
+ *
+ * "Deep in it" on its own is not a problem — it's what a build phase is for, and a
+ * compliant athlete lives there for weeks. Easing on the band alone would fight the
+ * plan. The signal worth acting on is the *deviation*: the same dates, valued once at
+ * the load the athlete actually produced and once at the load the plan prescribed. A
+ * materially lower TSB than the design called for means the work is costing more than
+ * budgeted — the cumulative version of "rising RPE for the same prescribed zone", which
+ * is the cheapest early overreaching signal there is.
+ *
+ * Returns null until there's enough history to mean anything. `deltaPct` is expressed
+ * against CTL so the sRPE unit scale cancels; negative = deeper than intended.
+ */
+export function formDeviation(
+  plan: Plan,
+  todayISO: string,
+): { actualTsb: number; plannedTsb: number; deltaPct: number } | null {
+  const actualDays = dailyLoads(plan, todayISO);
+  if (actualDays.length < MIN_LEDGER_DAYS) return null;
+  const lthr = plan.paces.hr.lthr;
+  let loaded = 0;
+  for (const w of Object.values(plan.workouts)) {
+    if (w.date <= todayISO && sessionLoad(w, lthr).load > 0) loaded++;
+  }
+  if (loaded < MIN_LOADED_SESSIONS) return null;
+
+  // the same ledger, valued at what the plan ASKED for rather than what happened
+  const prescribed = new Map<string, number>();
+  for (const d of actualDays) prescribed.set(d.dateISO, 0);
+  for (const w of Object.values(plan.workouts)) {
+    if (w.discipline === "rest" || w.date > todayISO) continue;
+    if (!prescribed.has(w.date)) continue;
+    prescribed.set(w.date, prescribed.get(w.date)! + zoneRpeMid(w.primaryZone) * (w.estDurationSec / 60));
+  }
+  const plannedDays: DailyLoad[] = actualDays.map((d) => ({ dateISO: d.dateISO, load: prescribed.get(d.dateISO) ?? 0 }));
+
+  const seed = seedLoad(plan);
+  const a = computePmc(actualDays, { ctl: seed, atl: seed });
+  const p = computePmc(plannedDays, { ctl: seed, atl: seed });
+  const last = a[a.length - 1];
+  const lastP = p[p.length - 1];
+  if (!last || !lastP) return null;
+  return {
+    actualTsb: last.tsb,
+    plannedTsb: lastP.tsb,
+    deltaPct: (100 * (last.tsb - lastP.tsb)) / Math.max(last.ctl, 1),
+  };
 }
+
+

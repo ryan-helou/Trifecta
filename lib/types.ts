@@ -87,7 +87,7 @@ export interface Workout {
   /** set when the plan reshuffles a workout */
   movedFrom?: string;
   /** why an ease overwrote this session (readiness check-in, weekly adaptation, or by hand) */
-  easedCause?: "readiness" | "missed" | "strain" | "manual";
+  easedCause?: "readiness" | "missed" | "strain" | "form" | "manual";
   /** what the session WAS before easing, so the why-line can name it */
   easedFrom?: { type: SessionType; primaryZone: Zone };
   /** original session preserved when swapped to another sport, so the swap can be undone */
@@ -343,7 +343,7 @@ export interface Plan {
   /** week indices already auto-eased by adaptation, so the banner doesn't re-nag */
   easedWeeks?: number[];
   /** why each eased week was softened — the applied suggestion's trigger + numbers (survives rebuilds) */
-  adaptations?: { weekIndex: number; cause: "missed" | "strain"; reason: string; missed: number; scheduled: number }[];
+  adaptations?: { weekIndex: number; cause: "missed" | "strain" | "form"; reason: string; missed: number; scheduled: number }[];
 }
 
 // what we persist per user

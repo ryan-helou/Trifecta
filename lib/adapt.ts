@@ -5,6 +5,11 @@ import * as W from "./workouts";
 import { generatePlan, isFitnessGoal } from "./planEngine";
 import { ZONES } from "./zones";
 import { fmtDuration } from "./format";
+import { creditedDiscipline, creditedSeconds } from "./credit";
+import { formDeviation, FORM_DEBT_EASE_PCT } from "./load";
+
+// re-exported so existing importers keep working; the definitions live in credit.ts
+export { creditedDiscipline, creditedSeconds };
 
 // ---------------------------------------------------------------------------
 // Plan adaptation. Pure functions returning a new Plan.
@@ -72,16 +77,7 @@ export function logInstead(
 }
 
 /** Discipline that a completed/logged workout should be credited to. */
-export function creditedDiscipline(w: Workout): Discipline {
-  return w.status === "swapped" ? w.loggedDiscipline ?? w.discipline : w.discipline;
-}
 
-/** Seconds a completed/logged workout should count for. */
-export function creditedSeconds(w: Workout): number {
-  if (w.actualDurationSec != null) return w.actualDurationSec; // athlete logged what they actually did
-  if (w.status === "swapped") return w.loggedDurationSec ?? w.estDurationSec ?? 0;
-  return w.estDurationSec ?? 0;
-}
 
 /** Record a post-session check-in (effort / feel / actual time & distance) and mark it complete. */
 export function logCheckin(
@@ -420,7 +416,7 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
 
 /** Which trigger eased a session — the why must distinguish "missed because life"
  *  from "felt too hard" from a low morning check-in (doc 02 §4 #11). */
-export type EaseCause = "readiness" | "missed" | "strain" | "manual";
+export type EaseCause = "readiness" | "missed" | "strain" | "form" | "manual";
 
 /** Ease the next N days: downgrade hard sessions to endurance, trim long ones. */
 export function easeUpcoming(plan: Plan, fromISODate: string, days: number, cause: EaseCause = "manual"): Plan {
@@ -484,7 +480,7 @@ export interface AdaptationSuggestion {
   reason: string;
   /** which trigger fired — "missed because life" and "felt too hard" want
    *  different coaching, so the why-line must not collapse them (doc 02 §4 #11) */
-  cause: "missed" | "strain";
+  cause: "missed" | "strain" | "form";
   missed: number;
   scheduled: number;
   avgStrain: number | null;
@@ -514,13 +510,27 @@ export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSugges
   const easeable = next.phase === "base" || next.phase === "build" || next.phase === "peak";
   const alreadyEased = (plan.easedWeeks ?? []).includes(next.index);
 
-  // EASE: fell behind, or the work is consistently overreaching.
-  if (easeable && !alreadyEased && (missRate >= 0.4 || (strains.length >= 3 && avgStrain != null && avgStrain >= 1.5))) {
-    const cause = missRate >= 0.4 ? "missed" : "strain";
+  // Cumulative fatigue debt: how far the athlete's real form has drifted BELOW what
+  // this block was designed to cost them. Being "deep in it" is not a trigger — that's
+  // what a build is — so this compares against the plan's own prescription rather than
+  // against an absolute band. A compliant athlete measures exactly 0%.
+  const deviation = formDeviation(plan, todayISO);
+  const formDebt = deviation != null && deviation.deltaPct <= FORM_DEBT_EASE_PCT;
+
+  // EASE: fell behind, the work is consistently overreaching, or fatigue has compounded
+  // further than the design intended.
+  if (
+    easeable &&
+    !alreadyEased &&
+    (missRate >= 0.4 || (strains.length >= 3 && avgStrain != null && avgStrain >= 1.5) || formDebt)
+  ) {
+    const cause = missRate >= 0.4 ? "missed" : strains.length >= 3 && avgStrain != null && avgStrain >= 1.5 ? "strain" : "form";
     const reason =
       cause === "missed"
         ? `You've missed ${missed} of ${scheduled} sessions in the last two weeks.`
-        : `Your recent sessions have felt consistently hard.`;
+        : cause === "strain"
+        ? `Your recent sessions have felt consistently hard.`
+        : `Your fatigue has run deeper than this block was designed to put you.`;
     return { kind: "ease", weekIndex: next.index, weekLabel: next.label, reason, cause, missed, scheduled, avgStrain, signals: strains.length };
   }
 
