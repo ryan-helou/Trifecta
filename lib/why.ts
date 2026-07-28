@@ -131,6 +131,8 @@ export function whyForWorkout(w: Workout, plan: Plan): WhyLine {
       return done(
         record.cause === "missed"
           ? `This week is softened${from}: you missed ${record.missed} of ${record.scheduled} sessions recently, so we rebuild rhythm before load.`
+          : record.cause === "form"
+          ? `This week is softened${from}: your fatigue has run deeper than this block was designed to put you, so we let fitness surface before adding more.`
           : `This week is softened${from}: recent sessions have felt consistently harder than prescribed, so you absorb before you push.`,
         "adaptation",
       );

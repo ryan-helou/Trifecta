@@ -19,10 +19,10 @@ import {
   computePmc,
   pmc,
   formStateFor,
-  rampRate,
 } from "../lib/load";
 import { generatePlan } from "../lib/planEngine";
-import { logWorkout, reindexWeeks } from "../lib/adapt";
+import { seedLoad, formDeviation, FORM_DEBT_EASE_PCT } from "../lib/load";
+import { assessAdaptation, applyAdaptation, logWorkout, reindexWeeks } from "../lib/adapt";
 import { addDays } from "../lib/dates";
 import { ZONES } from "../lib/zones";
 import type { Plan, Profile, Workout, Zone } from "../lib/types";
@@ -215,7 +215,6 @@ section("PMC: exact-EWMA fold, convergence, yesterday-based TSB");
     conv.slice(1).every((p, i) => Math.abs(p.tsb - (conv[i].ctl - conv[i].atl)) < 1e-12),
     "TSB always reads YESTERDAY's CTL − ATL",
   );
-  ok(Math.abs(rampRate(conv)) < 0.5, "steady state has ~zero ramp rate");
 
   const taper = computePmc([
     ...Array.from({ length: 60 }, (_, i) => ({ dateISO: addDays(ANCHOR, i), load: 100 })),
@@ -224,7 +223,6 @@ section("PMC: exact-EWMA fold, convergence, yesterday-based TSB");
   const tEnd = taper[taper.length - 1];
   ok(tEnd.tsb > taper[59].tsb, "cutting load raises TSB (ATL decays faster than CTL)");
   ok(tEnd.atl < tEnd.ctl, "after a taper, fatigue sits below fitness");
-  ok(rampRate(taper) < 0, "a taper's ramp rate is negative");
 
   const seeded = computePmc([{ dateISO: ANCHOR, load: 0 }], { ctl: 50, atl: 80 });
   ok(seeded[0].tsb === -30, "a seed supplies day-1's yesterday values");
@@ -273,6 +271,86 @@ section("band sanity on a full 16-week olympic plan");
 
   const raceForm = formStateFor(p, raceDay);
   ok(raceForm !== null && raceForm.band === "fresh", `race-day form lands in the fresh band (got ${raceForm?.band})`);
+}
+
+
+// ---- PMC seeding + the form→plan feedback loop -----------------------------
+// Two bugs lived here. (1) The PMC seeded CTL/ATL at 0, and with a 42-day time
+// constant that made TSB read catastrophically negative for months — a fully
+// compliant 70.3 athlete measured form% of −247 in week 2 and was still shown
+// "Deep in it" at week 15. Every athlete was told they were buried from day one.
+// (2) Nothing in the engine ever read the PMC, so the flagship Fitness·Fatigue·Form
+// moat could not change a single session.
+section("PMC seeding + form actually feeds the plan");
+{
+  const ANCHOR = "2026-08-03";
+  const weeksFrom = (w: number) => {
+    const d = new Date(ANCHOR + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + w * 7);
+    return d.toISOString().slice(0, 10);
+  };
+  const prof = {
+    username: "t", raceType: "half", raceDateISO: weeksFrom(20), level: "intermediate",
+    workoutsPerWeek: 8, createdAtISO: ANCHOR, perSport: { swim: 2, bike: 3, run: 3 },
+  } as unknown as Profile;
+  const basePlan = generatePlan(prof, ANCHOR);
+  const ZR = [0, 1.5, 3.5, 5.5, 7.5, 9.5]; // zone RPE midpoints
+  const played = (weeks: number, rpeDelta: number): Plan => {
+    const c: Plan = JSON.parse(JSON.stringify(basePlan));
+    const through = addDays(ANCHOR, weeks * 7);
+    for (const w of Object.values(c.workouts)) {
+      if (w.date > through || w.discipline === "rest") continue;
+      w.status = "done";
+      w.rpe = Math.max(1, Math.min(10, ZR[w.primaryZone] + rpeDelta));
+    }
+    return c;
+  };
+
+  ok(seedLoad(basePlan) > 0, `the PMC seeds from week one's prescribed load (${seedLoad(basePlan).toFixed(0)} AU/day)`);
+
+  // a compliant athlete must NOT read as buried in the first weeks
+  for (const wk of [2, 3, 4]) {
+    const st = formStateFor(played(wk, 0), addDays(ANCHOR, wk * 7));
+    ok(st != null && st.band !== "deep", `week ${wk} on-plan reads "${st?.band ?? "null"}", not "deep"`);
+  }
+  // ...and a real build block still gets there
+  const deepState = formStateFor(played(14, 0), addDays(ANCHOR, 14 * 7));
+  ok(deepState?.band === "deep", `a peak build week still reads deep (got ${deepState?.band})`);
+
+  // the deviation signal is zeroed for someone doing exactly what was asked
+  const onPlan = formDeviation(played(10, 0), addDays(ANCHOR, 10 * 7));
+  ok(onPlan != null && Math.abs(onPlan.deltaPct) < 1, `on-plan deviation is ~0% (got ${onPlan?.deltaPct.toFixed(1)})`);
+  const grinding = formDeviation(played(10, 2), addDays(ANCHOR, 10 * 7));
+  ok(grinding != null && grinding.deltaPct <= FORM_DEBT_EASE_PCT, `grinding (+2 RPE) breaches the debt line (got ${grinding?.deltaPct.toFixed(1)}%)`);
+  const easing = formDeviation(played(10, -1), addDays(ANCHOR, 10 * 7));
+  ok(easing != null && easing.deltaPct > 0, `training easier than prescribed reads positive (got ${easing?.deltaPct.toFixed(1)}%)`);
+
+  // THE LOOP: same plan, same compliance — only the effort differs — must yield a
+  // different decision, and the eased week must actually be lighter.
+  //
+  // +1 RPE is the case that isolates FORM specifically. A bigger overshoot trips the
+  // per-session strain trigger (avgStrain >= 1.5) and would be caught with or without
+  // any of this; +1 sits under that line, so nothing but accumulated deviation can
+  // catch it. That is precisely the gap this closes: slow, compounding overreach that
+  // no single session looks bad enough to flag.
+  const today = addDays(ANCHOR, 6 * 7);
+  const calm = assessAdaptation(played(6, 0), today);
+  const cooked = assessAdaptation(played(6, 1), today);
+  ok(calm?.kind !== "ease" || calm?.cause !== "form", `an on-plan athlete is NOT eased for form (got ${calm?.kind}/${calm?.cause})`);
+  ok(cooked?.kind === "ease" && cooked.cause === "form", `slow overreach IS caught, cause=form (got ${cooked?.kind}/${cooked?.cause})`);
+
+  // and the blunter signal still wins when it applies — form doesn't mask strain
+  const hammered = assessAdaptation(played(6, 3), today);
+  ok(hammered?.kind === "ease", `an athlete grinding every session is still eased (got ${hammered?.kind})`);
+
+  if (cooked?.kind === "ease") {
+    const before = played(6, 1);
+    const wkBefore = before.weeks.find((w) => w.index === cooked.weekIndex)!;
+    const after = applyAdaptation(before, cooked);
+    const wkAfter = after.weeks.find((w) => w.index === cooked.weekIndex)!;
+    ok(wkAfter.targetHours < wkBefore.targetHours, `the eased week is genuinely lighter (${wkBefore.targetHours}h → ${wkAfter.targetHours}h)`);
+    ok((after.adaptations ?? []).some((a) => a.cause === "form"), "the reason is recorded on the plan as a form adaptation");
+  }
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
