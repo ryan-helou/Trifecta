@@ -186,3 +186,17 @@ export async function apiKudos(ownerUsername: string, workoutId: string, on: boo
   });
   return { ok, ...(data as { error?: string; on?: boolean; kudos?: number }) };
 }
+
+/** Ship a batch of product events. Fire-and-forget by contract: callers never
+ *  await it for correctness, and it must never throw (jsonFetch already doesn't). */
+export async function apiTrack(
+  events: { name: string; props?: Record<string, unknown>; atISO: string }[],
+  opts?: { keepalive?: boolean },
+): Promise<{ ok: boolean; status: number }> {
+  const { ok, status } = await jsonFetch("/api/events", {
+    method: "POST",
+    body: JSON.stringify({ events }),
+    keepalive: opts?.keepalive,
+  });
+  return { ok, status };
+}

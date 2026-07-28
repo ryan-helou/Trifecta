@@ -30,7 +30,8 @@ import {
   swapDiscipline,
   unswapDiscipline,
 } from "@/lib/adapt";
-import { logReadiness } from "@/lib/readiness";
+import { logReadiness, readinessScore, READY_LOW } from "@/lib/readiness";
+import { track } from "@/lib/analytics";
 import { calibratePaces } from "@/lib/calibrate";
 import { derivePaces } from "@/lib/paces";
 import { loadNotifPrefs, refreshReminders } from "@/lib/notify";
@@ -78,23 +79,44 @@ export function AppShell() {
   const unit = profile?.unitPreference ?? "metric";
 
   const actions: UIActions = {
-    toggleDone: (id) => applyPlan(setStatus(plan, id, plan.workouts[id]?.status === "done" ? "planned" : "done")),
-    skip: (id) => applyPlan(setStatus(plan, id, "skipped")),
+    toggleDone: (id) => {
+      const w = plan.workouts[id];
+      const nowDone = w?.status !== "done";
+      if (nowDone && w) track("session_completed", { weekIndex: w.weekIndex, discipline: w.discipline, viaCheckin: false });
+      applyPlan(setStatus(plan, id, nowDone ? "done" : "planned"));
+    },
+    skip: (id) => {
+      const w = plan.workouts[id];
+      if (w) track("session_skipped", { weekIndex: w.weekIndex });
+      applyPlan(setStatus(plan, id, "skipped"));
+    },
     unskip: (id) => applyPlan(setStatus(plan, id, "planned")),
     move: (id, date) => applyPlan(moveWorkout(plan, id, date)),
     swap: (id, d) => applyPlan(swapDiscipline(plan, id, d)),
     unswap: (id) => applyPlan(unswapDiscipline(plan, id)),
     logInstead: (id, note, opts) => applyPlan(logInstead(plan, id, note, opts)),
-    logCheckin: (id, entry) => applyPlan(logCheckin(plan, id, entry)),
+    logCheckin: (id, entry) => {
+      const w = plan.workouts[id];
+      track("checkin_logged", { rpe: entry.rpe, feel: entry.feel });
+      if (w && w.status !== "done") track("session_completed", { weekIndex: w.weekIndex, discipline: w.discipline, viaCheckin: true });
+      applyPlan(logCheckin(plan, id, entry));
+    },
     logWorkout: (input) => {
       const res = logWorkout(plan, input);
       applyPlan(res.plan);
       const { plan: _p, ...view } = res;
       return view;
     },
-    rebuild: () => applyPlan(rebuildFromToday(plan, today)),
+    rebuild: () => {
+      track("plan_realigned", { missed: Object.values(plan.workouts).filter((w) => w.discipline !== "rest" && w.date < today && w.status === "planned").length });
+      applyPlan(rebuildFromToday(plan, today));
+    },
     ease: (days) => applyPlan(easeUpcoming(plan, today, days)),
-    logReadiness: (dateISO, input) => applyPlan(logReadiness(plan, dateISO, input)),
+    logReadiness: (dateISO, input) => {
+      const score = readinessScore(input);
+      track("readiness_logged", { score, eased: score < READY_LOW });
+      applyPlan(logReadiness(plan, dateISO, input));
+    },
     recalibrate: () => {
       const res = calibratePaces(plan, today);
       if (res && res.changed) {
@@ -103,7 +125,10 @@ export function AppShell() {
       }
       return res;
     },
-    adapt: (s) => applyPlan(applyAdaptation(plan, s)),
+    adapt: (s) => {
+      track("adaptation_applied", { cause: s.cause });
+      applyPlan(applyAdaptation(plan, s));
+    },
   };
 
   const missed = Object.values(plan.workouts).filter(

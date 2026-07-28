@@ -19,6 +19,7 @@ import { readinessBand } from "@/lib/readiness";
 import { calibrationDue } from "@/lib/calibrate";
 import { computeStreak } from "@/lib/stats";
 import { formStateFor } from "@/lib/load";
+import { track } from "@/lib/analytics";
 import { fmtFullDate as fullDate, addDays, dayIndexOf, fmtDayMonth, weekdayLong } from "@/lib/dates";
 
 export function TodayTab() {
@@ -102,7 +103,7 @@ export function TodayTab() {
       {/* form strip — the moat made visible; absorbs the readiness row once it exists */}
       {form && (
         <div className="animate-fade-up" style={{ animationDelay: "75ms" }}>
-          <FormStrip form={form} readiness={todayReadiness} onOpen={() => setFormOpen(true)} />
+          <FormStrip form={form} readiness={todayReadiness} onOpen={() => { track("form_opened", { band: form.band }); setFormOpen(true); }} />
         </div>
       )}
 
