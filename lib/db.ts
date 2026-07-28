@@ -39,6 +39,10 @@ export interface Store {
   createUser(username: string, passwordHash: string): Promise<UserRow>;
   getData(userId: string): Promise<AppState>;
   setData(userId: string, data: AppState): Promise<void>;
+  /** Data blob + its optimistic-concurrency version. */
+  getDataV(userId: string): Promise<{ state: AppState; version: number } | null>;
+  /** Compare-and-set write. Returns the new version, or null when expectedVersion lost. */
+  setDataIf(userId: string, data: AppState, expectedVersion: number): Promise<number | null>;
   /** Erase the user and all their data (GDPR right to erasure). */
   deleteUser(userId: string): Promise<void>;
   // Strava
@@ -98,6 +102,12 @@ class PgStore implements Store {
              created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
              updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
            )`,
+        )
+        .then(() =>
+          // existing prod table predates the column — CREATE IF NOT EXISTS won't add it
+          this.pool.query(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS data_version BIGINT NOT NULL DEFAULT 1",
+          ),
         )
         .then(() =>
           this.pool.query(
@@ -287,7 +297,28 @@ class PgStore implements Store {
 
   async setData(userId: string, data: AppState): Promise<void> {
     await this.init();
-    await this.pool.query("UPDATE users SET data = $1, updated_at = now() WHERE id = $2", [data, userId]);
+    // blind overwrite (signup/legacy clients) — still bumps the version so CAS writers see it
+    await this.pool.query(
+      "UPDATE users SET data = $1, data_version = data_version + 1, updated_at = now() WHERE id = $2",
+      [data, userId],
+    );
+  }
+
+  async getDataV(userId: string): Promise<{ state: AppState; version: number } | null> {
+    await this.init();
+    const r = await this.pool.query("SELECT data, data_version FROM users WHERE id = $1", [userId]);
+    if (!r.rows[0]) return null;
+    return { state: r.rows[0].data ?? {}, version: Number(r.rows[0].data_version) };
+  }
+
+  async setDataIf(userId: string, data: AppState, expectedVersion: number): Promise<number | null> {
+    await this.init();
+    const r = await this.pool.query(
+      `UPDATE users SET data = $1, data_version = data_version + 1, updated_at = now()
+       WHERE id = $2 AND data_version = $3 RETURNING data_version`,
+      [data, userId, expectedVersion],
+    );
+    return r.rows[0] ? Number(r.rows[0].data_version) : null;
   }
 
   async deleteUser(userId: string): Promise<void> {
@@ -310,6 +341,7 @@ export class DuplicateUsernameError extends Error {
 class MemoryStore implements Store {
   private users = new Map<string, UserRow>(); // keyed by id
   private byName = new Map<string, string>(); // lower -> id
+  private dataVersions = new Map<string, number>(); // keyed by id — mirrors users.data_version
   private strava = new Map<string, StravaConn>(); // keyed by userId
   private follows = new Set<string>(); // "followerId::followingId"
   private kudos = new Set<string>(); // "fromId::ownerId::workoutId"
@@ -329,6 +361,7 @@ class MemoryStore implements Store {
     const row: UserRow = { id, username, passwordHash, data: {} };
     this.users.set(id, row);
     this.byName.set(lower, id);
+    this.dataVersions.set(id, 1);
     return row;
   }
   async getData(userId: string): Promise<AppState> {
@@ -336,12 +369,29 @@ class MemoryStore implements Store {
   }
   async setData(userId: string, data: AppState): Promise<void> {
     const u = this.users.get(userId);
-    if (u) u.data = data;
+    if (!u) return;
+    u.data = data;
+    this.dataVersions.set(userId, (this.dataVersions.get(userId) ?? 1) + 1);
+  }
+  async getDataV(userId: string): Promise<{ state: AppState; version: number } | null> {
+    const u = this.users.get(userId);
+    if (!u) return null;
+    return { state: u.data ?? {}, version: this.dataVersions.get(userId) ?? 1 };
+  }
+  async setDataIf(userId: string, data: AppState, expectedVersion: number): Promise<number | null> {
+    const u = this.users.get(userId);
+    if (!u) return null;
+    const cur = this.dataVersions.get(userId) ?? 1;
+    if (cur !== expectedVersion) return null;
+    u.data = data;
+    this.dataVersions.set(userId, cur + 1);
+    return cur + 1;
   }
   async deleteUser(userId: string): Promise<void> {
     const u = this.users.get(userId);
     if (u) this.byName.delete(u.username.toLowerCase());
     this.users.delete(userId);
+    this.dataVersions.delete(userId);
     this.strava.delete(userId);
     for (const f of [...this.follows]) {
       const [a, b] = f.split("::");

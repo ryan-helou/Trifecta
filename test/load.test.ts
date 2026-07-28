@@ -1,0 +1,283 @@
+/**
+ * Trifecta load-math invariant tests — session-RPE credit + the daily PMC
+ * (CTL/ATL/TSB) behind the Progress trend and the Form state.
+ *
+ * Pure + deterministic (no simulator, no network, fixed date anchors). Run: `npm test`.
+ *
+ * These assert the properties doc 02 pins down: the intensity ladder resolves in
+ * order (logged RPE → device HR → feel → planned zone) with actuals outranking
+ * estimates, Foster sRPE math is exact, the daily ledger is zero-filled and derived
+ * by DATE (so kept-/logged- history survives a rebuild), the EWMA fold behaves
+ * (convergence, taper freshness, yesterday-based TSB, determinism), and a fully
+ * completed race build lands in the fresh band on race day.
+ */
+import {
+  K_CTL,
+  K_ATL,
+  sessionLoad,
+  dailyLoads,
+  computePmc,
+  pmc,
+  formStateFor,
+  rampRate,
+} from "../lib/load";
+import { generatePlan } from "../lib/planEngine";
+import { logWorkout, reindexWeeks } from "../lib/adapt";
+import { addDays } from "../lib/dates";
+import { ZONES } from "../lib/zones";
+import type { Plan, Profile, Workout, Zone } from "../lib/types";
+
+let checks = 0;
+let failures = 0;
+function ok(cond: boolean, msg: string) {
+  checks++;
+  if (!cond) {
+    failures++;
+    console.error("  ✗ " + msg);
+  }
+}
+function section(name: string) {
+  console.log("\n• " + name);
+}
+
+const ANCHOR = "2026-08-03"; // a Monday
+function weeksFrom(w: number): string {
+  const d = new Date(ANCHOR + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + w * 7);
+  return d.toISOString().slice(0, 10);
+}
+function profile(over: Partial<Profile>): Profile {
+  return {
+    username: "test",
+    raceType: "olympic",
+    raceDateISO: weeksFrom(16),
+    level: "intermediate",
+    workoutsPerWeek: 6,
+    createdAtISO: ANCHOR,
+    ...over,
+  };
+}
+const zoneMid = (z: Zone) => (ZONES[z].rpe[0] + ZONES[z].rpe[1]) / 2;
+function wk(over: Partial<Workout>): Workout {
+  return {
+    id: "w-test",
+    date: ANCHOR,
+    weekIndex: 0,
+    dayIndex: 0,
+    discipline: "run",
+    type: "endurance",
+    title: "Easy run",
+    purpose: "test",
+    segments: [],
+    estDurationSec: 3600,
+    primaryZone: 2,
+    status: "done",
+    ...over,
+  };
+}
+const LTHR = 160;
+const actuals = { source: "strava" as const, activityId: 1, avgHr: 150 }; // 93.75 %LTHR → Z3
+
+// ---- 1. intensity ladder: rpe → hr → feel → zone ----
+section("intensity ladder precedence");
+{
+  const top = sessionLoad(wk({ rpe: 7, feel: "great", actuals }), LTHR);
+  ok(top.source === "rpe" && top.rpe === 7, "logged RPE outranks device HR and feel");
+  const hr = sessionLoad(wk({ feel: "great", actuals }), LTHR);
+  ok(hr.source === "hr", "device HR outranks feel");
+  ok(hr.rpe === 5.5, `avgHr 150 @ LTHR 160 lands in the Z3 band → RPE 5.5 (got ${hr.rpe})`);
+  ok(sessionLoad(wk({ feel: "great", actuals }), null).source === "feel", "no LTHR → HR rung skipped, feel used");
+  const feel = sessionLoad(wk({ feel: "rough" }), LTHR);
+  ok(feel.source === "feel" && feel.rpe === 5.5, "feel = planned-zone mid 3.5 + rough(+2)");
+  const great = sessionLoad(wk({ feel: "great", primaryZone: 1 }), LTHR);
+  ok(great.rpe === 1, "feel rung clamps at RPE 1 (Z1 mid 1.5 + great −1.5 → floor)");
+  const zone = sessionLoad(wk({}), LTHR);
+  ok(zone.source === "zone" && zone.rpe === 3.5, "bare done session falls back to planned-zone mid");
+  ok(sessionLoad(wk({ actuals: { ...actuals, avgHr: 100 } }), LTHR).rpe === 1, "avgHr below the Z1 floor reads RPE 1");
+  ok(sessionLoad(wk({ actuals: { ...actuals, avgHr: 170 } }), LTHR).rpe === 9.5, "avgHr above LTHR reads the Z5 mid");
+}
+
+// ---- 2. duration credit: actual → logged → estimate ----
+section("credited duration ladder");
+{
+  ok(sessionLoad(wk({ actualDurationSec: 1800 }), null).minutes === 30, "actualDurationSec beats the estimate");
+  ok(sessionLoad(wk({ status: "swapped", loggedDurationSec: 1800 }), null).minutes === 30, "swapped session credits loggedDurationSec");
+  ok(
+    sessionLoad(wk({ status: "swapped", loggedDurationSec: 1800, actualDurationSec: 1200 }), null).minutes === 20,
+    "athlete-logged actual outranks the swap's logged duration",
+  );
+}
+
+// ---- 3. sRPE math ----
+section("session-RPE math");
+{
+  ok(sessionLoad(wk({ rpe: 7 }), null).load === 420, "RPE 7 × 60 min = 420 AU");
+  ok(sessionLoad(wk({ status: "planned", rpe: 7 }), null).load === 0, "planned (not done) carries no load");
+  ok(sessionLoad(wk({ status: "skipped" }), null).load === 0, "skipped carries no load");
+  ok(sessionLoad(wk({ discipline: "rest", type: "rest" }), null).load === 0, "rest days carry no load");
+}
+
+// ---- 4. daily ledger: zero-filled, date-grouped, future-blind ----
+section("daily ledger");
+{
+  const p = generatePlan(profile({}), ANCHOR);
+  const lthr = p.paces.hr.lthr;
+  const ids = p.weeks[0].workoutIds.filter((id) => p.workouts[id].discipline !== "rest");
+  for (const id of ids.slice(0, 2)) p.workouts[id] = { ...p.workouts[id], status: "done", rpe: 5 };
+  const through = addDays(ANCHOR, 13);
+  const days = dailyLoads(p, through);
+  ok(days.length === 14, `ledger spans start → through inclusive (got ${days.length} days)`);
+  ok(days.every((d, i) => d.dateISO === addDays(ANCHOR, i)), "consecutive days, gaps zero-filled");
+  const doneDates = new Set(ids.slice(0, 2).map((id) => p.workouts[id].date));
+  ok(days.filter((d) => d.load > 0).length === doneDates.size, "load lands only on completed days");
+  ok(days.some((d) => d.load === 0), "untrained days are present at load 0");
+
+  // a future-dated completion must not leak into today's ledger
+  const future = p.weeks[3].workoutIds.find((id) => p.workouts[id].discipline !== "rest")!;
+  p.workouts[future] = { ...p.workouts[future], status: "done", rpe: 9 };
+  const total = (ds: { load: number }[]) => ds.reduce((a, d) => a + d.load, 0);
+  ok(Math.abs(total(dailyLoads(p, through)) - total(days)) < 1e-9, "workouts dated past `through` are excluded");
+
+  // two sessions on one day sum
+  const [a, b] = ids.slice(0, 2);
+  const doubled = { ...p, workouts: { ...p.workouts } };
+  doubled.workouts[b] = { ...doubled.workouts[b], date: doubled.workouts[a].date };
+  const dayLoad = dailyLoads(doubled, through).find((d) => d.dateISO === doubled.workouts[a].date)!.load;
+  const want = sessionLoad(doubled.workouts[a], lthr).load + sessionLoad(doubled.workouts[b], lthr).load;
+  ok(Math.abs(dayLoad - want) < 1e-9, "same-day doubles sum into one ledger day");
+}
+
+// ---- 5. the ledger survives a rebuild (kept-/logged- ids, detached from weeks) ----
+section("ledger survives rebuildFromToday: kept-/logged- history counted by date");
+{
+  const before = generatePlan(profile({}), ANCHOR);
+  for (const id of before.weeks[0].workoutIds) {
+    const w = before.workouts[id];
+    if (w.discipline !== "rest") before.workouts[id] = { ...w, status: "done", rpe: 5 };
+  }
+  // a bonus session on a free day gets a logged- id
+  const planned = new Set(
+    before.weeks[0].workoutIds.map((id) => before.workouts[id]).filter((w) => w.discipline !== "rest").map((w) => w.date),
+  );
+  let freeDay = ANCHOR;
+  for (let i = 0; i < 7; i++) if (!planned.has(addDays(ANCHOR, i))) { freeDay = addDays(ANCHOR, i); break; }
+  const logged = logWorkout(before, { dateISO: freeDay, discipline: "run", durationSec: 1800, rpe: 6 });
+  ok(logged.outcome === "bonus", "unplanned session logs as a bonus");
+  const withBonus = logged.plan;
+  ok(Object.keys(withBonus.workouts).some((id) => id.startsWith("logged-")), "bonus session gets a logged- id");
+
+  // simulate rebuildFromToday two weeks in, deterministically anchored (the real
+  // rebuild calls generatePlan with no anchor, i.e. the live clock)
+  const rebuildDay = addDays(ANCHOR, 14); // Monday of week 2
+  const fresh = generatePlan(profile({}), rebuildDay);
+  const merged: Record<string, Workout> = {};
+  for (const w of Object.values(withBonus.workouts)) {
+    if (w.date < rebuildDay) { const id = `kept-${w.id}`; merged[id] = { ...w, id }; }
+  }
+  for (const w of Object.values(fresh.workouts)) if (w.date >= rebuildDay) merged[w.id] = w;
+  const rebuilt: Plan = { ...fresh, workouts: merged, id: withBonus.id };
+  reindexWeeks(rebuilt);
+
+  const inWeeks = new Set(rebuilt.weeks.flatMap((w) => w.workoutIds));
+  const keptIds = Object.keys(rebuilt.workouts).filter((id) => id.startsWith("kept-"));
+  ok(keptIds.length > 0, "rebuild kept past workouts under kept- ids");
+  ok(keptIds.every((id) => !inWeeks.has(id)), "kept- workouts belong to NO week (weeks restart at the new Monday)");
+
+  const lthr = rebuilt.paces.hr.lthr;
+  const ledger = dailyLoads(rebuilt, addDays(rebuildDay, 6));
+  ok(ledger[0].dateISO === ANCHOR, "ledger reaches back before the rebuilt plan's startDateISO");
+  const doneDates = new Set(
+    Object.values(rebuilt.workouts).filter((w) => sessionLoad(w, lthr).load > 0).map((w) => w.date),
+  );
+  const loadOn = new Map(ledger.map((d) => [d.dateISO, d.load]));
+  ok(
+    [...doneDates].every((d) => (loadOn.get(d) ?? 0) > 0),
+    "every kept-/logged- completion still carries load after the rebuild",
+  );
+  const points = pmc(rebuilt, rebuildDay);
+  ok(points[points.length - 1].ctl > 0, "CTL on rebuild day reflects the kept history");
+}
+
+// ---- 6. PMC invariants ----
+section("PMC: exact-EWMA fold, convergence, yesterday-based TSB");
+{
+  const one = computePmc([{ dateISO: ANCHOR, load: 100 }]);
+  ok(Math.abs(one[0].ctl - 100 * K_CTL) < 1e-12, "day-1 CTL = load × K_CTL (exact-EWMA alpha, test-pinned)");
+  ok(Math.abs(one[0].atl - 100 * K_ATL) < 1e-12, "day-1 ATL = load × K_ATL");
+  ok(one[0].tsb === 0, "day-1 TSB is the seed gap — today's session can't change today's form");
+
+  const flat = Array.from({ length: 600 }, (_, i) => ({ dateISO: addDays(ANCHOR, i), load: 100 }));
+  const conv = computePmc(flat);
+  const end = conv[conv.length - 1];
+  ok(Math.abs(end.ctl - 100) < 0.5, `constant 100 AU/day converges CTL → 100 (got ${end.ctl.toFixed(1)})`);
+  ok(Math.abs(end.tsb) < 1, "steady state settles TSB ≈ 0");
+  ok(
+    conv.slice(1).every((p, i) => Math.abs(p.tsb - (conv[i].ctl - conv[i].atl)) < 1e-12),
+    "TSB always reads YESTERDAY's CTL − ATL",
+  );
+  ok(Math.abs(rampRate(conv)) < 0.5, "steady state has ~zero ramp rate");
+
+  const taper = computePmc([
+    ...Array.from({ length: 60 }, (_, i) => ({ dateISO: addDays(ANCHOR, i), load: 100 })),
+    ...Array.from({ length: 10 }, (_, i) => ({ dateISO: addDays(ANCHOR, 60 + i), load: 20 })),
+  ]);
+  const tEnd = taper[taper.length - 1];
+  ok(tEnd.tsb > taper[59].tsb, "cutting load raises TSB (ATL decays faster than CTL)");
+  ok(tEnd.atl < tEnd.ctl, "after a taper, fatigue sits below fitness");
+  ok(rampRate(taper) < 0, "a taper's ramp rate is negative");
+
+  const seeded = computePmc([{ dateISO: ANCHOR, load: 0 }], { ctl: 50, atl: 80 });
+  ok(seeded[0].tsb === -30, "a seed supplies day-1's yesterday values");
+}
+
+// ---- 7. determinism + the form-state history gate ----
+section("determinism + form-state gate");
+{
+  const p = generatePlan(profile({}), ANCHOR);
+  const ids = p.weeks[0].workoutIds.filter((id) => p.workouts[id].discipline !== "rest");
+  p.workouts[ids[0]] = { ...p.workouts[ids[0]], date: ANCHOR, status: "done", rpe: 5 };
+  const today = addDays(ANCHOR, 4); // 5 ledger days
+  ok(JSON.stringify(pmc(p, today)) === JSON.stringify(pmc(p, today)), "same plan + today ⇒ identical PMC series");
+
+  ok(formStateFor(generatePlan(profile({}), ANCHOR), today) === null, "no completed sessions → no form verdict");
+  ok(formStateFor(p, today) === null, "one loaded session isn't enough history");
+  p.workouts[ids[1]] = { ...p.workouts[ids[1]], date: addDays(ANCHOR, 1), status: "done", rpe: 5 };
+  ok(formStateFor(p, addDays(ANCHOR, 2)) === null, "2 sessions but <5 ledger days → still null");
+  const state = formStateFor(p, today);
+  ok(state !== null, "5 ledger days + 2 loaded sessions → a form verdict");
+  ok(state !== null && state.ctl > 0 && ["Fresh", "Building", "Deep in it"].includes(state.word), "verdict carries CTL and a known word");
+}
+
+// ---- 8. band sanity: a fully-completed olympic build lands fresh on race day ----
+section("band sanity on a full 16-week olympic plan");
+{
+  // race on the SUNDAY of week 16 — a Monday race would leave zero taper days
+  const p = generatePlan(profile({ raceType: "olympic", raceDateISO: addDays(weeksFrom(16), 6) }), ANCHOR);
+  const raceDay = p.raceDateISO;
+  for (const w of Object.values(p.workouts)) {
+    if (w.discipline === "rest" || w.date > raceDay) continue;
+    p.workouts[w.id] = { ...w, status: "done", rpe: zoneMid(w.primaryZone) };
+  }
+  const series = pmc(p, raceDay);
+  const byDate = new Map(series.map((pt) => [pt.dateISO, pt]));
+
+  const loadWeeks = p.weeks.filter((w) => w.phase === "build" || w.phase === "peak");
+  const buildTsb = loadWeeks.flatMap((w) =>
+    Array.from({ length: 7 }, (_, i) => byDate.get(addDays(w.startDate, i))?.tsb).filter((t): t is number => t != null),
+  );
+  ok(buildTsb.length > 0 && Math.min(...buildTsb) < 0, "the build carries negative TSB (fatigue above fitness)");
+
+  const taperStart = p.weeks.find((w) => w.phase === "taper")!.startDate;
+  const atRace = byDate.get(raceDay)!;
+  ok(atRace.tsb > byDate.get(taperStart)!.tsb, "TSB rises through the taper into race day");
+
+  const raceForm = formStateFor(p, raceDay);
+  ok(raceForm !== null && raceForm.band === "fresh", `race-day form lands in the fresh band (got ${raceForm?.band})`);
+}
+
+console.log(`\n${checks - failures}/${checks} invariants passed`);
+if (failures > 0) {
+  console.error(`\n❌ ${failures} load invariant(s) FAILED`);
+  process.exit(1);
+}
+console.log("\n✅ all load invariants passed");

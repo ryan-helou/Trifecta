@@ -31,7 +31,7 @@ export function logReadiness(plan: Plan, dateISO: string, input: ReadinessInput)
   let next: Plan = { ...plan, readiness: { ...(plan.readiness ?? {}), [dateISO]: entry } };
 
   if (score < READY_LOW) {
-    next = easeUpcoming(next, dateISO, 0); // window of just today
+    next = easeUpcoming(next, dateISO, 0, "readiness"); // window of just today
     next.readiness = { ...next.readiness, [dateISO]: { ...entry, eased: true } };
   }
   return next;

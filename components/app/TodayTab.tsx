@@ -7,6 +7,7 @@ import { useToast } from "./Toast";
 import { SwipeableWorkout } from "./SwipeableWorkout";
 import { WorkoutCard } from "./WorkoutCard";
 import { ReadinessSheet } from "./ReadinessSheet";
+import { FormStrip } from "./FormSheet";
 import { ProgressRing } from "./motion";
 import { Icon } from "./icons";
 import { FitnessHero, PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
@@ -17,6 +18,7 @@ import { weekProgress } from "@/lib/adapt";
 import { readinessBand } from "@/lib/readiness";
 import { calibrationDue } from "@/lib/calibrate";
 import { computeStreak } from "@/lib/stats";
+import { formStateFor } from "@/lib/load";
 import { fmtFullDate as fullDate, addDays, dayIndexOf, fmtDayMonth, weekdayLong } from "@/lib/dates";
 
 export function TodayTab() {
@@ -46,6 +48,8 @@ export function TodayTab() {
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const streak = computeStreak(plan, today);
   const todayReadiness = plan.readiness?.[today];
+  // today's one-word form state — null until enough history has banked
+  const form = formStateFor(plan, today);
 
   // the next scheduled session after today — so the home screen always answers
   // "what's coming?", not just "what's today" (especially on rest days)
@@ -91,6 +95,13 @@ export function TodayTab() {
         {isFitnessGoal(plan.profile) ? <FitnessHero plan={plan} today={today} /> : <RaceCountdown plan={plan} today={today} />}
       </div>
 
+      {/* form strip — the moat made visible; absorbs the readiness row once it exists */}
+      {form && (
+        <div className="animate-fade-up" style={{ animationDelay: "75ms" }}>
+          <FormStrip form={form} readiness={todayReadiness} />
+        </div>
+      )}
+
       {profile && <ProfileNudge profile={profile} />}
 
       {plan.notice && <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm text-muted">{plan.notice}</div>}
@@ -128,7 +139,7 @@ export function TodayTab() {
           </div>
         </button>
       )}
-      {todayReadiness && (
+      {todayReadiness && !form && (
         <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm">
           <span className="flex items-center gap-2 text-muted">
             <span
@@ -160,7 +171,9 @@ export function TodayTab() {
           <div className="card flex flex-col items-center p-6 text-center">
             <div className="text-muted"><Icon name="rest" size={30} /></div>
             <div className="mt-2 font-display font-semibold">Rest day</div>
-            <div className="mt-1 max-w-[15rem] text-sm text-muted">Recovery is where you get stronger. Sleep, hydrate, refuel.</div>
+            <div className="mt-1 max-w-[15rem] text-sm text-muted">
+              {form ? `${form.word} — today's rest is banking it.` : "Recovery is where you get stronger. Sleep, hydrate, refuel."}
+            </div>
           </div>
         ) : (
           <div className="space-y-2.5">

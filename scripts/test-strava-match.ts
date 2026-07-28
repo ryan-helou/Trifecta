@@ -1,5 +1,6 @@
-/* Unit checks for the Strava activity → workout matcher (no network / DB). */
-import { actualsFromActivity, disciplineOf, matchActivityToWorkout } from "../lib/strava";
+/* Unit checks for the Strava activity → workout matcher + applier (no network / DB). */
+import { activityLocalDay, actualsFromActivity, applyActivityToUser, disciplineOf, matchActivityToWorkout } from "../lib/strava";
+import type { AppState, Store } from "../lib/db";
 import type { Plan, Workout } from "../lib/types";
 
 function w(id: string, date: string, discipline: Workout["discipline"], estDurationSec: number, status: Workout["status"] = "planned"): Workout {
@@ -51,5 +52,82 @@ eq("actuals distance", a.distanceM, 7230);
 eq("actuals hr", a.avgHr, 152);
 eq("actuals activityId", a.activityId, 9);
 
-console.log(`\nStrava matcher: ${pass} passed, ${fail} failed`);
-if (fail) process.exit(1);
+// local-day derivation: start_date_local wins; else shift start_date by utc_offset
+eq("local wins", activityLocalDay({ id: 1, start_date_local: "2026-07-21T19:00:00Z", start_date: "2026-07-22T02:00:00Z" }), "2026-07-21");
+eq("utc − offset", activityLocalDay({ id: 1, start_date: "2026-07-22T02:30:00Z", utc_offset: -25200 }), "2026-07-21");
+eq("utc + offset", activityLocalDay({ id: 1, start_date: "2026-07-21T22:00:00Z", utc_offset: 7200 }), "2026-07-22");
+eq("utc no offset", activityLocalDay({ id: 1, start_date: "2026-07-22T02:30:00Z" }), "2026-07-22");
+eq("no dates", activityLocalDay({ id: 1 }), null);
+// a 7:30pm PDT run (2:30am UTC next day) still matches Tuesday's session
+eq("evening PDT run", matchActivityToWorkout(day, { id: 105, type: "Run", start_date: "2026-07-22T02:30:00Z", utc_offset: -25200, moving_time: 2760 })?.workoutId, "r1");
+
+// ---- applyActivityToUser: idempotency, update-in-place, CAS retry ----
+
+/** In-memory CAS store — just the two methods the applier touches. `conflicts`
+ *  makes the first N writes lose the version race (a concurrent writer bumped). */
+function fakeStore(initial: AppState, conflicts = 0) {
+  let state = initial;
+  let version = 1;
+  const calls = { writes: 0 };
+  const store = {
+    getDataV: async () => ({ state, version }),
+    setDataIf: async (_uid: string, data: AppState, expected: number) => {
+      calls.writes++;
+      if (conflicts > 0) { conflicts--; version++; return null; }
+      if (expected !== version) return null;
+      state = data;
+      version++;
+      return version;
+    },
+  } as unknown as Store;
+  return { store, plan: () => (state.plan as Plan), version: () => version, calls };
+}
+
+const applyPlan = (workouts: Record<string, Workout>) => ({ workouts, weeks: [] } as unknown as Plan);
+const run500 = { id: 500, type: "Run", name: "Morning Run", start_date_local: "2026-07-21T06:30:00Z", moving_time: 2760, distance: 8000 };
+
+(async () => {
+  // two runs that day — activity 500 must only ever complete one of them
+  const s = fakeStore({ plan: applyPlan({ rA: w("rA", "2026-07-21", "run", 2700), rB: w("rB", "2026-07-21", "run", 5400) }) });
+  const first = await applyActivityToUser(s.store, "u1", run500);
+  eq("apply matches", { matched: first.matched, workoutId: first.workoutId }, { matched: true, workoutId: "rA" });
+  eq("apply completes", s.plan().workouts.rA.status, "done");
+  eq("apply actuals", s.plan().workouts.rA.actuals?.activityId, 500);
+  eq("apply duration", s.plan().workouts.rA.actualDurationSec, 2760);
+
+  // same activity re-delivered → no-op: no write, no second completion
+  const again = await applyActivityToUser(s.store, "u1", run500);
+  eq("re-apply alreadyDone", { alreadyDone: again.alreadyDone, updated: again.updated }, { alreadyDone: true, updated: undefined });
+  eq("re-apply no write", s.version(), 2);
+  eq("re-apply rB untouched", s.plan().workouts.rB.status, "planned");
+
+  // Strava "update" (crop + rename) → refresh the carrier's actuals in place
+  const upd = await applyActivityToUser(s.store, "u1", { ...run500, name: "Renamed", moving_time: 2500, distance: 7500 });
+  eq("update in place", { alreadyDone: upd.alreadyDone, updated: upd.updated, workoutId: upd.workoutId }, { alreadyDone: true, updated: true, workoutId: "rA" });
+  eq("update name", s.plan().workouts.rA.actuals?.name, "Renamed");
+  eq("update duration", s.plan().workouts.rA.actualDurationSec, 2500);
+  eq("update distance", s.plan().workouts.rA.actualDistanceM, 7500);
+  eq("update rB untouched", s.plan().workouts.rB.status, "planned");
+
+  // carrier the athlete un-did stays theirs: refresh it, never complete a sibling
+  const undone = fakeStore({
+    plan: applyPlan({
+      rC: { ...w("rC", "2026-07-21", "run", 2700, "skipped"), actuals: { source: "strava", activityId: 600, durationSec: 2400 }, actualDurationSec: 2400 },
+      rD: w("rD", "2026-07-21", "run", 3600),
+    }),
+  });
+  const redo = await applyActivityToUser(undone.store, "u1", { id: 600, type: "Run", start_date_local: "2026-07-21T07:00:00Z", moving_time: 2450 });
+  eq("undone carrier owns it", redo.workoutId, "rC");
+  eq("undone status kept", undone.plan().workouts.rC.status, "skipped");
+  eq("undone sibling untouched", undone.plan().workouts.rD.status, "planned");
+
+  // CAS conflict → re-read and re-apply, then succeed
+  const raced = fakeStore({ plan: applyPlan({ rE: w("rE", "2026-07-21", "run", 2700) }) }, 1);
+  const won = await applyActivityToUser(raced.store, "u1", run500);
+  eq("cas retry matches", { matched: won.matched, workoutId: won.workoutId }, { matched: true, workoutId: "rE" });
+  eq("cas retry wrote twice", raced.calls.writes, 2);
+  eq("cas retry completes", raced.plan().workouts.rE.status, "done");
+
+  console.log(`\nStrava matcher: ${pass} passed, ${fail} failed`);
+  if (fail) process.exit(1);
+})();

@@ -11,6 +11,7 @@ import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
 import { WorkoutPlayer } from "./WorkoutPlayer";
 import { buildWorkoutFit, fitFilename } from "@/lib/fit";
+import { whyForWorkout } from "@/lib/why";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 
@@ -168,6 +169,10 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           <div className="mb-4 rounded-2xl border border-accent/25 bg-accent/5 p-3.5">
             <div className="eyebrow mb-1 text-[0.72rem] text-accent">Why it matters</div>
             <p className="text-sm leading-relaxed">{workout.purpose}</p>
+            {/* purpose is what the session does; this is why it's on YOUR plan today */}
+            <p className="mt-1.5 border-t border-accent/15 pt-1.5 text-xs leading-relaxed text-muted">
+              {whyForWorkout(workout, plan).text}
+            </p>
           </div>
 
           {workout.note && (

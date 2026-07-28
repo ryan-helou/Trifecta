@@ -11,9 +11,11 @@ export async function GET(req: NextRequest) {
   const store = getStore();
   const user = await store.getUserById(uid);
   if (!user) return NextResponse.json({ authenticated: false });
+  const dv = await store.getDataV(uid);
   return NextResponse.json({
     authenticated: true,
     user: { username: user.username },
-    state: user.data ?? {},
+    state: dv?.state ?? user.data ?? {},
+    version: dv?.version ?? 1,
   });
 }

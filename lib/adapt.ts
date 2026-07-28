@@ -408,16 +408,22 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
     ...fresh,
     workouts: kept,
     id: plan.id,
-    // readiness is dated history — carry it across a rebuild (weeks/easedWeeks regenerate)
+    // readiness + adaptation records are history — carry them across a rebuild
+    // (weeks/easedWeeks regenerate, so the why-line gates on both)
     readiness: plan.readiness,
+    adaptations: plan.adaptations,
     notice: "Plan rebuilt around today — you're realigned to hit race day.",
   };
   reindexWeeks(merged);
   return merged;
 }
 
+/** Which trigger eased a session — the why must distinguish "missed because life"
+ *  from "felt too hard" from a low morning check-in (doc 02 §4 #11). */
+export type EaseCause = "readiness" | "missed" | "strain" | "manual";
+
 /** Ease the next N days: downgrade hard sessions to endurance, trim long ones. */
-export function easeUpcoming(plan: Plan, fromISODate: string, days: number): Plan {
+export function easeUpcoming(plan: Plan, fromISODate: string, days: number, cause: EaseCause = "manual"): Plan {
   const p = clonePlan(plan);
   const ctx: BuildCtx = { paces: p.paces, level: p.profile.level };
   const start = fromISO(fromISODate).getTime();
@@ -439,6 +445,10 @@ export function easeUpcoming(plan: Plan, fromISODate: string, days: number): Pla
         estDistanceM: draft.estDistanceM,
         primaryZone: draft.primaryZone,
         note: "Eased off",
+        // keep the trigger + what the session WAS — the overwrite would otherwise
+        // destroy the only honest answer to "why is today easy?"
+        easedCause: cause,
+        easedFrom: w.easedFrom ?? { type: w.type, primaryZone: w.primaryZone },
       };
     }
   }
@@ -472,6 +482,9 @@ export interface AdaptationSuggestion {
   weekIndex: number; // the upcoming week the suggestion is about
   weekLabel: string;
   reason: string;
+  /** which trigger fired — "missed because life" and "felt too hard" want
+   *  different coaching, so the why-line must not collapse them (doc 02 §4 #11) */
+  cause: "missed" | "strain";
   missed: number;
   scheduled: number;
   avgStrain: number | null;
@@ -503,11 +516,12 @@ export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSugges
 
   // EASE: fell behind, or the work is consistently overreaching.
   if (easeable && !alreadyEased && (missRate >= 0.4 || (strains.length >= 3 && avgStrain != null && avgStrain >= 1.5))) {
+    const cause = missRate >= 0.4 ? "missed" : "strain";
     const reason =
-      missRate >= 0.4
+      cause === "missed"
         ? `You've missed ${missed} of ${scheduled} sessions in the last two weeks.`
         : `Your recent sessions have felt consistently hard.`;
-    return { kind: "ease", weekIndex: next.index, weekLabel: next.label, reason, missed, scheduled, avgStrain, signals: strains.length };
+    return { kind: "ease", weekIndex: next.index, weekLabel: next.label, reason, cause, missed, scheduled, avgStrain, signals: strains.length };
   }
 
   // AHEAD: nailing it and feeling comfortable — encouragement, no extra load.
@@ -517,6 +531,7 @@ export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSugges
       weekIndex: next.index,
       weekLabel: next.label,
       reason: "You've hit nearly everything and it's feeling comfortable.",
+      cause: "strain",
       missed,
       scheduled,
       avgStrain,
@@ -533,10 +548,16 @@ export function applyAdaptation(plan: Plan, s: AdaptationSuggestion): Plan {
   const wk = plan.weeks.find((w) => w.index === s.weekIndex);
   if (!wk) return plan;
   // soften every hard session across that week (Mon–Sun)
-  const eased = easeUpcoming(plan, wk.startDate, 6);
+  const eased = easeUpcoming(plan, wk.startDate, 6, s.cause);
   const targetWeek = eased.weeks.find((w) => w.index === s.weekIndex);
   if (targetWeek) targetWeek.targetHours = Math.round(targetWeek.targetHours * 0.9 * 2) / 2;
   eased.easedWeeks = [...(plan.easedWeeks ?? []), s.weekIndex];
+  // keep the trigger + its numbers: after applying, the suggestion is gone and
+  // this record is the only honest answer to "why was this week softened?"
+  eased.adaptations = [
+    ...(plan.adaptations ?? []).filter((a) => a.weekIndex !== s.weekIndex),
+    { weekIndex: s.weekIndex, cause: s.cause, reason: s.reason, missed: s.missed, scheduled: s.scheduled },
+  ];
   eased.notice = `We eased ${wk.label} so you absorb the training and stay healthy.`;
   return eased;
 }

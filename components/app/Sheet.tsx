@@ -6,6 +6,29 @@ import { haptic } from "@/lib/haptics";
 const DISMISS_DISTANCE = 96; // px dragged before release dismisses
 const DISMISS_VELOCITY = 0.55; // px/ms downward flick that dismisses regardless
 
+// One body scroll lock shared by every mounted sheet. Sheets can stack (workout
+// detail opens the coach on top), so a naive per-instance save/restore of
+// body.style.overflow re-captures "hidden" as the value to restore and strands
+// the page unscrollable. Ref-counting fixes that: only the first locker
+// snapshots, only the last unlocker restores.
+let bodyLockCount = 0;
+let bodySavedOverflow = "";
+function lockBodyScroll() {
+  if (bodyLockCount === 0) {
+    bodySavedOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  bodyLockCount++;
+}
+function unlockBodyScroll() {
+  bodyLockCount = Math.max(0, bodyLockCount - 1);
+  if (bodyLockCount === 0) document.body.style.overflow = bodySavedOverflow;
+}
+
+// Open sheets, bottom to top. Escape dismisses only the topmost — without this,
+// one keypress would dismiss a whole stack at once.
+const sheetStack: object[] = [];
+
 /*
   Bottom sheet with iOS-style drag-to-dismiss. Grab the handle (or drag down from
   the top of the content when it's already scrolled up) and the panel follows your
@@ -41,6 +64,7 @@ export function Sheet({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const closingRef = useRef(false);
+  const stackToken = useRef<object>({}); // this instance's identity in sheetStack
   const [closing, setClosing] = useState(false);
 
   const dismiss = useCallback(() => {
@@ -56,18 +80,27 @@ export function Sheet({
     window.setTimeout(onClose, 215);
   }, [onClose]);
 
-  // Escape to close + lock the background from scrolling behind the sheet
+  // Lock the background from scrolling behind the sheet and join the stack —
+  // strictly mount/unmount. (onClose is an inline arrow at every call site, so
+  // anything keyed on [dismiss] re-runs on parent re-renders; the lock must not.)
+  useEffect(() => {
+    const token = stackToken.current;
+    sheetStack.push(token);
+    lockBodyScroll();
+    return () => {
+      const i = sheetStack.indexOf(token);
+      if (i !== -1) sheetStack.splice(i, 1);
+      unlockBodyScroll();
+    };
+  }, []);
+
+  // Escape to close — only when this sheet is the topmost open one
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dismiss();
+      if (e.key === "Escape" && sheetStack[sheetStack.length - 1] === stackToken.current) dismiss();
     };
     window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [dismiss]);
 
   // finger-follow drag-to-dismiss
