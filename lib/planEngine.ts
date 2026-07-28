@@ -668,14 +668,20 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
   // overtraining trap). base ramps gently (0.6→0.85 of peak, `baseFraction`) with 3:1/2:1
   // recovery cycles, so a long base is a slow aerobic build, not monotonic overload.
   const taperWeeks = Math.min(TAPER_WEEKS[cat], Math.max(1, Math.floor(totalWeeks * 0.18)));
-  const remaining = totalWeeks - taperWeeks;
+  // The phases MUST sum to totalWeeks, or the week loop below never reaches the taper
+  // branch and the race week inherits whatever phase ran off the end. That's what used
+  // to happen on a short runway: a race ≤13 days out got NO taper phase, and race week
+  // was labelled "Build" carrying the highest targetHours in the plan — i.e. we told
+  // someone racing in 13 days that this was their biggest week.
+  const remaining = Math.max(0, totalWeeks - taperWeeks);
   let peakWeeks = remaining >= 6 ? Math.min(2, Math.max(1, Math.round(remaining * 0.12))) : remaining >= 4 ? 1 : 0;
-  let buildWeeks = Math.min(BUILD_MAX[cat], Math.max(1, Math.round(remaining * 0.35)));
+  let buildWeeks = remaining > 0 ? Math.min(BUILD_MAX[cat], Math.max(1, Math.round(remaining * 0.35))) : 0;
   let baseWeeks = remaining - buildWeeks - peakWeeks;
-  if (baseWeeks < 1) {
+  if (remaining > 0 && baseWeeks < 1) {
     // ultra-compressed plans: guarantee ≥1 base week, then trim build/peak to fit.
+    // Build and peak may go to ZERO here — a 2-week runway is base + taper, nothing else.
     baseWeeks = 1;
-    buildWeeks = Math.max(1, remaining - baseWeeks - peakWeeks);
+    buildWeeks = Math.max(0, remaining - baseWeeks - peakWeeks);
     peakWeeks = Math.max(0, remaining - baseWeeks - buildWeeks);
   }
 

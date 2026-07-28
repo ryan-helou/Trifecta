@@ -252,6 +252,30 @@ section("taper target hours never rise week over week");
   }
 }
 
+// ---- 13. short runways still taper ----
+// Regression: the phase counts didn't sum to totalWeeks on a short runway, so the week
+// loop never reached the taper branch. A race ≤13 days out got NO taper phase and race
+// week was labelled "Build" carrying the HIGHEST targetHours in the plan — the plan told
+// someone racing in 13 days that this was their biggest week.
+section("short runways: race week is always a taper, and always the lightest week");
+{
+  const plusDays = (n: number) => {
+    const d = new Date(ANCHOR + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  for (const days of [6, 10, 13, 14, 20, 27, 45]) {
+    const p = generatePlan(profile({ raceType: "olympic", raceDateISO: plusDays(days) }), ANCHOR);
+    const raceWeek = p.weeks[p.weeks.length - 1];
+    const maxHours = Math.max(...p.weeks.map((w) => w.targetHours));
+    ok(raceWeek.isRaceWeek && raceWeek.phase === "taper", `race in ${days}d → race week is taper (got ${raceWeek.phase})`);
+    ok(
+      p.weeks.length === 1 || raceWeek.targetHours < maxHours,
+      `race in ${days}d → race week (${raceWeek.targetHours}h) is lighter than the peak (${maxHours}h)`,
+    );
+  }
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures > 0) {
   console.error(`\n❌ ${failures} engine invariant(s) FAILED`);
