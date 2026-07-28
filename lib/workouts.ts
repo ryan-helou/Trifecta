@@ -346,6 +346,18 @@ export function bikeEndurance(ctx: BuildCtx, min = 60): Draft {
   });
 }
 
+/**
+ * Sweet spot — 88–94% FTP.
+ *
+ * Zoned Z4, not Z3. The band straddles our Z3 (76–90%) and Z4 (91–105%), so
+ * either label is an approximation; Z4 is the *safe* approximation, because the
+ * zone is what injury caps, hard-day spacing and load estimation all read. Under
+ * the old Z3 label a niggle (`capZone: 3`) routed here and the athlete got
+ * near-threshold work from a cap that existed to prevent exactly that.
+ *
+ * The work intervals carry an explicit `ftpPct` so the athlete still sees the true
+ * 88–94%, not Z4's 91–105%.
+ */
 export function bikeSweetSpot(ctx: BuildCtx, min = 75): Draft {
   const reps = min >= 80 ? 4 : 3;
   return finish(ctx, {
@@ -353,22 +365,59 @@ export function bikeSweetSpot(ctx: BuildCtx, min = 75): Draft {
     type: "tempo",
     title: `Sweet Spot ${reps}×8`,
     purpose: "Sweet spot gives ~90% of the threshold benefit at a fraction of the fatigue — the most time-efficient way to raise your FTP.",
-    primaryZone: 3,
+    primaryZone: 4,
     segments: [
       bikeWU(15),
       seg({
         kind: "main",
         discipline: "bike",
-        zone: 3,
+        zone: 4,
+        ftpPct: [88, 94],
         repeat: reps,
         description: `${reps} × (8 min @ 88–94% FTP / 3 min easy)`,
         cue: "Settle in — don't launch it. Aim for a flat power line, not a fade.",
         children: [
-          seg({ kind: "main", discipline: "bike", zone: 3, durationSec: M(8), description: "8 min sweet spot" }),
+          seg({ kind: "main", discipline: "bike", zone: 4, ftpPct: [88, 94], durationSec: M(8), description: "8 min sweet spot" }),
           seg({ kind: "main", discipline: "bike", zone: 1, durationSec: M(3), description: "3 min easy" }),
         ],
       }),
       bikeCD(10),
+    ],
+  });
+}
+
+/**
+ * Bike tempo — genuinely inside Z3 (76–90% FTP).
+ *
+ * This is what a zone-3-capped athlete gets. It exists because the only sub-threshold
+ * bike quality session used to be sweet spot, which is 88–94% — so honouring a niggle's
+ * `capZone: 3` meant prescribing work *above* the cap. Sustained blocks rather than
+ * short reps: at tempo the point is time at effort, not repeatability.
+ */
+export function bikeTempo(ctx: BuildCtx, min = 70): Draft {
+  const reps = min >= 75 ? 3 : 2;
+  const block = min >= 75 ? 12 : 10;
+  return finish(ctx, {
+    discipline: "bike",
+    type: "tempo",
+    title: `Bike Tempo ${reps}×${block}`,
+    purpose: "Sustained tempo builds muscular endurance and the ability to hold a strong, steady effort — without the tissue stress of threshold work.",
+    primaryZone: 3,
+    segments: [
+      bikeWU(12),
+      seg({
+        kind: "main",
+        discipline: "bike",
+        zone: 3,
+        repeat: reps,
+        description: `${reps} × (${block} min @ ${zn(3)} / 4 min easy)`,
+        cue: "Comfortably hard and repeatable. If it starts to sting, you're above tempo.",
+        children: [
+          seg({ kind: "main", discipline: "bike", zone: 3, durationSec: M(block), description: `${block} min tempo` }),
+          seg({ kind: "main", discipline: "bike", zone: 1, durationSec: M(4), description: "4 min easy" }),
+        ],
+      }),
+      bikeCD(8),
     ],
   });
 }

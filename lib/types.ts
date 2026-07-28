@@ -42,6 +42,14 @@ export interface Segment {
   children?: Segment[];
   discipline?: Discipline;
   zone?: Zone;
+  /**
+   * Explicit %FTP band, overriding the one implied by `zone`, for bike segments
+   * whose true prescription doesn't line up with a 5-zone band. Sweet spot is the
+   * reason this exists: it's 88–94% FTP, which straddles our Z3 (76–90%) and Z4
+   * (91–105%). Without this the athlete saw the zone's range next to a description
+   * naming a different one — two prescriptions for the same interval.
+   */
+  ftpPct?: [number, number];
   durationSec?: number; // time-based target
   distanceM?: number; // distance-based target (meters)
   description: string; // human label, e.g. "8 min @ threshold"

@@ -10,6 +10,8 @@ import { Discipline, PaceModel, Segment, Workout, Zone } from "./types";
 export interface FlatStep {
   discipline: Discipline;
   zone?: Zone;
+  /** explicit %FTP band that overrides the zone's (sweet spot) — see Segment.ftpPct */
+  ftpPct?: [number, number];
   kind: Segment["kind"];
   description: string;
   cue?: string;
@@ -47,6 +49,7 @@ export function flattenWorkout(w: Workout, paces: PaceModel): FlatStep[] {
         out.push({
           discipline: disc,
           zone: s.zone,
+          ftpPct: s.ftpPct,
           kind: s.kind,
           description: s.description,
           cue: s.cue,

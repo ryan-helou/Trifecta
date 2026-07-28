@@ -58,14 +58,14 @@ export function WorkoutPlayer({ workout, plan, onClose }: { workout: Workout; pl
   const step = steps[idx];
   const target =
     step && step.zone && (step.discipline === "run" || step.discipline === "bike" || step.discipline === "swim")
-      ? targetView(step.discipline, step.zone, plan.paces, unit).primary
+      ? targetView(step.discipline, step.zone, plan.paces, unit, step.ftpPct).primary
       : null;
 
   // announce a step (spoken cue) — used on entry and via effect below
   const announce = useCallback((s: FlatStep | undefined) => {
     if (!s) return;
     const t = s.zone && (s.discipline === "run" || s.discipline === "bike" || s.discipline === "swim")
-      ? targetView(s.discipline, s.zone, plan.paces, unit).primary
+      ? targetView(s.discipline, s.zone, plan.paces, unit, s.ftpPct).primary
       : null;
     speak(`${s.isRest ? "Recover. " : ""}${s.description}${t ? `, target ${t}` : ""}`, muted);
   }, [plan.paces, unit, muted]);

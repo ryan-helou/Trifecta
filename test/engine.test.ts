@@ -9,8 +9,9 @@
  * phases in order, and keep intensity polarized (mostly easy). Thresholds are calibrated
  * to the engine's real output with margin, so a correct plan never false-fails.
  */
-import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts } from "../lib/planEngine";
-import type { Profile, Plan, Injury } from "../lib/types";
+import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts, injuryMods, restDayFor } from "../lib/planEngine";
+import type { Profile, Plan, Injury, Workout, Segment } from "../lib/types";
+import { ZONES } from "../lib/zones";
 
 let checks = 0;
 let failures = 0;
@@ -235,7 +236,108 @@ section("race week respects injury caps and equipment");
   const o = openersOf(hurt);
   ok(!o.some((w) => w.discipline === "run"), "no run opener for a severe run injury (avoid)");
   ok(!o.some((w) => w.discipline === "swim"), "no swim opener when the athlete has no pool");
-  ok(o.every((w) => w.primaryZone <= 3), "race-week openers stay out of Z4+ when the sport is capped");
+  // This used to assert `every(w => w.primaryZone <= 3)` on a profile whose BIKE is
+  // perfectly healthy — a broader claim than the name makes, and it only held because
+  // sweet spot was mislabeled Z3. A healthy sport SHOULD get a sharp opener in race
+  // week; that's what openers are for. Assert the invariant the name describes: every
+  // opener respects ITS OWN sport's cap.
+  const capOf = injuryMods(
+    profile({
+      raceType: "olympic",
+      raceDateISO: sunday(12),
+      injuries: [{ id: "i1", area: "right achilles", disciplines: ["run"], severity: "severe" }],
+      equipment: { pool: false, trainer: true, gym: true },
+    }),
+  );
+  ok(
+    o.every((w) => {
+      const sport = w.discipline as "swim" | "bike" | "run";
+      const cap = capOf[sport]?.capZone;
+      return cap == null || w.primaryZone <= cap;
+    }),
+    "every race-week opener respects its own sport's injury zone cap",
+  );
+  ok(
+    openersOf(healthy).some((w) => w.primaryZone >= 4),
+    "a healthy athlete still gets a genuinely sharp opener (that's the point of openers)",
+  );
+}
+
+// ---- 11b. an injury cap is a cap on INTENSITY, not just on the zone label ----
+// The niggle path used to route to bikeSweetSpot, which prescribes 88–94% FTP. Because
+// it was tagged Z3, `capZone: 3` looked satisfied while the athlete was handed
+// near-threshold work — the guard reduced the label, not the load. Assert against the
+// real prescribed %FTP, not the zone number, so a future relabel can't hide it again.
+section("injury caps bound real intensity, not just the zone label");
+{
+  // The hardest intensity this session actually ASKS FOR. Reading the zone alone is
+  // useless here: the zone label is the thing that was lying (sweet spot claimed Z3 while
+  // instructing 88–94% FTP), so a zone-based check passes on the buggy engine. Prefer, in
+  // order: the %FTP the description states out loud, then an explicit ftpPct band, then
+  // the zone. Parent segments count too — the repeat wrapper is where "3 × (8 min @
+  // 88–94% FTP …)" lives, while its children just say "8 min sweet spot".
+  const ftpOf = (w: Workout): number => {
+    let hi = 0;
+    const walk = (segs: Segment[]) => {
+      for (const s of segs) {
+        if ((s.discipline ?? w.discipline) === "bike" && s.kind !== "rest") {
+          const said = s.description.match(/(\d{2,3})[–-](\d{2,3})%\s*FTP/);
+          if (said) hi = Math.max(hi, Number(said[2]));
+          else if (s.ftpPct) hi = Math.max(hi, s.ftpPct[1]);
+          else if (s.zone && !s.children?.length) hi = Math.max(hi, ZONES[s.zone].ftpPct[1]);
+        }
+        if (s.children?.length) walk(s.children);
+      }
+    };
+    walk(w.segments ?? []);
+    return hi;
+  };
+
+  for (const severity of ["niggle", "moderate"] as const) {
+    const p = profile({
+      raceType: "half",
+      raceDateISO: weeksFrom(20),
+      injuries: [{ id: "b1", area: "left knee", disciplines: ["bike"], severity }],
+    });
+    const plan = generatePlan(p, ANCHOR);
+    const cap = injuryMods(p).bike.capZone;
+    const capPct = ZONES[cap].ftpPct[1];
+    const over = Object.values(plan.workouts).filter(
+      (w) => w.discipline === "bike" && w.type !== "race_prep" && ftpOf(w) > capPct,
+    );
+    ok(
+      over.length === 0,
+      `${severity} bike injury (cap Z${cap} = ≤${capPct}% FTP): no bike session exceeds it` +
+        (over.length ? ` — worst: ${over[0].title} @ ${ftpOf(over[0])}%` : ""),
+    );
+  }
+
+  // The label must not lie. A description may name a NARROWER range than its band
+  // (prescribing the top of Z4 is ordinary coaching) but never one that escapes it —
+  // that's the sweet-spot bug: "88–94% FTP" while the target rendered Z3's 76–90%.
+  let escapes = 0;
+  const worst: string[] = [];
+  for (const c of CASES) {
+    const plan = generatePlan(c.p, ANCHOR);
+    for (const w of Object.values(plan.workouts)) {
+      const walk = (segs: Segment[]) => {
+        for (const s of segs) {
+          if (s.children?.length) { walk(s.children); continue; }
+          if (!s.zone || (s.discipline ?? w.discipline) !== "bike") continue;
+          const m = s.description.match(/(\d{2,3})[–-](\d{2,3})%\s*FTP/);
+          if (!m) continue;
+          const [lo, hi] = [Number(m[1]), Number(m[2])];
+          const band = s.ftpPct ?? ZONES[s.zone].ftpPct;
+          if (lo < band[0] || hi > band[1]) {
+            escapes++;
+            if (worst.length < 3) worst.push(`${w.title}: says ${lo}–${hi}%, target shows ${band[0]}–${band[1]}%`);
+          }
+        }
+      };
+      walk(w.segments ?? []);
+    }
+  }
+  ok(escapes === 0, `no bike segment names a %FTP range outside its own target (${escapes})${worst.length ? " — " + worst.join(" | ") : ""}`);
 }
 
 // ---- 12. the taper is monotonically easier ----
@@ -273,6 +375,129 @@ section("short runways: race week is always a taper, and always the lightest wee
       p.weeks.length === 1 || raceWeek.targetHours < maxHours,
       `race in ${days}d → race week (${raceWeek.targetHours}h) is lighter than the peak (${maxHours}h)`,
     );
+  }
+}
+
+// ---- 14. every athlete gets a full day off, every week ----
+// A rest day used to be OPT-IN: the -1000 guard sat behind `restDayPreference != null`,
+// so an athlete who skipped the optional onboarding chip got no protected day at all.
+// Measured on the unfixed engine: a 70.3 at 8 sessions/week gave 14 off days in 147 and a
+// 30-day unbroken training streak; a full-IM build gave 6 off days in 224 and a 203-day
+// streak. Assert the floor directly, across the profile space, with NO preference set.
+section("rest-day floor: nobody trains seven days a week");
+{
+  const DAY = 86400000;
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const dayCount = (p: Plan) => {
+    const on = new Set(
+      Object.values(p.workouts).filter((w) => w.discipline !== "rest").map((w) => w.date),
+    );
+    const start = Date.parse(p.weeks[0].startDate + "T00:00:00Z");
+    const end = Date.parse(p.weeks[p.weeks.length - 1].startDate + "T00:00:00Z") + 6 * DAY;
+    let streak = 0, maxStreak = 0, off = 0, total = 0;
+    for (let t = start; t <= end; t += DAY) {
+      total++;
+      if (on.has(iso(t))) { streak++; maxStreak = Math.max(maxStreak, streak); }
+      else { streak = 0; off++; }
+    }
+    return { maxStreak, off, total };
+  };
+
+  const heavy: { name: string; p: Profile }[] = [
+    { name: "70.3 @ 8/wk", p: profile({ raceType: "half", raceDateISO: weeksFrom(20), perSport: { swim: 2, bike: 3, run: 3 } }) },
+    { name: "70.3 @ 8/wk + strength", p: profile({ raceType: "half", raceDateISO: weeksFrom(20), perSport: { swim: 2, bike: 3, run: 3 }, strength: { enabled: true, daysPerWeek: 2, split: "full" } }) },
+    { name: "full @ 11/wk", p: profile({ raceType: "full", level: "advanced", workoutsPerWeek: 11, raceDateISO: weeksFrom(30) }) },
+    { name: "fitness @ 8/wk", p: profile({ raceType: "fitness", raceDateISO: "", workoutsPerWeek: 8 }) },
+  ];
+  for (const h of heavy) {
+    const { maxStreak, off, total } = dayCount(generatePlan(h.p, ANCHOR));
+    // one day off per 7 means a streak can never exceed 6
+    ok(maxStreak <= 6, `${h.name}: never more than 6 consecutive training days (got ${maxStreak})`);
+    ok(off >= Math.floor(total / 7), `${h.name}: at least one day off per week (${off} off in ${total}d)`);
+  }
+
+  // the athlete's stated preference still decides WHICH day
+  for (const pref of [0, 3, 6]) {
+    const p = profile({ raceType: "half", raceDateISO: weeksFrom(20), perSport: { swim: 2, bike: 3, run: 3 }, restDayPreference: pref });
+    ok(restDayFor(p) === pref, `restDayPreference ${pref} is honoured`);
+    const plan = generatePlan(p, ANCHOR);
+    const onPref = Object.values(plan.workouts).filter(
+      (w) => w.discipline !== "rest" && w.type !== "race_prep" && new Date(w.date + "T00:00:00Z").getUTCDay() === (pref + 1) % 7,
+    );
+    ok(onPref.length === 0, `no ordinary session lands on the chosen rest day (pref ${pref}, found ${onPref.length})`);
+  }
+
+  // and with NO preference it's still a real, STABLE day — one that doesn't drift week to
+  // week, because a rest day that moves silently reintroduces long streaks (resting Monday
+  // one week and Friday the next leaves nine days on in between).
+  const noPref = profile({ raceType: "half", raceDateISO: weeksFrom(20), perSport: { swim: 2, bike: 3, run: 3 } });
+  ok(restDayFor(noPref) >= 0 && restDayFor(noPref) < 7, "a rest day is chosen even with no preference");
+  const stable = generatePlan(noPref, ANCHOR);
+  const restDow = restDayFor(noPref);
+  const strays = Object.values(stable.workouts).filter(
+    (w) => w.discipline !== "rest" && w.type !== "race_prep" && new Date(w.date + "T00:00:00Z").getUTCDay() === (restDow + 1) % 7,
+  );
+  ok(strays.length === 0, `the default rest day is the same day every week (${strays.length} strays)`);
+}
+
+// ---- 15. hard weight-bearing work is never on back-to-back days ----
+// assignDays only ever penalised two hard sessions on the SAME day; there was no
+// cross-day term at all, so hard days were separated only by an accident of the default
+// prefDays. Swim is deliberately exempt: it's non-weight-bearing, so hard run Tue /
+// hard swim Wed / hard ride Thu is a well-spaced week, not three hard days in a row.
+section("hard-day spacing: 48h between hard run/bike/brick work");
+{
+  const loadsMsk = (d: string) => d === "run" || d === "bike" || d === "brick";
+  const hardImpact = (w: Workout) => loadsMsk(w.discipline) && (w.primaryZone >= 4 || w.type === "brick");
+  const DAY = 86400000;
+
+  // The DEFAULT profile is not a real test of this: with prefDays at Tue/Thu/Sat the
+  // hard days fall apart naturally, so a plan with no spacing constraint at all still
+  // passes. Doc 04 named the trigger — "change the rest day, the session count, or a
+  // prefDay and you can get a hard threshold run followed by a hard ride" — so these
+  // cases deliberately move `longSessionDay` and `restDayPreference` off the lucky
+  // defaults. Each one below produces adjacency on an engine without the cross-day term.
+  const base = { raceType: "half" as const, raceDateISO: weeksFrom(20), perSport: { swim: 2, bike: 3, run: 3 } };
+  const cases: { name: string; p: Profile }[] = [
+    { name: "olympic/beginner", p: profile({ raceType: "olympic", level: "beginner", workoutsPerWeek: 5, raceDateISO: weeksFrom(14) }) },
+    { name: "olympic/elite 12", p: profile({ raceType: "olympic", level: "elite", workoutsPerWeek: 12, raceDateISO: weeksFrom(18) }) },
+    { name: "70.3 @ 8/wk (default days)", p: profile(base) },
+    { name: "full/advanced 11", p: profile({ raceType: "full", level: "advanced", workoutsPerWeek: 11, raceDateISO: weeksFrom(30) }) },
+    { name: "run niggle", p: profile({ ...base, injuries: [{ id: "n1", area: "shin", disciplines: ["run"], severity: "niggle" }] }) },
+    // --- the cases that actually exercise the constraint ---
+    { name: "long day = Sunday", p: profile({ ...base, longSessionDay: 6 }) },
+    { name: "long day = Wednesday", p: profile({ ...base, longSessionDay: 2 }) },
+    { name: "rest day = Thursday", p: profile({ ...base, restDayPreference: 3 }) },
+    { name: "rest day = Wednesday", p: profile({ ...base, restDayPreference: 2 }) },
+    { name: "rest Thu + long Sun", p: profile({ ...base, restDayPreference: 3, longSessionDay: 6 }) },
+    { name: "rest Wed + long Wed + run focus", p: profile({ ...base, restDayPreference: 2, longSessionDay: 2, focusDiscipline: "run" }) },
+  ];
+
+  for (const c of cases) {
+    const plan = generatePlan(c.p, ANCHOR);
+    const byDate = new Map<string, Workout[]>();
+    for (const w of Object.values(plan.workouts)) {
+      if (w.discipline === "rest") continue;
+      if (!byDate.has(w.date)) byDate.set(w.date, []);
+      byDate.get(w.date)!.push(w);
+    }
+    const start = Date.parse(plan.weeks[0].startDate + "T00:00:00Z");
+    const end = Date.parse(plan.weeks[plan.weeks.length - 1].startDate + "T00:00:00Z") + 6 * DAY;
+    let adjacent = 0;
+    let example = "";
+    for (let t = start + DAY; t <= end; t += DAY) {
+      const today = byDate.get(new Date(t).toISOString().slice(0, 10)) ?? [];
+      const yest = byDate.get(new Date(t - DAY).toISOString().slice(0, 10)) ?? [];
+      // race week is exempt: openers + the race itself are deliberately clustered
+      if (today.some((w) => w.type === "race_prep") || yest.some((w) => w.type === "race_prep")) continue;
+      if (yest.some(hardImpact) && today.some(hardImpact)) {
+        adjacent++;
+        if (!example) {
+          example = `${yest.filter(hardImpact).map((w) => w.title).join(",")} → ${today.filter(hardImpact).map((w) => w.title).join(",")}`;
+        }
+      }
+    }
+    ok(adjacent === 0, `${c.name}: no back-to-back hard run/bike/brick days (${adjacent})${example ? ` — e.g. ${example}` : ""}`);
   }
 }
 
