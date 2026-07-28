@@ -419,4 +419,64 @@ platform :ios do
       }
     )
   end
+
+  desc "Where is the App Store submission right now? Read-only. Usage: fastlane review_status"
+  lane :review_status do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    UI.header("#{app.name} (#{app.id})")
+
+    # --- versions + their review state -------------------------------------
+    versions = (app.get_app_store_versions rescue [])
+    if versions.empty?
+      UI.important("no app store versions returned")
+    end
+    versions.first(5).each do |v|
+      state = (v.app_store_state rescue nil) || (v.app_version_state rescue nil) || "?"
+      rel   = (v.release_type rescue "?")
+      b     = (v.get_build rescue nil)
+      UI.message("version #{v.version_string}  state=#{state}  release=#{rel}  build=#{b ? b.version : 'NONE'}")
+      UI.message("  created: #{v.created_date}") if (v.respond_to?(:created_date) && v.created_date)
+    end
+
+    # --- the review submission itself --------------------------------------
+    subs = begin
+      app.get_review_submissions(includes: "appStoreVersionForReview", limit: 5)
+    rescue => e
+      UI.error("get_review_submissions failed: #{e.message}")
+      []
+    end
+
+    if subs.nil? || subs.empty?
+      UI.important("no review submissions visible")
+    else
+      subs.first(5).each do |s|
+        state     = (s.state rescue "?")
+        submitted = (s.submitted_date rescue nil)
+        line = "submission #{(s.id rescue '?')}  state=#{state}"
+        if submitted
+          t = (submitted.is_a?(String) ? Time.parse(submitted) : submitted)
+          hours = ((Time.now - t) / 3600.0).round(1)
+          line += "  submitted=#{t.utc.strftime('%Y-%m-%d %H:%M UTC')}  elapsed=#{hours}h (#{(hours / 24.0).round(1)}d)"
+        end
+        UI.success(line)
+      end
+    end
+
+    # --- anything Apple is waiting on us for -------------------------------
+    # NOTE: get_edit_app_store_version also returns WAITING_FOR_REVIEW versions
+    # (Apple still lets you edit some fields in the queue), so only the
+    # PREPARE_FOR_SUBMISSION state actually means "never submitted".
+    begin
+      v = (app.get_edit_app_store_version rescue nil)
+      st = v && ((v.app_store_state rescue nil) || (v.app_version_state rescue nil))
+      if st.to_s == "PREPARE_FOR_SUBMISSION"
+        UI.error("version #{v.version_string} is PREPARE_FOR_SUBMISSION — it was never submitted!")
+      else
+        UI.message("nothing sitting unsubmitted (editable state=#{st || 'none'})")
+      end
+    rescue => e
+      UI.important("edit-version check skipped: #{e.message}")
+    end
+  end
 end
