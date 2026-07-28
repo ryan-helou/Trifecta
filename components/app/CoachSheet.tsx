@@ -99,7 +99,7 @@ export function CoachSheet({
           <div key={i} className={`flex ${m.role === "you" ? "justify-end" : "justify-start"}`}>
             <div
               className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                m.role === "you" ? "accent-gradient text-white" : "border border-line bg-surface-2"
+                m.role === "you" ? "accent-gradient text-on-accent" : "border border-line bg-surface-2"
               }`}
             >
               {m.text}
