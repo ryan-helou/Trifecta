@@ -393,8 +393,13 @@ function trainingDays(p: Profile): Set<number> {
   // to decide where to place light openers.
   const N = Math.min(effectiveWorkouts(p), 7);
   let pri = [5, 6, 1, 3, 2, 4, 0]; // Sat, Sun, Tue, Thu, Wed, Fri, Mon
-  if (p.restDayPreference != null) pri = pri.filter((d) => d !== p.restDayPreference);
-  return new Set(pri.slice(0, N));
+  // Race week keeps the same day clear as every other week. The rest day is a floor,
+  // so this filters unconditionally and the week tops out at six training days —
+  // guarding it only when N < 7 let a 7-session athlete train straight through the
+  // rest day in race week, which is where a day off matters most.
+  const rest = restDayFor(p);
+  pri = pri.filter((d) => d !== rest);
+  return new Set(pri.slice(0, Math.min(N, 6)));
 }
 
 // A session before it has been assigned to a day.
@@ -474,7 +479,7 @@ function pickWeekSlots(
     for (const r of chosen) if (r.discipline === p.focusDiscipline) r.weight *= 1.18;
   }
 
-  return assignDays(chosen, p.restDayPreference);
+  return assignDays(chosen, restDayFor(p));
 
   // ---- easy / aerobic volume fillers --------------------------------------
   function easyRun(prefDay: number, w = 1.0, maxMin = 60): Role {
@@ -511,8 +516,12 @@ function pickWeekSlots(
     const cap = mods.bike.capZone;
     if (phase === "base" || recover || cap <= 2)
       return quality(3, "bike", false, (min) => W.bikeEndurance(ctx, min), 1.4, 40, 90, true);
+    // A zone-3 cap means a niggle. Sweet spot is 88–94% FTP (zoned Z4), so it is
+    // ABOVE this cap — routing here used to hand a hurting athlete near-threshold
+    // work from the very guard meant to prevent it. bikeTempo is the real Z3 answer,
+    // and the cap has to be checked before the taper branch or taper leaks it back in.
+    if (cap === 3) return quality(3, "bike", true, () => W.bikeTempo(ctx, phase === "taper" ? 50 : 70), 1.3, 40, 75);
     if (phase === "taper") return quality(3, "bike", true, () => W.bikeSweetSpot(ctx, 55), 1.3, 40, 60);
-    if (cap === 3) return quality(3, "bike", true, () => W.bikeSweetSpot(ctx), 1.5, 55, 85);
     return quality(3, "bike", true, even ? () => W.bikeThreshold(ctx) : () => W.bikeSweetSpot(ctx), 1.5, 55, 85);
   }
   function runQualityRole(): Role {
@@ -559,11 +568,150 @@ function pickWeekSlots(
     return { prefDay: day, discipline: disc, hard, scalable, weight, minMin, maxMin, build };
   }
   function swim(prefDay: number, build: (min: number) => Draft, weight: number): Role {
-    return { prefDay, discipline: "swim", hard: false, scalable: false, weight, minMin: 30, maxMin: 60, build };
+    // Hardness has to reflect what the builder actually produces. Swim roles used to
+    // be unconditionally `hard: false`, so a CSS threshold set (Z4) or a speed set
+    // (Z5) was invisible to the scheduler's hard-day rules — which is exactly why
+    // "CSS Threshold Set" dominated the measured back-to-back-hard pairs. Builders
+    // are pure, so evaluating one here to read its zone is safe and cheap.
+    const hard = build(60).primaryZone >= 4;
+    return { prefDay, discipline: "swim", hard, scalable: false, weight, minMin: 30, maxMin: 60, build };
   }
 }
 
 // Remove sessions that fall on the athlete's blackout dates (vacation, travel).
+/**
+ * Clear the day before race day.
+ *
+ * `buildRaceWeek` already skips an opener on `raceDayIndex - 1`, but that only looks
+ * *inside* race week. When race day is a Monday, the day before belongs to the previous
+ * week — and nothing stopped it, so an athlete racing Monday was handed a long endurance
+ * run the day before their race. Race day can land on any weekday, so this has to be a
+ * whole-plan pass, not a within-week one.
+ */
+function clearDayBeforeRace(raceDateISO: string, weeks: Week[], workouts: Record<string, Workout>): void {
+  if (!raceDateISO) return;
+  const eve = addDays(raceDateISO, -1);
+  for (const [id, w] of Object.entries(workouts)) {
+    if (w.date !== eve) continue;
+    if (w.type === "race_prep") continue; // a deliberate short opener stays
+    delete workouts[id];
+  }
+  for (const wk of weeks) wk.workoutIds = wk.workoutIds.filter((id) => workouts[id]);
+}
+
+/** Is this a session the 48-hour rule cares about? Hard work that loads the
+ *  musculoskeletal system — a Z4+ run/ride, or any brick. */
+function isHardLoading(w: Workout): boolean {
+  if (w.type === "race_prep" || w.discipline === "rest") return false;
+  return loads(w.discipline) && (w.primaryZone >= 4 || w.type === "brick");
+}
+
+/**
+ * Fix hard-day adjacency ACROSS the week boundary.
+ *
+ * `assignDays` reasons about one week at a time and wraps Sunday round to that same
+ * week's Monday, which is the right proxy while consecutive weeks look alike. It breaks
+ * exactly where weeks differ — a phase change or a deload — because week N's Sunday and
+ * week N+1's Monday are chosen independently and neither knows about the other.
+ *
+ * Repairing that needs the same exact search `repairHardSpacing` does inside a week, but
+ * with the neighbouring weeks pinned as boundary conditions. Single-session moves are not
+ * enough: freeing Monday can require the Saturday brick to shift first, which no
+ * one-at-a-time hill-climb will discover. Weeks are re-solved in order and the sweep runs
+ * twice, so a change rippling backwards gets a second look.
+ */
+function spaceHardDaysAcrossWeeks(weeks: Week[], workouts: Record<string, Workout>, restDow: number): void {
+  const onDate = () => {
+    const m = new Map<string, Workout[]>();
+    for (const w of Object.values(workouts)) {
+      if (w.discipline === "rest") continue;
+      if (!m.has(w.date)) m.set(w.date, []);
+      m.get(w.date)!.push(w);
+    }
+    return m;
+  };
+
+  for (let pass = 0; pass < 2; pass++) {
+    let changed = false;
+    for (const wk of weeks) {
+      if (wk.isRaceWeek) continue; // race week is deliberately shaped; leave it alone
+      const byDate = onDate();
+      const dayList = Array.from({ length: 7 }, (_, d) => byDate.get(addDays(wk.startDate, d)) ?? []);
+
+      const movable: Workout[] = [];
+      for (const list of dayList) for (const w of list) if (isHardLoading(w)) movable.push(w);
+      if (!movable.length || movable.length > 5) continue;
+
+      // what stays put: session counts, and which days already carry hard work that
+      // isn't weight-bearing (a Z4 CSS swim still forbids a second hard session that day)
+      const fixedCount = Array.from({ length: 7 }, () => 0);
+      const fixedHard = Array.from({ length: 7 }, () => false);
+      for (let d = 0; d < 7; d++) {
+        for (const w of dayList[d]) {
+          if (movable.includes(w)) continue;
+          fixedCount[d]++;
+          // as above: only weight-bearing hard work reserves the day
+          if (isHardLoading(w)) fixedHard[d] = true;
+        }
+      }
+
+      // the boundary: what the neighbouring weeks put on the days either side
+      const prevHard = (byDate.get(addDays(wk.startDate, -1)) ?? []).some(isHardLoading);
+      const nextHard = (byDate.get(addDays(wk.startDate, 7)) ?? []).some(isHardLoading);
+
+      const startDays = movable.map((w) => w.dayIndex);
+      let bestDays: number[] | null = null;
+      let bestKey: [number, number] = [Infinity, Infinity];
+      const pick: number[] = [];
+
+      const evaluate = () => {
+        const count = fixedCount.slice();
+        const hard = fixedHard.slice();
+        const hardLoad = Array.from({ length: 7 }, () => false);
+        for (const d of pick) {
+          count[d]++;
+          if (hard[d]) return; // never two hard sessions on one day
+          hard[d] = true;
+          hardLoad[d] = true;
+        }
+        if (count.some((n) => n > MAX_PER_DAY)) return;
+        let conflicts = 0;
+        for (let d = 0; d < 6; d++) if (hardLoad[d] && hardLoad[d + 1]) conflicts++;
+        if (prevHard && hardLoad[0]) conflicts++;
+        if (nextHard && hardLoad[6]) conflicts++;
+        let disp = 0;
+        for (let k = 0; k < pick.length; k++) disp += Math.abs(pick[k] - startDays[k]);
+        if (conflicts < bestKey[0] || (conflicts === bestKey[0] && disp < bestKey[1])) {
+          bestKey = [conflicts, disp];
+          bestDays = pick.slice();
+        }
+      };
+
+      const rec = (k: number) => {
+        if (k === movable.length) { evaluate(); return; }
+        for (let d = 0; d < 7; d++) {
+          if (d === restDow) continue;
+          if (fixedHard[d]) continue;
+          pick.push(d);
+          rec(k + 1);
+          pick.pop();
+        }
+      };
+      rec(0);
+
+      if (!bestDays) continue;
+      movable.forEach((w, k) => {
+        const to = bestDays![k];
+        if (w.dayIndex === to) return;
+        w.dayIndex = to;
+        w.date = addDays(wk.startDate, to);
+        changed = true;
+      });
+    }
+    if (!changed) break;
+  }
+}
+
 function applyBlackouts(p: Profile, weeks: Week[], workouts: Record<string, Workout>): void {
   const ranges = (p.blackouts ?? []).filter((r) => r.startISO && r.endISO && r.startISO <= r.endISO);
   if (!ranges.length) return;
@@ -575,12 +723,126 @@ function applyBlackouts(p: Profile, weeks: Week[], workouts: Record<string, Work
   for (const wk of weeks) wk.workoutIds = wk.workoutIds.filter((id) => workouts[id]);
 }
 
+/** The most sessions a single day can hold. 7 × 3 = 21 = MAX_WORKOUTS. */
+const MAX_PER_DAY = 3;
+
+/** Does this discipline load the musculoskeletal system the way running and riding
+ *  do? Swimming doesn't — which is why it's exempt from cross-day hard spacing. */
+function loads(d: Discipline): boolean {
+  return d === "run" || d === "bike" || d === "brick";
+}
+/** Above this, a week physically cannot fit inside six days, so the rest-day floor
+ *  yields rather than producing an infeasible schedule. 6 days × 3 = 18. */
+const REST_DAY_FEASIBLE_MAX = 18;
+
+/**
+ * The day this athlete gets completely off.
+ *
+ * A full day off is a **floor, not a preference**. `restDayPreference` decides
+ * *which* day; it does not decide *whether*. Before this, the guard sat behind a
+ * `!= null` check, so an athlete who skipped the optional onboarding chip got no
+ * protected day at all — measured at 8 sessions/week that produced 14 off days in a
+ * 147-day plan and a 30-day unbroken training streak.
+ *
+ * Derived from the **profile only**, never from a given week's roles, so it is the
+ * same day for the whole plan. A rest day that drifts week to week isn't a rest day
+ * an athlete can build a life around — and it silently reintroduces long streaks,
+ * because resting Monday one week and Friday the next leaves nine days on in between.
+ *
+ * Default: two days after the long session — the classic day off following a big
+ * weekend (long day Sat → rest Monday).
+ */
+export function restDayFor(p: Profile): number {
+  const pref = p.restDayPreference;
+  if (pref != null && Number.isInteger(pref) && pref >= 0 && pref < 7) return pref;
+  return (((p.longSessionDay ?? 5) + 2) % 7 + 7) % 7;
+}
+
+/**
+ * Second pass: fix hard-day adjacency the greedy placement couldn't.
+ *
+ * The scoring pass is single-shot with no backtracking, so it can paint itself into a
+ * corner — place the brick on Sunday and the hard ride on Thursday and *every*
+ * remaining day is adjacent to one of them, even though {Wed, Fri, Sun} would have
+ * worked. Escaping needs two sessions to move at once, which no hill-climb on single
+ * moves will find.
+ *
+ * There are at most a handful of hard weight-bearing sessions and seven days, so this
+ * just enumerates the placements exactly and takes the best one: fewest adjacent hard
+ * days first, then least displacement from everyone's preferred day. Cheap, exhaustive
+ * within its bound, and it leaves every other session exactly where the greedy put it.
+ */
+function repairHardSpacing(out: Slot[], restDay: number | undefined): void {
+  const movable = out.map((s, i) => ({ s, i })).filter(({ s }) => s.hard && loads(s.discipline));
+  if (movable.length < 2 || movable.length > 6) return; // nothing to do / too big to enumerate
+
+  const isMovable = new Set(movable.map((m) => m.i));
+  // everything else stays put — count what it already occupies, and where the
+  // non-loading hard work (a CSS swim) sits, so the same-day rule still holds.
+  const fixedLoad = Array.from({ length: 7 }, () => 0);
+  const fixedHard = Array.from({ length: 7 }, () => false);
+  out.forEach((s, i) => {
+    if (isMovable.has(i)) return;
+    fixedLoad[s.day]++;
+    // Only weight-bearing hard work reserves a day. A hard CSS swim sharing a day with a
+    // hard ride is an ordinary AM/PM double; blocking it would strand the repair and force
+    // a 48-hour violation instead, which is the far worse trade.
+    if (s.hard && loads(s.discipline)) fixedHard[s.day] = true;
+  });
+
+  const prefOf = movable.map(({ s }) => s.day); // greedy's answer doubles as the preference to stay near
+  const circ = (a: number, b: number) => Math.min(Math.abs(a - b), 7 - Math.abs(a - b));
+
+  let bestDays: number[] | null = null;
+  let bestKey: [number, number] = [Infinity, Infinity];
+  const pick: number[] = [];
+
+  const evaluate = () => {
+    const load = fixedLoad.slice();
+    const hard = fixedHard.slice();
+    const hardLoad = Array.from({ length: 7 }, () => false);
+    for (const d of pick) {
+      load[d]++;
+      if (hard[d]) return; // two hard sessions on one day — never
+      hard[d] = true;
+      hardLoad[d] = true;
+    }
+    if (load.some((n) => n > MAX_PER_DAY)) return;
+    let conflicts = 0;
+    for (let d = 0; d < 7; d++) if (hardLoad[d] && hardLoad[(d + 1) % 7]) conflicts++;
+    let disp = 0;
+    for (let k = 0; k < pick.length; k++) disp += circ(pick[k], prefOf[k]);
+    const key: [number, number] = [conflicts, disp];
+    if (key[0] < bestKey[0] || (key[0] === bestKey[0] && key[1] < bestKey[1])) {
+      bestKey = key;
+      bestDays = pick.slice();
+    }
+  };
+
+  const rec = (k: number) => {
+    if (k === movable.length) { evaluate(); return; }
+    for (let d = 0; d < 7; d++) {
+      if (restDay != null && d === restDay) continue;
+      if (fixedHard[d]) continue; // a hard session already lives here
+      pick.push(d);
+      rec(k + 1);
+      pick.pop();
+    }
+  };
+  rec(0);
+
+  if (bestDays) movable.forEach((m, k) => { out[m.i].day = bestDays![k]; });
+}
+
 // Spread the chosen sessions across the 7 days: fill empty days first, then
-// stack (up to 3/day), never two hard sessions on one day, keep sports apart,
-// stay near each session's preferred day, and honour a rest day when count allows.
-function assignDays(roles: Role[], restDay?: number): Slot[] {
+// stack (up to 3/day), never two hard sessions on one day OR on consecutive days,
+// keep sports apart, stay near each session's preferred day, and always keep one
+// day completely clear.
+function assignDays(roles: Role[], restDayOfWeek: number): Slot[] {
   const day: { hard: boolean; disc: Discipline }[][] = Array.from({ length: 7 }, () => []);
   const out: Slot[] = [];
+  // Only a week that genuinely cannot fit inside six days gives the day back.
+  const restDay = roles.length > REST_DAY_FEASIBLE_MAX ? undefined : restDayOfWeek;
   for (const r of roles) {
     let best = 0;
     let bestScore = -Infinity;
@@ -600,14 +862,45 @@ function assignDays(roles: Role[], restDay?: number): Slot[] {
       build: r.build,
     });
   }
+  // greedy is single-shot; give the hard days an exact second look
+  repairHardSpacing(out, restDay);
   return out;
 
   function score(d: number, r: Role): number {
     const cur = day[d];
-    if (cur.length >= 3) return -1e6; // a day holds at most three sessions
+    if (cur.length >= MAX_PER_DAY) return -1e6; // a day holds at most three sessions
+
+    // The rest day is a hard block, not a heavy penalty — it only yields once every
+    // other day is genuinely full, which is the one case where a 7th day is the
+    // honest answer rather than a scheduling failure.
+    if (restDay != null && d === restDay) {
+      const roomElsewhere = day.some((c, i) => i !== restDay && c.length < MAX_PER_DAY);
+      if (roomElsewhere) return -1e6;
+    }
+
     let s = -cur.length * 25; // spread across days before doubling up
-    if (restDay != null && d === restDay) s -= 1000; // keep the rest day clear unless every other day is full
     if (r.hard && cur.some((x) => x.hard)) s -= 400; // never two hard sessions a day
+
+    // ...and hard WEIGHT-BEARING work not on consecutive days either. The week wraps
+    // because the pattern repeats weekly, so Sunday's neighbour really is next Monday.
+    //
+    // Swimming is deliberately exempt from the cross-day rule (though not the same-day
+    // one): it's non-weight-bearing and far less systemically taxing, so hard run
+    // Tuesday / hard swim Wednesday / hard ride Thursday is a well-spaced week, not
+    // three hard days in a row. Constraining it would force real conflicts for no
+    // physiological gain — the run and the ride are what need 48 h between them.
+    //
+    // Weighted above the same-day term's junior partner but below it, so stacking on
+    // one day stays worse than adjacency, and well above the prefDay pull (+100) so
+    // spacing wins that argument rather than losing it.
+    if (r.hard && loads(r.discipline)) {
+      const prev = day[(d + 6) % 7];
+      const next = day[(d + 1) % 7];
+      const hardNeighbour = (c: typeof cur) => c.some((x) => x.hard && loads(x.disc));
+      if (hardNeighbour(prev)) s -= 250;
+      if (hardNeighbour(next)) s -= 250;
+    }
+
     if (cur.some((x) => x.disc === r.discipline)) s -= 30; // avoid same-sport doubles
     const dist = Math.min(Math.abs(d - r.prefDay), 7 - Math.abs(d - r.prefDay));
     s -= dist * 6; // stay near the preferred day (week wraps)
@@ -749,6 +1042,10 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
     weeks.push(week);
   }
 
+  // the week-by-week scheduler can't see across its own boundary
+  spaceHardDaysAcrossWeeks(weeks, workouts, restDayFor(profile));
+  // race eve is a rest day, whichever week it happens to fall in
+  clearDayBeforeRace(profile.raceDateISO, weeks, workouts);
   // strip out sessions the athlete told us they can't train (vacation, travel)
   applyBlackouts(profile, weeks, workouts);
 
@@ -830,6 +1127,7 @@ function generateFitnessPlan(profile: Profile, anchorISO?: string): Plan {
     weeks.push(week);
   }
 
+  spaceHardDaysAcrossWeeks(weeks, workouts, restDayFor(profile));
   applyBlackouts(profile, weeks, workouts);
 
   return {
@@ -1043,7 +1341,12 @@ function buildRaceWeek(
       {
         kind: "main",
         discipline: "bike",
-        zone: cat === "full" ? 2 : 3,
+        // Race-bike intensity rises sharply as the distance falls. Olympic sits at
+        // 88–95% FTP, which escapes Z3's 76–90% — so it carries an explicit band and
+        // the Z4 label that actually matches the effort, rather than showing the
+        // athlete a target that contradicts the instruction next to it.
+        zone: cat === "full" ? 2 : cat === "half" ? 3 : 4,
+        ftpPct: cat === "full" ? [70, 75] : cat === "half" ? [80, 85] : [88, 95],
         distanceM: dist.bike,
         description: `Bike ${(dist.bike / 1000).toFixed(0)} km @ ${cat === "full" ? "70–75%" : cat === "half" ? "80–85%" : "88–95%"} FTP`,
         cue: "Ride your own numbers. Fuel 60–90g carbs/hour. Save the legs for the run.",

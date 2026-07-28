@@ -10,7 +10,14 @@ export interface TargetView {
   zoneName: string;
 }
 
-export function targetView(discipline: Discipline, zone: Zone, paces: PaceModel, unit: Unit = "metric"): TargetView {
+export function targetView(
+  discipline: Discipline,
+  zone: Zone,
+  paces: PaceModel,
+  unit: Unit = "metric",
+  /** explicit %FTP band that overrides the zone's, for straddling sessions (sweet spot) */
+  ftpPct?: [number, number],
+): TargetView {
   const meta = ZONES[zone];
   const secondary: string[] = [rpeLabel(zone)];
 
@@ -34,12 +41,19 @@ export function targetView(discipline: Discipline, zone: Zone, paces: PaceModel,
   }
   if (discipline === "bike") {
     const z = paces.bike.zones[zone];
+    // An explicit band wins over the zone's. The segment knows its real
+    // prescription; the zone is only ever an approximation of it.
+    const loPct = ftpPct ? ftpPct[0] : z.loPct;
+    const hiPct = ftpPct ? ftpPct[1] : z.hiPct;
+    const ftp = paces.bike.ftp;
+    const loW = ftpPct ? (ftp ? Math.round((ftp * loPct) / 100) : undefined) : z.loW;
+    const hiW = ftpPct ? (ftp ? Math.round((ftp * hiPct) / 100) : undefined) : z.hiW;
     let primary: string;
-    if (paces.bike.ftp && z.loW) {
-      primary = `${z.loW}–${z.hiW} W`;
-      secondary.unshift(`${z.loPct}–${z.hiPct}% FTP`);
+    if (ftp && loW) {
+      primary = `${loW}–${hiW} W`;
+      secondary.unshift(`${loPct}–${hiPct}% FTP`);
     } else {
-      primary = `${z.loPct}–${z.hiPct}% FTP`;
+      primary = `${loPct}–${hiPct}% FTP`;
     }
     const hr = paces.hr.zones[zone];
     if (hr.loBpm) secondary.push(`${hr.loBpm}–${hr.hiBpm} bpm`);

@@ -38,7 +38,7 @@ function Step({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; unit: 
   const isRest = seg.kind === "rest";
   const z = seg.zone;
   const showTarget = z && !isRest && disc !== "strength" && disc !== "rest";
-  const tv = showTarget ? targetView(disc, z as Zone, paces, unit) : null;
+  const tv = showTarget ? targetView(disc, z as Zone, paces, unit, seg.ftpPct) : null;
   return (
     <div className="flex items-start gap-2.5 border-b border-line-soft py-2 last:border-b-0">
       <span
