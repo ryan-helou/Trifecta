@@ -43,6 +43,25 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
     -destination "id=$UDID" build
 fi
 
+# 2b) capability guard. App.entitlements sat in the repo for weeks while the Xcode
+# project never referenced it, so the app shipped WITHOUT the HealthKit entitlement:
+# the Connect-Apple-Health button rendered, auth silently failed, and the user was
+# told to flip a Settings toggle that didn't exist. A simulator run can't catch that
+# (HKHealthStore.isHealthDataAvailable() is a hardware check and returns true
+# regardless), so assert the wiring statically instead.
+echo "==> checking iOS capability wiring"
+ENT_REFS=$(grep -c 'CODE_SIGN_ENTITLEMENTS = App/App.entitlements;' ios/App/App.xcodeproj/project.pbxproj || true)
+if [ "$ENT_REFS" -ne 2 ]; then
+  echo "!! App.entitlements is wired into $ENT_REFS build configs, expected 2 (Debug + Release)."
+  echo "   Without it the app is signed with NO HealthKit entitlement and the feature is dead on device."
+  exit 1
+fi
+if ! grep -q 'com.apple.developer.healthkit' ios/App/App/App.entitlements; then
+  echo "!! App.entitlements no longer declares HealthKit."
+  exit 1
+fi
+echo "    entitlements wired into both configs ✓"
+
 # 3) clean (re)install — a fresh install also clears any stale WebView storage
 xcrun simctl uninstall "$UDID" "$BUNDLE_ID" 2>/dev/null || true
 xcrun simctl install "$UDID" "$APP"
