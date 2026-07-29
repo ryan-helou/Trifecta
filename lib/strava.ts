@@ -1,7 +1,8 @@
 import type { Store } from "./db";
 import type { StravaConn } from "./db";
-import type { Discipline, Plan, WorkoutActuals } from "./types";
-import { setStatus } from "./adapt";
+import type { Discipline, Plan, Workout, WorkoutActuals, Zone } from "./types";
+import { setStatus, reindexWeeks } from "./adapt";
+import { dayIndexOf } from "./dates";
 
 // ---------------------------------------------------------------------------
 // Strava integration — OAuth, token refresh, activity fetch, and the matcher
@@ -236,13 +237,50 @@ export interface ApplyResult {
   updated?: boolean;
 }
 
+/** Create a bonus workout for an activity that didn't match any planned session. */
+function addBonusWorkoutFromStrava(plan: Plan, a: StravaActivity): { plan: Plan; workoutId: string } | null {
+  const disc = disciplineOf(a);
+  if (!disc) return null;
+  const day = activityLocalDay(a);
+  if (!day) return null;
+  const acts = actualsFromActivity(a);
+  const zone: Zone = 2;
+  const base = `synced-${day}-${disc}`;
+  let id = base;
+  let n = 1;
+  const p: Plan = { ...plan, workouts: { ...plan.workouts }, weeks: plan.weeks.map((w) => ({ ...w, workoutIds: [...w.workoutIds] })) };
+  while (p.workouts[id]) id = `${base}-${++n}`;
+  const w: Workout = {
+    id,
+    date: day,
+    weekIndex: 0,
+    dayIndex: dayIndexOf(day),
+    discipline: disc,
+    type: disc === "strength" ? "strength" : "endurance",
+    title: a.name || `${disc[0].toUpperCase()}${disc.slice(1)} (Strava)`,
+    purpose: "Synced from Strava.",
+    segments: [{ kind: "main", discipline: disc, zone, durationSec: a.moving_time ?? a.elapsed_time ?? 0, description: "Synced session" }],
+    estDurationSec: a.moving_time ?? a.elapsed_time ?? 0,
+    estDistanceM: a.distance != null ? Math.round(a.distance) : undefined,
+    primaryZone: zone,
+    status: "done",
+    actualDurationSec: acts.durationSec,
+    actualDistanceM: acts.distanceM,
+    actuals: acts,
+  };
+  p.workouts[id] = w;
+  reindexWeeks(p);
+  return { plan: p, workoutId: id };
+}
+
 /** Match one activity to the user's plan and, if it lands, mark that session done
- *  and attach the actuals — writing the mutated plan back to the store. Idempotent:
- *  one activity completes at most one session, ever; re-delivery of an activity a
- *  workout already carries refreshes that workout's actuals in place (crop/trim/
- *  rename on Strava) instead of matching again. Writes go through a CAS retry —
- *  webhook, manual sync and the connect backfill all race each other and the
- *  client's autosave over the same blob. */
+ *  and attach the actuals — writing the mutated plan back to the store. Unmatched
+ *  activities (rest day, different sport, etc.) create a bonus session so training
+ *  load stays complete. Idempotent: one activity completes at most one session,
+ *  ever; re-delivery of an activity a workout already carries refreshes that
+ *  workout's actuals in place (crop/trim/rename on Strava) instead of matching
+ *  again. Writes go through a CAS retry — webhook, manual sync and the connect
+ *  backfill all race each other and the client's autosave over the same blob. */
 export async function applyActivityToUser(store: Store, userId: string, a: StravaActivity): Promise<ApplyResult> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const row = await store.getDataV(userId);
@@ -262,42 +300,50 @@ export async function applyActivityToUser(store: Store, userId: string, a: Strav
         actualDurationSec: acts.durationSec ?? carrier.actualDurationSec,
         actualDistanceM: acts.distanceM ?? carrier.actualDistanceM,
       };
-      // nothing changed (webhook retry / already-synced backfill) → pure no-op
       if (JSON.stringify(refreshed) === JSON.stringify(carrier)) {
         return { matched: true, workoutId: carrier.id, title: carrier.title, alreadyDone: true };
       }
       const withRefreshed = { ...plan, workouts: { ...plan.workouts, [carrier.id]: refreshed } };
       const next = await store.setDataIf(userId, { ...data, plan: withRefreshed, updatedAtISO: new Date().toISOString() }, version);
       if (next !== null) return { matched: true, workoutId: carrier.id, title: carrier.title, alreadyDone: true, updated: true };
-      continue; // lost the write race — re-read and re-apply
+      continue;
     }
 
     const match = matchActivityToWorkout(plan, a);
-    if (!match) return { matched: false };
-    const existing = plan.workouts[match.workoutId];
-    if (!existing) return { matched: false };
+    let updatedPlan: Plan;
+    let workoutId: string;
+    let title: string;
 
-    const done = setStatus(plan, match.workoutId, "done");
-    const acts = actualsFromActivity(a);
-    const target = done.workouts[match.workoutId];
-    const withActuals = {
-      ...done,
-      workouts: {
-        ...done.workouts,
-        [match.workoutId]: {
-          ...target,
-          actuals: acts,
-          // Also populate the flat fields the credit/stats/UI read (creditedSeconds,
-          // Progress, WorkoutDetail) — otherwise a device-synced session counts only
-          // its planned estimate and the real duration/distance from Strava are lost.
-          actualDurationSec: acts.durationSec ?? target.actualDurationSec,
-          actualDistanceM: acts.distanceM ?? target.actualDistanceM,
+    if (match) {
+      const existing = plan.workouts[match.workoutId];
+      if (!existing) return { matched: false };
+      const done = setStatus(plan, match.workoutId, "done");
+      const acts = actualsFromActivity(a);
+      const target = done.workouts[match.workoutId];
+      updatedPlan = {
+        ...done,
+        workouts: {
+          ...done.workouts,
+          [match.workoutId]: {
+            ...target,
+            actuals: acts,
+            actualDurationSec: acts.durationSec ?? target.actualDurationSec,
+            actualDistanceM: acts.distanceM ?? target.actualDistanceM,
+          },
         },
-      },
-    };
-    const next = await store.setDataIf(userId, { ...data, plan: withActuals, updatedAtISO: new Date().toISOString() }, version);
-    if (next !== null) return { matched: true, workoutId: match.workoutId, title: existing.title };
-    // lost the write race — re-read and re-apply
+      };
+      workoutId = match.workoutId;
+      title = existing.title;
+    } else {
+      const bonus = addBonusWorkoutFromStrava(plan, a);
+      if (!bonus) return { matched: false };
+      updatedPlan = bonus.plan;
+      workoutId = bonus.workoutId;
+      title = updatedPlan.workouts[workoutId].title;
+    }
+
+    const next = await store.setDataIf(userId, { ...data, plan: updatedPlan, updatedAtISO: new Date().toISOString() }, version);
+    if (next !== null) return { matched: true, workoutId, title };
   }
   console.warn(`strava: gave up applying activity ${a.id} for ${userId} after 3 version conflicts`);
   return { matched: false };
