@@ -122,10 +122,13 @@ export interface ParsedInjury {
 }
 
 /** Ask the cheap AI to turn free-text injury notes into structured constraints. */
-export async function apiIntake(text: string) {
+/** `consent` is the athlete's explicit, unbundled permission to send this health text
+ *  to the AI provider. The server refuses the LLM step without it and falls back to the
+ *  on-device red-flag triage, so passing it is a deliberate act, never a default. */
+export async function apiIntake(text: string, consent: boolean) {
   const { data } = await jsonFetch("/api/intake", {
     method: "POST",
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, consent }),
   });
   return data as { enabled?: boolean; injuries?: ParsedInjury[] };
 }

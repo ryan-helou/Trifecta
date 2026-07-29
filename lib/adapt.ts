@@ -635,7 +635,19 @@ function goalLine(plan: Plan): string {
     : `Race: ${raceLabel(plan)} on ${plan.raceDateISO}. Level: ${p.level}.`;
 }
 
-export function summarizeForCoach(plan: Plan, todayISO: string): string {
+/** Build the context string the AI coach is given.
+ *
+ *  `includeHealth` defaults to FALSE and that is the whole point. This function used to
+ *  put the athlete's injuries — area, severity, affected disciplines — into every coach
+ *  request unconditionally. That is a second health-data → third-party path alongside
+ *  /api/intake, and unlike that one it had no consent gate and no disclosure anywhere.
+ *  Health context is now opt-in per athlete, on the same consent as the injury analyser
+ *  (ticket #63); without it the coach still works, it just doesn't get told what hurts. */
+export function summarizeForCoach(
+  plan: Plan,
+  todayISO: string,
+  opts?: { includeHealth?: boolean },
+): string {
   const p = plan.profile;
   // Calendar comparison, not fixed-ms: after spring-forward a 7*86400000ms window overshoots
   // the next local Monday midnight by an hour and mis-buckets that Monday (same DST hazard
@@ -645,7 +657,7 @@ export function summarizeForCoach(plan: Plan, todayISO: string): string {
   const lines: string[] = [];
   lines.push(goalLine(plan));
   if (wk) lines.push(`Current week: ${wk.label} (${wk.phase} phase), target ${wk.targetHours}h. Focus: ${wk.focus}`);
-  if (p.injuries?.length) {
+  if (opts?.includeHealth && p.injuries?.length) {
     lines.push(
       `Working around: ${p.injuries.map((i) => `${i.area} (${i.severity}, ${i.disciplines.join("/")})`).join("; ")}.`,
     );

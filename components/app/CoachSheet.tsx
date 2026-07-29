@@ -43,7 +43,10 @@ export function CoachSheet({
     setMessages((m) => [...m, { role: "you", text: q }]);
     setBusy(true);
     try {
-      const ctx = summarizeForCoach(plan, today);
+      // fail closed: nothing about the athlete's body unless they opted in
+      const ctx = summarizeForCoach(plan, today, {
+        includeHealth: plan.profile.aiHealthConsent?.granted === true,
+      });
       const res = await apiCoach(ctx, q);
       if (res.provider) setProvider(res.provider);
       setMessages((m) => [...m, { role: "coach", text: res.text || "…" }]);

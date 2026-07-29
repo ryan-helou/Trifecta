@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth-server";
-import { aiEnabled, aiJSON } from "@/lib/ai";
+import { aiJSON, healthTextAllowed } from "@/lib/ai";
 import { detectRedFlags, redFlagConstraints } from "@/lib/redFlags";
 
 export const runtime = "nodejs";
@@ -72,7 +72,13 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const text = String(body.text ?? "").slice(0, 1200).trim();
-  const ai = aiEnabled();
+
+  // TWO independent gates, both required before a word of this reaches a third party
+  // (ticket #63). `healthTextAllowed()` is the operator's attestation that the endpoint
+  // is a no-training tier under a DPA; `consent` is THIS athlete's explicit, unbundled
+  // permission — not inferred from accepting the terms, and revocable in Profile.
+  // Neither is sufficient alone, and the deterministic triage below runs regardless.
+  const ai = healthTextAllowed() && body.consent === true;
   if (!text) return NextResponse.json({ enabled: ai, injuries: [] });
 
   // Deterministic triage first, on the athlete's raw words — independent of the

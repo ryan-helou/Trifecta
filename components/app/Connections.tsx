@@ -42,7 +42,74 @@ export function Connections() {
     <>
       <AppleHealthCard />
       <StravaCard />
+      <AiHealthConsentCard />
     </>
+  );
+}
+
+/** Withdraw (or give) permission to send injury text to the AI provider.
+ *
+ *  Consent that can't be withdrawn isn't consent — GDPR requires it be as easy to
+ *  revoke as to give, and health data is special category. Revoking here takes effect
+ *  everywhere at once: the injury analyser stops sending, and the coach stops being
+ *  told what hurts (see summarizeForCoach). Ticket #63. */
+function AiHealthConsentCard() {
+  const { profile, updateProfile } = useApp();
+  const toast = useToast();
+  if (!profile) return null;
+  const granted = profile.aiHealthConsent?.granted === true;
+
+  const set = (on: boolean) => {
+    updateProfile({
+      ...profile,
+      aiHealthConsent: on
+        ? { granted: true, atISO: new Date().toISOString(), provider: "Google (Gemini)" }
+        : { granted: false, atISO: new Date().toISOString(), provider: "Google (Gemini)" },
+    });
+    toast({
+      text: on
+        ? "AI injury analysis is on — your notes can be sent to Google (Gemini)."
+        : "Turned off. Nothing about your body is sent anywhere now.",
+      tone: on ? "success" : "default",
+    });
+  };
+
+  return (
+    <div>
+      <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">AI features</div>
+      <div className="card overflow-hidden">
+        <div className="px-4 py-3.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold">Analyse my injury notes with AI</div>
+              <p className="mt-1 text-sm leading-snug text-muted">
+                Sends what you type about aches and injuries to <b className="text-foreground">Google (Gemini)</b> to
+                turn it into training limits. Off means nothing about your body leaves your device — the safety check
+                and your plan work either way.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={granted}
+              aria-label="Analyse my injury notes with AI"
+              onClick={() => set(!granted)}
+              className="mt-0.5 h-7 w-12 flex-shrink-0 rounded-full border border-line transition"
+              style={{ background: granted ? "var(--accent)" : "var(--surface-3)" }}
+            >
+              <span
+                className="block h-5 w-5 rounded-full bg-white shadow transition-transform"
+                style={{ transform: granted ? "translateX(22px)" : "translateX(3px)" }}
+              />
+            </button>
+          </div>
+          {granted && profile.aiHealthConsent?.atISO && (
+            <p className="mt-2 text-xs text-muted">
+              Allowed {new Date(profile.aiHealthConsent.atISO).toLocaleDateString()}.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
