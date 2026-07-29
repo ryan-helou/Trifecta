@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiStravaDisconnect, apiStravaStatus, apiStravaSync, StravaStatus } from "@/lib/api";
 import { useApp } from "../AppProvider";
 import { healthAvailable, requestHealthAuth, syncAppleHealth } from "@/lib/health";
+import { IS_NATIVE } from "@/lib/runtime";
 import { useToast } from "./Toast";
 
 // Monochrome to fit the Paper (black & white) theme. Swap back to "#FC4C02" for Strava brand orange.
@@ -20,19 +21,134 @@ function timeAgo(iso?: string | null): string {
 }
 
 /*
-  Profile → Device sync. Link Strava so finished activities auto-complete their
-  planned session — no "mark done" tapping. Strava is the hub most watches sync
-  into (Garmin, COROS, Wahoo, Apple Watch), so one connection covers them.
-  Uses only theme-stable classes (.card/.btn/text-muted) so it fits whatever the
-  app's current design tokens are.
+  Profile → where finished workouts come from. Two independent sources:
+
+    Apple Health — on-device, read-only, no account. Reads swim/bike/run/strength
+                   workouts and checks off the planned session they match.
+    Strava       — server-side, covers anything that syncs into Strava
+                   (Garmin, COROS, Wahoo, Apple Watch).
+
+  They render as SEPARATE sections on purpose. They used to share one component
+  that opened with `if (!status) return null` — `status` being the *Strava* status
+  — so the Apple Health card was only ever reachable if an unrelated Strava API
+  call had come back. App Review cited us under guideline 2.5.1 for shipping the
+  HealthKit entitlement without clearly identifying HealthKit in the UI; a card
+  that can silently not exist is exactly that. Apple Health now stands on its own,
+  is titled "Apple Health", and renders on every native build whether or not the
+  athlete has granted access yet.
 */
 export function Connections() {
+  return (
+    <>
+      <AppleHealthCard />
+      <StravaCard />
+    </>
+  );
+}
+
+type HealthState = "checking" | "ready" | "unavailable";
+
+function AppleHealthCard() {
   const toast = useToast();
   const { plan, applyPlan } = useApp();
+  const [state, setState] = useState<HealthState>("checking");
+  const [busy, setBusy] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    healthAvailable()
+      .then((ok) => setState(ok ? "ready" : "unavailable"))
+      .catch(() => setState("unavailable"));
+  }, []);
+
+  // HealthKit exists only inside the native shell. On the web PWA there is no
+  // Apple Health to identify, and claiming otherwise would be the opposite error.
+  if (!IS_NATIVE) return null;
+
+  const sync = async () => {
+    setBusy(true);
+    const authed = await requestHealthAuth();
+    if (!authed) {
+      setBusy(false);
+      toast({ text: "Apple Health access is off — turn it on in Settings › Privacy & Security › Health › Trifecta.", tone: "warning" });
+      return;
+    }
+    const res = plan ? await syncAppleHealth(plan) : null;
+    setBusy(false);
+    setLastSyncedAt(new Date().toISOString());
+    if (res && res.applied > 0) {
+      applyPlan(res.plan);
+      toast({ text: `Apple Health — ${res.applied} session${res.applied > 1 ? "s" : ""} marked done.`, tone: "success" });
+      setTimeout(() => window.location.reload(), 900);
+    } else {
+      toast({ text: "Apple Health — no new workouts to match.", tone: "default" });
+    }
+  };
+
+  return (
+    <div>
+      <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">Apple Health</div>
+      <div className="card overflow-hidden">
+        <div className="px-4 py-3.5">
+          <div className="flex items-start gap-2.5">
+            <HealthMark />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold">Auto-complete from Apple Health</div>
+              <p className="mt-1 text-sm leading-snug text-muted">
+                Reads your swim, bike, run and strength workouts and checks off the planned session each one matches.
+              </p>
+            </div>
+          </div>
+
+          {/* Kept to two short lines on purpose: the button below has to stay above
+              the fold on a 6.9" phone, or the feature reads as text and not a thing
+              you can do. */}
+          <ul className="mt-2.5 space-y-1 text-xs text-muted">
+            <li className="flex gap-2">
+              <Tick />
+              <span>
+                <b className="text-foreground">Read-only</b> — Trifecta never writes to Apple Health.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <Tick />
+              <span>
+                <b className="text-foreground">Stays on your device</b> — nothing from Health is uploaded.
+              </span>
+            </li>
+          </ul>
+
+          {state === "unavailable" ? (
+            <p className="mt-3 rounded-xl border border-line px-3 py-2.5 text-xs text-muted">
+              Apple Health isn&apos;t available on this device, so there&apos;s nothing to read yet.
+            </p>
+          ) : (
+            <>
+              <button
+                onClick={sync}
+                disabled={busy || state === "checking"}
+                className="btn mt-3 w-full py-3 text-sm font-semibold"
+                style={{ background: "#111111", color: "#fff" }}
+              >
+                {busy ? "Reading Apple Health…" : "Sync with Apple Health"}
+              </button>
+              <p className="mt-2 text-center text-xs text-muted">
+                {lastSyncedAt
+                  ? `Last read ${timeAgo(lastSyncedAt)}`
+                  : "iOS will ask your permission the first time."}
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StravaCard() {
+  const toast = useToast();
   const [status, setStatus] = useState<StravaStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [healthOk, setHealthOk] = useState(false);
-  const [healthBusy, setHealthBusy] = useState(false);
 
   const refresh = async () => {
     try {
@@ -56,31 +172,6 @@ export function Connections() {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    healthAvailable()
-      .then(setHealthOk)
-      .catch(() => {});
-  }, []);
-
-  const syncHealth = async () => {
-    setHealthBusy(true);
-    const authed = await requestHealthAuth();
-    if (!authed) {
-      setHealthBusy(false);
-      toast({ text: "Apple Health access is off — enable it in Settings › Privacy › Health.", tone: "warning" });
-      return;
-    }
-    const res = plan ? await syncAppleHealth(plan) : null;
-    setHealthBusy(false);
-    if (res && res.applied > 0) {
-      applyPlan(res.plan);
-      toast({ text: `Apple Health — ${res.applied} session${res.applied > 1 ? "s" : ""} marked done.`, tone: "success" });
-      setTimeout(() => window.location.reload(), 900);
-    } else {
-      toast({ text: "Apple Health — nothing new to match.", tone: "default" });
-    }
-  };
 
   const sync = async () => {
     setBusy(true);
@@ -111,7 +202,7 @@ export function Connections() {
 
   return (
     <div>
-      <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">Device sync</div>
+      <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">Watch &amp; app sync</div>
       <div className="card overflow-hidden">
         {!status.configured ? (
           <div className="px-4 py-3.5 text-sm text-muted">Auto-complete from Strava is coming soon.</div>
@@ -152,29 +243,15 @@ export function Connections() {
           </div>
         )}
       </div>
-
-      {healthOk && (
-        <div className="card mt-3 overflow-hidden">
-          <div className="px-4 py-3.5">
-            <div className="flex items-start gap-2.5">
-              <HealthMark />
-              <p className="text-sm leading-snug text-muted">
-                Read your swim, bike, and run workouts from Apple Health to auto-complete planned sessions. Your
-                health data stays on your device.
-              </p>
-            </div>
-            <button
-              onClick={syncHealth}
-              disabled={healthBusy}
-              className="btn mt-3 w-full py-3 text-sm font-semibold"
-              style={{ background: "#111111", color: "#fff" }}
-            >
-              {healthBusy ? "Syncing…" : "Sync Apple Health"}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
+  );
+}
+
+function Tick() {
+  return (
+    <svg aria-hidden className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
   );
 }
 
