@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth-server";
-import { aiEnabled, aiText } from "@/lib/ai";
+import { aiEnabled, aiProviderLabel, aiText } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
   if (!allow(uid)) {
     return NextResponse.json({
       enabled: true,
+      provider: aiProviderLabel(),
       text: "You've asked the coach a lot this hour — give it a breather and check back soon.",
     });
   }
@@ -61,10 +62,10 @@ export async function POST(req: NextRequest) {
       }`,
       400,
     );
-    return NextResponse.json({ enabled: true, text: text || "Stay consistent — the work adds up." });
+    return NextResponse.json({ enabled: true, provider: aiProviderLabel(), text: text || "Stay consistent — the work adds up." });
   } catch {
     return NextResponse.json(
-      { enabled: true, text: "The coach is catching its breath. Your plan is ready to go regardless." },
+      { enabled: true, provider: aiProviderLabel(), text: "The coach is catching its breath. Your plan is ready to go regardless." },
       { status: 200 },
     );
   }

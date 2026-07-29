@@ -2,11 +2,17 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Privacy Policy — Trifecta" };
 
-const UPDATED = "23 July 2026";
+const UPDATED = "29 July 2026";
 
 export default function PrivacyPolicy() {
   return (
-    <main className="mx-auto max-w-2xl px-5 py-12 text-[0.95rem] leading-relaxed text-foreground">
+    <main
+      className="mx-auto max-w-2xl px-5 pb-12 text-[0.95rem] leading-relaxed text-foreground"
+      /* These pages render OUTSIDE the app shell, so nothing else applies the notch
+         inset for them: on an iPhone 17 Pro Max the "Back to Trifecta" link sat half
+         under the status bar, unreadable and awkward to tap. */
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2rem)" }}
+    >
       <a href="/" className="text-sm text-muted underline">← Back to Trifecta</a>
       <h1 className="mt-6 text-2xl font-semibold">Privacy Policy</h1>
       <p className="mt-1 text-sm text-muted">Last updated {UPDATED}</p>
@@ -22,9 +28,28 @@ export default function PrivacyPolicy() {
           <li><b>Account:</b> your username and a securely hashed password (we never store the plain password).</li>
           <li><b>Training data:</b> the profile you enter (goals, experience, PRs, injuries, availability) and your generated plan, workouts, and completions — this is what the app adapts your plan from.</li>
           <li><b>Strava (optional):</b> only if you connect it. We store access tokens and pull your recent activities to auto-complete matching planned sessions.</li>
-          <li><b>Apple Health (optional):</b> only if you grant access. Your health workouts are read <b>on your device</b> and matched to your plan there — the raw health data is <b>not uploaded</b>; only the resulting workout completion syncs.</li>
-          <li><b>AI coach (optional):</b> if enabled, the training context shown to you is sent to our AI provider to generate a short note. Your data is not used to train their models.</li>
+          <li>
+            <b>Apple Health (optional):</b> only if you grant access, and read-only. We request
+            exactly one HealthKit type — <b>workouts</b> — and from each workout we use its
+            sport, start time, duration and distance to match it to a planned session. We do not
+            request or read heart rate, sleep, body measurements, clinical records, or anything
+            else. Workouts are read and matched <b>on your iPhone</b>; the health data itself is
+            <b> never uploaded to our servers</b>, and only the resulting “session completed” is
+            synced. Trifecta <b>never writes to Apple Health</b>.
+          </li>
+          <li><b>AI features (optional):</b> if you tap <b>Analyze</b> on your injury notes, or use the AI coach note, that text is sent to <b>Google (Gemini)</b>, our AI provider, to turn it into training limits or a short note. Nothing is sent unless you tap. Your data is not used to train their models.</li>
         </ul>
+      </Section>
+
+      <Section title="Health data — what we never do with it">
+        <p>
+          Health and fitness data is treated as sensitive, and Apple’s rules for it are strict. We
+          hold ourselves to them explicitly: data read from Apple Health, and the training and
+          injury information you enter, is <b>never</b> used for advertising, marketing, or
+          use-based data mining, and it is never sold or shared with data brokers — by us or by
+          anyone we work with. We do not store personal health information in iCloud. It is used
+          for one thing: building and adapting your training plan for you.
+        </p>
       </Section>
 
       <Section title="How we use it">
@@ -36,7 +61,7 @@ export default function PrivacyPolicy() {
       </Section>
 
       <Section title="Who we share with">
-        <p>Only the services needed to run the app: our hosting provider (Railway), Strava (only if you connect it), and our AI provider (only if the coach is enabled). No advertisers. No data brokers.</p>
+        <p>Only the services needed to run the app: our hosting provider (Railway), Strava (only if you connect it), and <b>Google (Gemini)</b> as our AI provider (only for the optional AI features, and only when you tap). No advertisers. No data brokers.</p>
       </Section>
 
       <Section title="Your rights">

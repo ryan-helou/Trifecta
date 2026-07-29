@@ -17,7 +17,7 @@ import { projectRace } from "@/lib/predict";
 import { Icon, IconName } from "../app/icons";
 import { fmtClock, fmtDuration } from "@/lib/format";
 import { todayISO, addDays, fmtFullDate } from "@/lib/dates";
-import { API_BASE } from "@/lib/runtime";
+import { legalHref } from "@/lib/runtime";
 
 interface Draft {
   raceType?: RaceType;
@@ -516,9 +516,10 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
 // app/terms/page.tsx's UPDATED changes; it's what we record they accepted.
 const TERMS_VERSION = "2026-07-23";
 
-// Relative on the web; absolute on the bundled native app (API_BASE is the live
-// site), so the link opens the real page instead of a dead capacitor:// URL.
-const legalHref = (path: string) => `${API_BASE}${path}`;
+// Was `${API_BASE}${path}` — correct that a bare "/terms" is dead in the bundled app,
+// but it fixed that by sending the athlete out to the live site mid-signup, which needs
+// the network and leaves them on a page whose "back" goes to the web app, not this one.
+// legalHref() points at the bundled copy instead: works offline, stays in the app.
 
 /** The last thing an anon athlete does: their plan is already built and waiting;
  *  creating the account commits + persists it and drops them into the app. */
@@ -1737,10 +1738,16 @@ function InjuriesStep({ draft, set }: StepProps) {
           constraints. The send is already gated behind this one deliberate tap and the
           safety triage runs on-device regardless — but none of that was written down,
           so the athlete had no way to know it was a choice they were making. */}
+      {/* Names the provider, not just "an AI provider". Guideline 5.1.2(i): you must
+          "clearly disclose where personal data will be shared with third parties,
+          including with third-party AI, and obtain explicit permission before doing so."
+          Health text is the most sensitive thing this app touches; "our AI provider" is
+          not a disclosure the athlete can act on. */}
       <p className="mt-2 text-xs text-muted">
-        Tapping <span className="font-semibold text-foreground">Analyze</span> sends this text to our AI provider to
-        turn it into training limits. Don&apos;t want that? Skip the button — your notes still save, and the safety
-        check runs on your device either way.
+        Tapping <span className="font-semibold text-foreground">Analyze</span> sends this text to{" "}
+        <span className="font-semibold text-foreground">Google (Gemini)</span>, our AI provider, to turn it into
+        training limits. Don&apos;t want that? Skip the button — your notes still save, and the safety check runs on
+        your device either way.
       </p>
 
       {flag && <RedFlagCard flag={flag} />}

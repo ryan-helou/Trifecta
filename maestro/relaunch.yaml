@@ -1,0 +1,55 @@
+# Does the app still know who you are on the NEXT cold launch?
+#
+# Promoted from a one-off diagnostic into the gate, because the answer was NO and
+# nothing in the product said so. `setToken` writes the session token to the Keychain
+# fire-and-forget and `withTimeout` swallows the error, so a failing write is completely
+# invisible: the in-memory cache keeps the session alive until the app is next killed,
+# and only then does the athlete land back on the welcome screen. Measured 2026-07-29 —
+# across BOTH simulators used for testing, the keychain database held zero items for
+# this app after many successful logins. The write had never once landed.
+#
+# Step 1 launches clean and signs in. Step 2 relaunches with NO clearState and NO
+# clearKeychain — exactly what happens when iOS kills the WebView, the athlete
+# force-quits, or a full-document navigation (tapping Privacy) reboots the app.
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 15000
+- tapOn: "ironmike"
+- inputText: "trifectademo"
+- tapOn: "Password"
+- assertVisible: "trifectademo"
+- tapOn: "••••••••"
+- inputText: "demopass123"
+- tapOn: "Password"
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 40000
+- takeScreenshot: 30-signed-in
+
+# --- the actual question -------------------------------------------------------
+- stopApp
+- launchApp          # no clearState, no clearKeychain: a plain cold boot
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 40000   # the tab bar only exists once a session + plan are restored
+- takeScreenshot: 31-after-relaunch

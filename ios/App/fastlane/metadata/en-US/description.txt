@@ -14,10 +14,13 @@ FOR EVERY DISTANCE
 
 Sprint, Olympic, 70.3, and full Ironman, or just train for all-round fitness. Set custom distances if your race is unusual.
 
+APPLE HEALTH
+
+Trifecta integrates with the Health app. In Profile > Apple Health, grant read-only access and Trifecta reads your swim, bike, run, and strength workouts from Apple Health and checks off the planned session each one matches — no tapping "done". It never writes to Apple Health, and your workouts are matched on your iPhone rather than uploaded. Strava works too, if that is where your watch syncs.
+
 TRAIN THE WAY YOU LIVE
 
 Choose your weekly sessions, your rest day, and your long day.
 Tell it your equipment and it adapts: no pool means dryland swim work, no gym means bodyweight strength.
-Connect Apple Health or Strava to auto-complete sessions from your watch.
 
 Your plan, your paces, your race. Trifecta does the coaching so you can do the training.

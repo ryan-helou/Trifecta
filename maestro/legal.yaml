@@ -1,0 +1,82 @@
+# Trifecta iOS — can you actually reach the privacy policy from inside the app?
+#
+# Guideline 5.1.1(i) requires the privacy policy to be reachable "within the app in an
+# easily accessible manner", and 2.1 requires "fully functional URLs". Both are satisfied
+# by source code that *has* a link and broken by a build where that link goes nowhere —
+# which is exactly the failure class that got build 8 rejected.
+#
+# The trap here is specific to the bundled Path-B app: it loads from capacitor://localhost,
+# and the static export writes /privacy.html, not /privacy/index.html. A relative
+# href="/privacy" therefore resolves to a path the local asset server has no file for.
+# Onboarding already knew this and routes its legal links through the absolute site URL;
+# the Profile footer did not.
+#
+# Demo account: trifectademo / demopass123.
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 15000
+- tapOn: "ironmike"
+- inputText: "trifectademo"
+- tapOn: "Password"
+- assertVisible: "trifectademo"
+- tapOn: "••••••••"
+- inputText: "demopass123"
+- tapOn: "Password"
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 40000
+- tapOn: "Profile"
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: "Privacy"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Privacy"
+# The policy itself must render — not a blank WebView, not the app's own 404.
+- extendedWaitUntil:
+    visible: "Privacy Policy"
+    timeout: 20000
+- assertVisible: ".*What we collect.*"
+# 5.1.3(i) — the specific health data must be named, not hand-waved as "health data".
+- assertVisible: ".*workouts.*"
+- takeScreenshot: 20-privacy-policy
+
+# Guideline 1.5: the app itself must offer a way to reach us, not just the store listing.
+- tapOn: ".*Back to Trifecta.*"
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 40000
+- tapOn: "Profile"
+- waitForAnimationToEnd:
+    timeout: 5000
+- scrollUntilVisible:
+    element: "Support"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Support"
+- extendedWaitUntil:
+    visible: "Support"
+    timeout: 20000
+- assertVisible: ".*ryan.helou@gmail.com.*"
+- takeScreenshot: 21-support

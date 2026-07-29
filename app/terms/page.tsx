@@ -6,7 +6,13 @@ const UPDATED = "23 July 2026";
 
 export default function Terms() {
   return (
-    <main className="mx-auto max-w-2xl px-5 py-12 text-[0.95rem] leading-relaxed text-foreground">
+    <main
+      className="mx-auto max-w-2xl px-5 pb-12 text-[0.95rem] leading-relaxed text-foreground"
+      /* These pages render OUTSIDE the app shell, so nothing else applies the notch
+         inset for them: on an iPhone 17 Pro Max the "Back to Trifecta" link sat half
+         under the status bar, unreadable and awkward to tap. */
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2rem)" }}
+    >
       <a href="/" className="text-sm text-muted underline">← Back to Trifecta</a>
       <h1 className="mt-6 text-2xl font-semibold">Terms of Service</h1>
       <p className="mt-1 text-sm text-muted">Last updated {UPDATED}</p>

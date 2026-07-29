@@ -26,6 +26,28 @@ export function aiEnabled(): boolean {
   return !!aiKey();
 }
 
+/** Human label for the third party that actually receives the athlete's text.
+ *
+ *  The coach sheet used to render a hard-coded "Powered by Claude · Haiku" while this
+ *  module's default sends every request to Google's Gemini endpoint — the UI naming the
+ *  wrong company for where personal data goes. Guideline 5.1.2(i) requires disclosing
+ *  "where personal data will be shared with third parties, including with third-party
+ *  AI", and a confidently wrong name is worse than no name. Derived from the same env
+ *  the client is built from, so it can't drift again. */
+export function aiProviderLabel(): string {
+  const base = (process.env.AI_BASE_URL || DEFAULT_BASE_URL).toLowerCase();
+  const model = aiModel();
+  const host =
+    base.includes("googleapis") ? "Google (Gemini)"
+    : base.includes("anthropic") ? "Anthropic (Claude)"
+    : base.includes("openai") ? "OpenAI"
+    : base.includes("openrouter") ? "OpenRouter"
+    : base.includes("groq") ? "Groq"
+    : base.includes("deepseek") ? "DeepSeek"
+    : "our AI provider";
+  return `${host} · ${model}`;
+}
+
 function aiModel(): string {
   return process.env.AI_MODEL || DEFAULT_MODEL;
 }
