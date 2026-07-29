@@ -118,11 +118,26 @@ platform :ios do
 
   desc "Upload the built IPA to TestFlight (internal). Requires the ASC app record to exist."
   lane :upload do
+    # WAIT for processing, then distribute to the internal group.
+    #
+    # `skip_waiting_for_build_processing: true` returns the moment the binary is
+    # accepted, which is fast and looks fine — the build appears in App Store Connect
+    # and processes to VALID. But fastlane never gets to the TestFlight side, so the
+    # build can end up with no buildBetaDetail, no preReleaseVersion and no group.
+    # Builds 10, 11 and 12 all landed that way on 2026-07-29: VALID for the App Store,
+    # invisible in TestFlight, and the API refuses to add them to a group ("there is no
+    # resource of type 'builds'") because TestFlight never ingested them.
+    #
+    # Waiting costs a few minutes per ship and buys a build a human can actually install
+    # — which is the entire point of uploading to TestFlight.
     upload_to_testflight(
       api_key: asc_key,
       ipa: "build/Trifecta.ipa",
-      skip_waiting_for_build_processing: true,
-      distribute_external: false
+      skip_waiting_for_build_processing: false,
+      distribute_external: false,
+      groups: ["Me"],
+      changelog: "Internal build — see the commit log on main.",
+      notify_external_testers: false
     )
   end
 
