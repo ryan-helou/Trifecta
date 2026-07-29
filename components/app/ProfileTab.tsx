@@ -118,6 +118,11 @@ export function ProfileTab() {
         </Section>
       )}
 
+      {/* Where finished workouts come from. High in the tab on purpose: it's the
+          one-time setup an athlete does early, and App Review must be able to find
+          the Apple Health section without hunting (guideline 2.5.1). */}
+      <Connections />
+
       <Section title="Training paces">
         <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm, unit)} first />
         <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} />
@@ -135,8 +140,6 @@ export function ProfileTab() {
         <ActionRow onClick={() => actions.ease(7)} label="Not feeling 100% — ease this week" />
         <ActionRow onClick={() => actions.rebuild()} label="Rebuild plan around today" />
       </Section>
-
-      <Connections />
 
       <Notifications />
 

@@ -1,0 +1,67 @@
+# Trifecta iOS — "is the Apple Health feature findable?" (Maestro).
+#
+# This flow exists because App Review rejected build 8 under **guideline 2.5.1**:
+# the app ships the HealthKit entitlement but "does not clearly identify the
+# HealthKit ... functionality in the app's user interface."
+#
+# They were right. The Apple Health card was rendered *inside* the Strava component,
+# which opened with `if (!status) return null` — `status` being the Strava API's
+# response. So the only HealthKit UI in the app could silently not exist whenever an
+# unrelated network call hadn't come back, it sat under a heading that said "Device
+# sync", and it lived at the bottom of the fifth tab.
+#
+# The regression this guards is therefore not "does sync work" (that needs real
+# workouts on a real device) but "can a person who opens the app FIND the Apple
+# Health feature at all". Signs in as the same demo account we hand Apple, opens the
+# same tab a reviewer would, and asserts the section identifies itself by name.
+#
+# Demo account (the one in App Store Connect → App Review Information):
+#   trifectademo / demopass123 — has a fully populated 70.3 plan.
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny            # HealthKit must be *identified* without being authorized
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 15000
+- tapOn: "ironmike"
+- inputText: "trifectademo"
+- tapOn: "Password"                          # inert label: blurs input → keyboard down
+- assertVisible: "trifectademo"
+- tapOn: "••••••••"
+- inputText: "demopass123"
+- tapOn: "Password"
+- tapOn: "Sign in"
+# The demo account already has a plan, so login lands on the app shell, not onboarding.
+- extendedWaitUntil:
+    visible: "Profile"
+    timeout: 40000          # login round-trip (incl. possible Railway cold start) + render
+- tapOn: "Profile"
+- waitForAnimationToEnd:
+    timeout: 5000
+# The whole point: the section names itself "Apple Health", and it is reachable
+# without connecting Strava, without granting HealthKit access, and without the
+# Strava status call having resolved.
+- extendedWaitUntil:
+    visible: "Apple Health"
+    timeout: 15000
+- takeScreenshot: 10-profile-apple-health
+- assertVisible: "Auto-complete from Apple Health"
+- assertVisible: ".*never writes to Apple Health.*"
+- assertVisible: ".*Sync with Apple Health.*"
+- takeScreenshot: 11-apple-health-card
