@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function target(req: NextRequest): Promise<{ uid: string; targetId: string } | { error: string; status: number }> {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return { error: "Not signed in.", status: 401 };
   const body = await req.json().catch(() => ({}));
   const username = typeof body.username === "string" ? body.username.trim() : "";

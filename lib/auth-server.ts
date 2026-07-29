@@ -56,14 +56,36 @@ function fromB64url(s: string): string {
   return Buffer.from(s, "base64url").toString();
 }
 
+/** What a structurally-valid, correctly-signed, unexpired token carries.
+ *  Says nothing about whether the session is still *allowed* — see authenticate(). */
+export interface SessionClaims {
+  userId: string;
+  /** Per-login session id. The handle logout revokes, so one device can be signed
+   *  out without killing the others. */
+  sid: string;
+  /** Issued-at, derived rather than stored: every token has the same fixed TTL. */
+  iat: number;
+  exp: number;
+}
+
 export function createSessionToken(userId: string): string {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SEC;
-  const payload = `${userId}.${exp}`;
+  // 16 bytes: this is the only thing standing between "log out" and "log out
+  // everywhere", so it must not be guessable from a userId or a timestamp.
+  const sid = crypto.randomBytes(16).toString("base64url");
+  const payload = `${userId}.${exp}.${sid}`;
   const sig = crypto.createHmac("sha256", secret()).update(payload).digest("base64url");
   return `${b64url(payload)}.${sig}`;
 }
 
-export function verifySessionToken(token: string | undefined | null): string | null {
+/** Signature + expiry only — no I/O. Returns null for anything malformed, forged,
+ *  expired, or issued in the old two-field format.
+ *
+ *  Legacy `userId.exp` tokens are REJECTED rather than grandfathered. They carry no
+ *  session id, so there is no handle to revoke them by: accepting one would mean
+ *  honouring a 60-day credential that logout provably cannot kill, which is the whole
+ *  bug. The cost is that every existing session signs in once more. */
+export function verifySessionToken(token: string | undefined | null): SessionClaims | null {
   if (!token) return null;
   const dot = token.lastIndexOf(".");
   if (dot < 0) return null;
@@ -79,27 +101,57 @@ export function verifySessionToken(token: string | undefined | null): string | n
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
-  const [userId, expStr] = payload.split(".");
+  const parts = payload.split(".");
+  if (parts.length !== 3) return null; // legacy 2-field token, or garbage
+  const [userId, expStr, sid] = parts;
   const exp = Number(expStr);
-  if (!userId || !exp || exp < Math.floor(Date.now() / 1000)) return null;
-  return userId;
+  if (!userId || !sid || !Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null;
+  return { userId, sid, iat: exp - SESSION_TTL_SEC, exp };
 }
 
-export function getUserIdFromRequest(req: NextRequest): string | null {
+/** The claims on the request, if the token is well-formed. Still not proof of a live
+ *  session — callers that touch user data must use authenticate(). */
+export function claimsFromRequest(req: NextRequest): SessionClaims | null {
   // Native (bundled) app: Bearer token in the Authorization header — no cookie
   // survives the capacitor://localhost origin. Web PWA: the httpOnly session cookie.
   const auth = req.headers.get("authorization");
   if (auth && auth.startsWith("Bearer ")) {
-    const uid = verifySessionToken(auth.slice(7).trim());
-    if (uid) return uid;
+    const c = verifySessionToken(auth.slice(7).trim());
+    if (c) return c;
   }
   return verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
 }
 
-export function sessionCookie(userId: string) {
+/** Authenticate a request: valid signature AND a session the server still honours.
+ *
+ *  Was synchronous and signature-only, which is why logout did nothing on the server —
+ *  a copied token stayed good for its full 60 days. One round trip now answers all
+ *  three questions at once: does the user still exist, has this sid been revoked, and
+ *  was the token issued before a sign-out-everywhere. */
+export async function getUserIdFromRequest(req: NextRequest): Promise<string | null> {
+  const claims = claimsFromRequest(req);
+  if (!claims) return null;
+  const { getStore } = await import("./db");
+  try {
+    const ok = await getStore().isSessionLive(claims.userId, claims.sid, claims.iat);
+    return ok ? claims.userId : null;
+  } catch {
+    // Fail CLOSED. A store that can't answer is not permission to proceed — the
+    // alternative is that a database blip silently restores the old behaviour.
+    return null;
+  }
+}
+
+/** Wrap an ALREADY-ISSUED token in the session cookie.
+ *
+ *  Takes the token rather than a userId on purpose. Login and signup used to mint one
+ *  token for the JSON body and a second, independent one for the cookie — two live
+ *  sessions per sign-in. Logging out revoked only the one the client happened to
+ *  present, quietly leaving the other valid for its full 60 days. One login, one sid. */
+export function sessionCookieFor(token: string) {
   return {
     name: SESSION_COOKIE,
-    value: createSessionToken(userId),
+    value: token,
     httpOnly: true,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",

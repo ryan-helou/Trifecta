@@ -31,7 +31,7 @@ function allow(uid: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   if (!aiEnabled()) return NextResponse.json({ enabled: false });

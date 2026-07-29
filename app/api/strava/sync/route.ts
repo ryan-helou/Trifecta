@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // that match a planned session. A safety net for missed webhooks + a "Sync now"
 // button the user can hit.
 export async function POST(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const store = getStore();
   const conn = await store.getStravaByUser(uid);

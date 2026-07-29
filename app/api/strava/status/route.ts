@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 // Is this user's Strava linked? (used by the Profile "Connections" card)
 export async function GET(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ connected: false, configured: stravaConfigured() }, { status: 401 });
   const store = getStore();
   const conn = await store.getStravaByUser(uid);
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
 // Disconnect (drops our stored tokens; the athlete can also revoke in Strava).
 export async function DELETE(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   await getStore().deleteStrava(uid);
   return NextResponse.json({ ok: true });

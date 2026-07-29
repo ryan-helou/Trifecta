@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // their own card, the people they follow (with kudos on the latest session),
 // suggestions (same-race athletes first), and the "training for your race" count.
 export async function GET(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   const today = req.nextUrl.searchParams.get("today") || todayISO();

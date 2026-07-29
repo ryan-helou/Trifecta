@@ -13,7 +13,7 @@ function baseUrl(req: NextRequest): string {
 // Kick off the Strava OAuth flow. The user is authed (session cookie), so the
 // callback identifies them the same way; `state` is a CSRF token we echo-check.
 export async function GET(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.redirect(new URL("/", baseUrl(req)));
   if (!stravaConfigured()) {
     return NextResponse.json({ error: "Strava is not configured." }, { status: 503 });

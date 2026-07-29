@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const store = getStore();
   const dv = await store.getDataV(uid);
@@ -19,7 +19,7 @@ const MAX_STATE_BYTES = 512 * 1024;
 const isObjOrNull = (v: unknown) => v === null || (typeof v === "object" && !Array.isArray(v));
 
 export async function PUT(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const body = await req.json().catch(() => ({}));
   const profile = body.profile ?? null;

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 // POST { ownerUsername, workoutId, on } → add/remove a kudos on someone's session.
 export async function POST(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   const rl = rateLimit(`kudos:${uid}`, 60, 60_000);
