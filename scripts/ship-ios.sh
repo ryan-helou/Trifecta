@@ -11,6 +11,15 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
+# fastlane (Ruby) needs a UTF-8 locale. Without it xcpretty parses xcodebuild's output as
+# US-ASCII and dies on the first non-ASCII byte — "invalid byte sequence in US-ASCII" —
+# and because gym pipes through it under `set -o pipefail`, xcpretty's crash fails the
+# whole archive even though xcodebuild is still building happily. Killed a good build 9
+# this way on 2026-07-29. scripts/asc-review-status.sh already sets these for the same
+# reason; the ship path was missing them.
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+export LANG="${LANG:-en_US.UTF-8}"
+
 echo "==> gate 1: engine invariant tests (plan correctness)"
 # shellcheck disable=SC1090
 ( cd "$REPO" && source ~/.nvm/nvm.sh && nvm use 22 >/dev/null && npm test )
