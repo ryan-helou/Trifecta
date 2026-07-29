@@ -128,6 +128,46 @@ const run500 = { id: 500, type: "Run", name: "Morning Run", start_date_local: "2
   eq("cas retry wrote twice", raced.calls.writes, 2);
   eq("cas retry completes", raced.plan().workouts.rE.status, "done");
 
+  // ---- bonus sessions: unmatched activities create new done workouts ----
+
+  // rest day (no workouts) → bike creates a bonus session
+  const rest = fakeStore({ plan: applyPlan({}) });
+  const bike700 = { id: 700, type: "Ride", name: "Evening Ride", start_date_local: "2026-07-21T18:00:00Z", moving_time: 2100, distance: 15030 };
+  const bonus1 = await applyActivityToUser(rest.store, "u1", bike700);
+  eq("bonus matched", bonus1.matched, true);
+  eq("bonus workoutId", bonus1.workoutId, "synced-2026-07-21-bike");
+  const bw = rest.plan().workouts["synced-2026-07-21-bike"];
+  eq("bonus status", bw.status, "done");
+  eq("bonus discipline", bw.discipline, "bike");
+  eq("bonus actuals id", bw.actuals?.activityId, 700);
+  eq("bonus duration", bw.actualDurationSec, 2100);
+  eq("bonus distance", bw.actualDistanceM, 15030);
+  eq("bonus title from name", bw.title, "Evening Ride");
+
+  // wrong sport: plan has swim, athlete does a run → bonus (not matched to the swim)
+  const wrongSport = fakeStore({ plan: applyPlan({ sw: w("sw", "2026-07-21", "swim", 1800) }) });
+  const run800 = { id: 800, type: "Run", start_date_local: "2026-07-21T06:00:00Z", moving_time: 1800 };
+  const bonus2 = await applyActivityToUser(wrongSport.store, "u1", run800);
+  eq("wrong-sport bonus", bonus2.matched, true);
+  eq("wrong-sport bonus id", bonus2.workoutId, "synced-2026-07-21-run");
+  eq("wrong-sport swim untouched", wrongSport.plan().workouts.sw.status, "planned");
+
+  // re-delivering a bonus activity → idempotent (carrier check finds it)
+  const bonus2again = await applyActivityToUser(wrongSport.store, "u1", run800);
+  eq("bonus re-deliver alreadyDone", bonus2again.alreadyDone, true);
+
+  // walk (null discipline) → still no match, no bonus
+  const walk = fakeStore({ plan: applyPlan({}) });
+  const walk900 = { id: 900, type: "Walk", start_date_local: "2026-07-21T07:00:00Z", moving_time: 3600 };
+  const noBonus = await applyActivityToUser(walk.store, "u1", walk900);
+  eq("walk no bonus", noBonus.matched, false);
+
+  // two bonus sessions same day same discipline → unique ids
+  const twoBonus = fakeStore({ plan: applyPlan({}) });
+  await applyActivityToUser(twoBonus.store, "u1", { id: 950, type: "Run", start_date_local: "2026-07-21T06:00:00Z", moving_time: 1200 });
+  await applyActivityToUser(twoBonus.store, "u1", { id: 951, type: "Run", start_date_local: "2026-07-21T18:00:00Z", moving_time: 1500 });
+  eq("two bonus unique ids", !!twoBonus.plan().workouts["synced-2026-07-21-run"] && !!twoBonus.plan().workouts["synced-2026-07-21-run-2"], true);
+
   console.log(`\nStrava matcher: ${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })();

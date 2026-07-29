@@ -1,5 +1,6 @@
-import type { Discipline, Plan, WorkoutActuals } from "./types";
-import { setStatus } from "./adapt";
+import type { Discipline, Plan, Workout, WorkoutActuals, Zone } from "./types";
+import { setStatus, reindexWeeks } from "./adapt";
+import { dayIndexOf } from "./dates";
 
 // ---------------------------------------------------------------------------
 // Source-agnostic activity layer.
@@ -60,16 +61,58 @@ export function actualsFromActivity(a: Activity): WorkoutActuals {
   };
 }
 
+/** Create a new done-workout for an activity that didn't match any planned session
+ *  (rest day, different discipline, etc.). Feeds CTL/ATL/TSB so load tracking stays
+ *  complete even when the athlete trains off-plan. Pure — returns the mutated plan. */
+function addBonusWorkout(plan: Plan, a: Activity): { plan: Plan; workoutId: string } {
+  const disc = a.discipline!;
+  const acts = actualsFromActivity(a);
+  const zone: Zone = 2;
+  const base = `synced-${a.localDay}-${disc}`;
+  let id = base;
+  let n = 1;
+  const p = { ...plan, workouts: { ...plan.workouts }, weeks: plan.weeks.map((w) => ({ ...w, workoutIds: [...w.workoutIds] })) };
+  while (p.workouts[id]) id = `${base}-${++n}`;
+  const w: Workout = {
+    id,
+    date: a.localDay,
+    weekIndex: 0,
+    dayIndex: dayIndexOf(a.localDay),
+    discipline: disc,
+    type: disc === "strength" ? "strength" : "endurance",
+    title: a.name || `${disc[0].toUpperCase()}${disc.slice(1)} (${a.source === "strava" ? "Strava" : "Watch"})`,
+    purpose: "Synced from your connected device.",
+    segments: [{ kind: "main", discipline: disc, zone, durationSec: a.durationSec, description: "Synced session" }],
+    estDurationSec: a.durationSec,
+    estDistanceM: a.distanceM,
+    primaryZone: zone,
+    status: "done",
+    actualDurationSec: acts.durationSec,
+    actualDistanceM: acts.distanceM,
+    actuals: acts,
+  };
+  p.workouts[id] = w;
+  reindexWeeks(p);
+  return { plan: p, workoutId: id };
+}
+
 /** Pure: apply one activity to a plan — mark the matched session done + attach
- *  actuals (and the flat actual* fields the credit/stats/UI read). Returns the new
- *  plan + which workout, or null if nothing matched / it was already applied.
- *  Idempotent. Usable on the client (Apple Health) and the server (Strava). */
+ *  actuals (and the flat actual* fields the credit/stats/UI read). Unmatched
+ *  activities (rest day, different sport, etc.) create a bonus session so training
+ *  load is always complete. Returns the new plan + which workout, or null if it was
+ *  already applied. Idempotent. Usable on the client (Apple Health) and the server
+ *  (Strava). */
 export function applyActivityToPlan(plan: Plan, a: Activity): { plan: Plan; workoutId: string } | null {
+  if (!a.discipline) return null;
+
+  // already applied anywhere in the plan → no-op
+  const carrier = Object.values(plan.workouts).find((w) => w.actuals?.activityId === a.id);
+  if (carrier) return null;
+
   const match = matchActivity(plan, a);
-  if (!match) return null;
+  if (!match) return addBonusWorkout(plan, a);
   const existing = plan.workouts[match.workoutId];
-  if (!existing) return null;
-  if (existing.actuals?.activityId === a.id && existing.status === "done") return null;
+  if (!existing) return addBonusWorkout(plan, a);
 
   const done = setStatus(plan, match.workoutId, "done");
   const acts = actualsFromActivity(a);
