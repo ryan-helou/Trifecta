@@ -1348,8 +1348,15 @@ function buildRaceWeek(
         zone: cat === "full" ? 2 : cat === "half" ? 3 : 4,
         ftpPct: cat === "full" ? [70, 75] : cat === "half" ? [80, 85] : [88, 95],
         distanceM: dist.bike,
-        description: `Bike ${(dist.bike / 1000).toFixed(0)} km @ ${cat === "full" ? "70–75%" : cat === "half" ? "80–85%" : "88–95%"} FTP`,
-        cue: "Ride your own numbers. Fuel 60–90g carbs/hour. Save the legs for the run.",
+        // Describe the effort, not the percentage. The %FTP band still travels on
+        // `ftpPct` above, so targetView() shows watts to anyone with a meter — and
+        // heart rate or RPE to everyone else. Baking "@ 80–85% FTP" into the words
+        // made the most important session of the block unreadable to exactly the
+        // athlete onboarding had just told to leave FTP blank.
+        description: `Bike ${(dist.bike / 1000).toFixed(0)} km — ${
+          cat === "full" ? "steady all day; never feels hard" : cat === "half" ? "strong but controlled" : "hard and committed"
+        }`,
+        cue: "Ride your own effort, not the wheel beside you. Fuel 60–90g carbs/hour. Save the legs for the run.",
       },
       {
         kind: "main",
