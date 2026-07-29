@@ -1732,6 +1732,17 @@ function InjuriesStep({ draft, set }: StepProps) {
         )}
       </div>
 
+      {/* Say where the words go. This box now explicitly asks for health history, and
+          tapping Analyze sends that text to an AI provider to be turned into training
+          constraints. The send is already gated behind this one deliberate tap and the
+          safety triage runs on-device regardless — but none of that was written down,
+          so the athlete had no way to know it was a choice they were making. */}
+      <p className="mt-2 text-xs text-muted">
+        Tapping <span className="font-semibold text-foreground">Analyze</span> sends this text to our AI provider to
+        turn it into training limits. Don&apos;t want that? Skip the button — your notes still save, and the safety
+        check runs on your device either way.
+      </p>
+
       {flag && <RedFlagCard flag={flag} />}
 
       {draft.injuries.length > 0 && (
