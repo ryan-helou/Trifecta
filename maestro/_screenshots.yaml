@@ -1,7 +1,26 @@
-# App Store screenshot capture (not a gate — depends on the seeded `trifectademo` account,
-# so it's prefixed `_` to stay out of verify-ios.sh's suite). Logs in to the populated demo
-# account and captures the main-app tabs. Also serves as a live check that the Plan tab
-# renders without the stale-index crash. Seed with: npx tsx scripts/seed-demo.ts
+# App Store screenshots (not a gate — `_` prefixed so verify-ios.sh skips it; depends on
+# the seeded `trifectademo` account). Driven by scripts/screenshots-ios.sh, which boots a
+# 6.9" Pro Max, pins the status bar to 9:41, and files the output into
+# fastlane/screenshots/en-US/. Seed with: npx tsx scripts/seed-demo.ts
+#
+# What changed and why: the old flow captured four tab-level screens and tapped the tabs
+# by TEXT. Two problems. Tab labels also occur in page copy ("Plan" appears in Today's
+# week card), so a tap can land on body content instead of the tab. And four tab shots
+# sell the app short — the two most distinctive things Trifecta does, the session
+# breakdown and the guided player, were never shown at all. Apple allows ten.
+#
+# Ordered as the store displays them, strongest first:
+#   1 Today          the race countdown — the emotional hook
+#   2 Session        interval shape, why-it-matters, per-step targets in real paces
+#   3 Guided player  the big live timer; nothing else in the category looks like it
+#   4 Plan           the periodised arc
+#   5 Progress       Fitness · Fatigue · Form — the moat, made visible
+#   6 Apple Health   Profile → Apple Health. Doubles as evidence for guideline 2.5.1,
+#                    the citation that rejected build 8.
+#
+# Tabs are tapped by POINT (five equal columns pinned to the bottom), same as _tour.yaml.
+# Login fills PASSWORD FIRST then username and submits with Enter — see _tour.yaml for
+# the WKWebView focus trap that makes any other order silently concatenate the fields.
 appId: app.trifecta.mobile
 ---
 - launchApp:
@@ -9,30 +28,109 @@ appId: app.trifecta.mobile
     clearKeychain: true
     permissions:
       all: deny
+# iOS can put its own "Enable Dictation?" alert over the app the first time a text
+# field takes focus, and it survives an app relaunch — one earlier run left it up and
+# the next run failed on the welcome screen with the app rendering perfectly behind it.
+# Dismiss it if it's there before asserting on anything of ours.
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
+      - waitForAnimationToEnd:
+          timeout: 3000
 - extendedWaitUntil:
     visible: "Create your plan"
-    timeout: 40000
-- tapOn: ".*Sign in.*"
+    timeout: 60000
 - extendedWaitUntil:
-    visible: "Username"
+    visible: ".*Sign in.*"
     timeout: 15000
-- tapOn: "ironmike"
-- inputText: "trifectademo"
-- tapOn: "••••••••"
-- inputText: "demopass123"
-- pressKey: Enter
-# demo account has a plan → lands in the main app; a tab label means the shell rendered
-- extendedWaitUntil:
-    visible: "Progress"
-    timeout: 30000
-- waitForAnimationToEnd
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 20000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: "••••••••"
+      - eraseText
+      - inputText: "demopass123"
+      - tapOn: "ironmike"
+      - eraseText
+      - inputText: "trifectademo"
+      - pressKey: Enter
+      - extendedWaitUntil:
+          visible: "Friends"
+          timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 6000
+
+# 1 — Today: race countdown, projected finish, the three legs
 - takeScreenshot: store-1-today
-- tapOn: "Plan"
-- waitForAnimationToEnd
-- takeScreenshot: store-2-plan
-- tapOn: "Progress"
-- waitForAnimationToEnd
-- takeScreenshot: store-3-progress
-- tapOn: "Profile"
-- waitForAnimationToEnd
-- takeScreenshot: store-4-profile
+
+# 2 — the session itself: interval shape, why it matters, per-step targets
+- scrollUntilVisible:
+    element: ".*Technique.*"
+    direction: DOWN
+    centerElement: true
+    timeout: 25000
+- tapOn: ".*Technique.*"
+- waitForAnimationToEnd:
+    timeout: 6000
+- takeScreenshot: store-2-session
+
+# 3 — guided player, a beat after it starts so the timer reads as live
+- scrollUntilVisible:
+    element: ".*Start guided session.*"
+    direction: DOWN
+    centerElement: true
+    timeout: 25000
+- tapOn: ".*Start guided session.*"
+- waitForAnimationToEnd:
+    timeout: 6000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: store-3-guided
+# Back to a clean Today before touching the tab bar.
+#
+# Closing the player does NOT return to Today — it returns to the session sheet that is
+# still open underneath, and the tab-bar points then land on that sheet's buttons. That
+# is exactly what happened on the first run: taps meant for Plan/Progress/Profile hit
+# "Ask the coach about this", and three store screenshots came out as the Coach sheet
+# with an iOS dictation prompt over it.
+#
+# Relaunching is deterministic where unwinding nested sheets is not, and it is safe now
+# that a cold boot restores the session (see relaunch.yaml).
+- launchApp
+- extendedWaitUntil:
+    visible: "Friends"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 6000
+
+# 4 — Plan
+- tapOn:
+    point: "30%,94%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: store-4-plan
+
+# 5 — Progress (Fitness · Fatigue · Form)
+- tapOn:
+    point: "50%,94%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: store-5-progress
+
+# 6 — Profile → Apple Health. It sits above "Training paces" now, so the top of the tab
+#     already contains it; no scrolling needed on a 6.9" screen.
+- tapOn:
+    point: "90%,94%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: store-6-apple-health
