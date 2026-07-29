@@ -50,7 +50,7 @@ function validISO(s: unknown): string | undefined {
 }
 
 export async function POST(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ ok: false }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

@@ -45,6 +45,17 @@ export interface Store {
   setDataIf(userId: string, data: AppState, expectedVersion: number): Promise<number | null>;
   /** Erase the user and all their data (GDPR right to erasure). */
   deleteUser(userId: string): Promise<void>;
+  // ---- sessions (ticket #71) ----
+  /** Is this session still honoured? One round trip answering three questions: the
+   *  user still exists, this sid has not been revoked by a logout, and the token was
+   *  issued at/after the user's session epoch (sign-out-everywhere). */
+  isSessionLive(userId: string, sid: string, issuedAt: number): Promise<boolean>;
+  /** Revoke one session — the logout of a single device. `expiresAt` lets the row be
+   *  pruned once the token would have died on its own anyway. */
+  revokeSession(userId: string, sid: string, expiresAt: number): Promise<void>;
+  /** Revoke every session for a user by moving their epoch past all issued tokens.
+   *  For password changes and an explicit "sign out everywhere". */
+  revokeAllSessions(userId: string): Promise<void>;
   /** Append product events. Best-effort: analytics must never fail a request. */
   recordEvents(userId: string, events: { name: string; props?: unknown; atISO?: string }[]): Promise<void>;
   // Strava
@@ -109,6 +120,24 @@ class PgStore implements Store {
           // existing prod table predates the column — CREATE IF NOT EXISTS won't add it
           this.pool.query(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS data_version BIGINT NOT NULL DEFAULT 1",
+          ),
+        )
+        .then(() =>
+          // Sign-out-everywhere marker: any token issued before this instant is dead.
+          this.pool.query(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_epoch BIGINT NOT NULL DEFAULT 0",
+          ),
+        )
+        .then(() =>
+          // Per-device logout. Rows are self-pruning: expires_at is the token's own
+          // expiry, after which the token is dead regardless and the row is noise.
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS revoked_sessions (
+               user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               sid TEXT NOT NULL,
+               expires_at BIGINT NOT NULL,
+               PRIMARY KEY (user_id, sid)
+             )`,
           ),
         )
         .then(() =>
@@ -349,6 +378,45 @@ class PgStore implements Store {
     await this.pool.query("DELETE FROM users WHERE id = $1", [userId]);
   }
 
+  async isSessionLive(userId: string, sid: string, issuedAt: number): Promise<boolean> {
+    await this.init();
+    // One query, three checks. EXISTS on the primary key is an index probe, and the
+    // row is absent entirely for a deleted account — so a token that outlives its user
+    // dies here rather than authenticating against nothing.
+    const { rows } = await this.pool.query(
+      `SELECT u.session_epoch,
+              EXISTS(SELECT 1 FROM revoked_sessions r
+                      WHERE r.user_id = u.id AND r.sid = $2) AS revoked
+         FROM users u WHERE u.id = $1`,
+      [userId, sid],
+    );
+    const row = rows[0];
+    if (!row || row.revoked) return false;
+    return issuedAt >= Number(row.session_epoch ?? 0);
+  }
+
+  async revokeSession(userId: string, sid: string, expiresAt: number): Promise<void> {
+    await this.init();
+    await this.pool.query(
+      `INSERT INTO revoked_sessions (user_id, sid, expires_at) VALUES ($1,$2,$3)
+       ON CONFLICT (user_id, sid) DO NOTHING`,
+      [userId, sid, expiresAt],
+    );
+    // Opportunistic prune — a revocation row is only useful until the token it kills
+    // would have expired on its own.
+    await this.pool
+      .query("DELETE FROM revoked_sessions WHERE expires_at < $1", [Math.floor(Date.now() / 1000)])
+      .catch(() => {});
+  }
+
+  async revokeAllSessions(userId: string): Promise<void> {
+    await this.init();
+    await this.pool.query("UPDATE users SET session_epoch = $2 WHERE id = $1", [
+      userId,
+      Math.floor(Date.now() / 1000),
+    ]);
+  }
+
   async recordEvents(userId: string, events: { name: string; props?: unknown; atISO?: string }[]): Promise<void> {
     if (!events.length) return;
     await this.init();
@@ -381,6 +449,8 @@ class MemoryStore implements Store {
   private strava = new Map<string, StravaConn>(); // keyed by userId
   private follows = new Set<string>(); // "followerId::followingId"
   private kudos = new Set<string>(); // "fromId::ownerId::workoutId"
+  private revoked = new Map<string, number>(); // "userId::sid" -> token expiry (unix s)
+  private sessionEpoch = new Map<string, number>(); // userId -> sign-out-everywhere mark
 
   async init(): Promise<void> {}
   async getUserByUsername(username: string): Promise<UserRow | null> {
@@ -430,6 +500,19 @@ class MemoryStore implements Store {
     // dev store: keep it bounded so a long session can't grow without limit
     this.events.set(userId, list.slice(-500));
   }
+  async isSessionLive(userId: string, sid: string, issuedAt: number): Promise<boolean> {
+    if (!this.users.has(userId)) return false; // deleted account ⇒ dead token
+    if (this.revoked.has(`${userId}::${sid}`)) return false;
+    return issuedAt >= (this.sessionEpoch.get(userId) ?? 0);
+  }
+  async revokeSession(userId: string, sid: string, expiresAt: number): Promise<void> {
+    this.revoked.set(`${userId}::${sid}`, expiresAt);
+    const now = Math.floor(Date.now() / 1000);
+    for (const [k, exp] of this.revoked) if (exp < now) this.revoked.delete(k);
+  }
+  async revokeAllSessions(userId: string): Promise<void> {
+    this.sessionEpoch.set(userId, Math.floor(Date.now() / 1000));
+  }
   async deleteUser(userId: string): Promise<void> {
     const u = this.users.get(userId);
     if (u) this.byName.delete(u.username.toLowerCase());
@@ -437,6 +520,8 @@ class MemoryStore implements Store {
     this.events.delete(userId);
     this.dataVersions.delete(userId);
     this.strava.delete(userId);
+    this.sessionEpoch.delete(userId);
+    for (const k of [...this.revoked.keys()]) if (k.startsWith(`${userId}::`)) this.revoked.delete(k);
     for (const f of [...this.follows]) {
       const [a, b] = f.split("::");
       if (a === userId || b === userId) this.follows.delete(f);

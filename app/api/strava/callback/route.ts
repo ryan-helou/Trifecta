@@ -15,7 +15,7 @@ function baseUrl(req: NextRequest): string {
 // immediately. Then bounce home with a ?strava= status the UI can toast.
 export async function GET(req: NextRequest) {
   const home = new URL("/", baseUrl(req));
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.redirect(home);
 
   const err = req.nextUrl.searchParams.get("error");

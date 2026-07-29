@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // (Apple 5.1.1(v) in-app account deletion + GDPR right to erasure). The DB cascade
 // removes their Strava connection, follows, and kudos along with the account.
 export async function DELETE(req: NextRequest) {
-  const uid = getUserIdFromRequest(req);
+  const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   const store = getStore();

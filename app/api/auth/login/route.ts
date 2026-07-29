@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
-import { createSessionToken, sessionCookie, verifyPassword } from "@/lib/auth-server";
+import { createSessionToken, sessionCookieFor, verifyPassword } from "@/lib/auth-server";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
@@ -37,13 +37,14 @@ export async function POST(req: NextRequest) {
   }
 
   // token in the body for the native/bundled app (Bearer); cookie for the web PWA.
+  const token = createSessionToken(user.id);
   const dv = await store.getDataV(user.id);
   const res = NextResponse.json({
     user: { username: user.username },
     state: dv?.state ?? user.data ?? {},
     version: dv?.version ?? 1,
-    token: createSessionToken(user.id),
+    token,
   });
-  res.cookies.set(sessionCookie(user.id));
+  res.cookies.set(sessionCookieFor(token));
   return res;
 }
