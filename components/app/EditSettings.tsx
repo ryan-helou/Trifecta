@@ -145,7 +145,11 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       return;
     }
     setInjuryStatus("loading");
-    const res = await apiIntake(t).catch(() => ({ enabled: false, injuries: [] as ParsedInjury[] }));
+    // Same gate as onboarding: without an explicit grant nothing about the
+    // athlete's body leaves the device, and the server answers enabled:false
+    // so the existing "off" state explains it (ticket #63).
+    const consented = profile.aiHealthConsent?.granted === true;
+    const res = await apiIntake(t, consented).catch(() => ({ enabled: false, injuries: [] as ParsedInjury[] }));
     if (res.enabled === false) {
       setInjuryStatus("off");
       return;

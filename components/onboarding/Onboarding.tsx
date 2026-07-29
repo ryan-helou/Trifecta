@@ -5,7 +5,7 @@ import { DateField } from "@/components/app/DateField";
 import { useApp } from "../AppProvider";
 import { LoadingAnimation } from "../LoadingAnimation";
 import { Wordmark } from "../Wordmark";
-import { DateRange, Discipline, HealthAnswer, Injury, Level, Profile, RaceType, StrengthSplit, Unit } from "@/lib/types";
+import { AiHealthConsent, DateRange, Discipline, HealthAnswer, Injury, Level, Profile, RaceType, StrengthSplit, Unit } from "@/lib/types";
 import { detectRedFlags, redFlagConstraints, RED_FLAG_DISCLAIMER, type RedFlagMatch } from "@/lib/redFlags";
 import { generatePlan } from "@/lib/planEngine";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
@@ -31,6 +31,8 @@ interface Draft {
   // race day, so advancing with the field blank used to build a rolling block without
   // ever saying so. Now it's a choice the athlete makes, with the consequence stated.
   raceDateUnknown?: boolean;
+  /** carried into the Profile so the grant survives onboarding (ticket #63) */
+  aiHealthConsent?: AiHealthConsent;
   // when the athlete wants the plan to begin — default (undefined) is today.
   startDateISO?: string;
   level?: Level;
@@ -292,6 +294,7 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
       equipment: draft.equipment,
       blackouts: draft.blackouts.filter((b) => b.startISO && b.endISO && b.startISO <= b.endISO),
       injuries: draft.injuries.length ? draft.injuries : undefined,
+      aiHealthConsent: draft.aiHealthConsent,
       healthScreen: answered
         ? {
             version: PARQ_VERSION,
@@ -1668,8 +1671,23 @@ function InjuriesStep({ draft, set }: StepProps) {
   const [text, setText] = useState(draft.intakeNotes ?? "");
   const [status, setStatus] = useState<"idle" | "loading" | "off" | "done" | "flagged">("idle");
   const [flag, setFlag] = useState<RedFlagMatch | null>(null);
+  const [askConsent, setAskConsent] = useState(false);
+  const consented = draft.aiHealthConsent?.granted === true;
 
-  async function analyze() {
+  // Recorded on the draft the moment it's given, so it travels with the profile and can
+  // be revoked later in Profile. GDPR treats health data as special category: consent
+  // must be unbundled from the terms, freely given, and withdrawable — so this is its
+  // own decision with its own record, not a line buried in what they accepted at signup.
+  function grantConsent() {
+    set((d) => ({
+      ...d,
+      aiHealthConsent: { granted: true, atISO: new Date().toISOString(), provider: "Google (Gemini)" },
+    }));
+    setAskConsent(false);
+    void analyze(true);
+  }
+
+  async function analyze(consent: boolean) {
     const t = text.trim();
     set((d) => ({ ...d, intakeNotes: t || undefined }));
     setFlag(null);
@@ -1682,7 +1700,7 @@ function InjuriesStep({ draft, set }: StepProps) {
     // Red-flag triage is deterministic, so we run it here too — if the request
     // never lands (offline, AI off, provider down), the triage still happens.
     const local = detectRedFlags(t);
-    const res = await apiIntake(t).catch(() => null);
+    const res = await apiIntake(t, consent).catch(() => null);
     const red = (res as { redFlag?: RedFlagMatch } | null)?.redFlag ?? (local.matched ? local : null);
     if (red) {
       // A flag never hands back a lighter-touch modifier: the referral leads,
@@ -1724,7 +1742,11 @@ function InjuriesStep({ draft, set }: StepProps) {
         }}
       />
       <div className="mt-3 flex items-center gap-3">
-        <button onClick={analyze} disabled={status === "loading"} className="btn btn-primary px-5 py-2.5 text-sm">
+        <button
+          onClick={() => (consented ? analyze(true) : setAskConsent(true))}
+          disabled={status === "loading"}
+          className="btn btn-primary px-5 py-2.5 text-sm"
+        >
           {status === "loading" ? "Reading…" : draft.injuries.length ? "Re-analyze" : "Analyze with AI"}
         </button>
         {status === "off" && <span className="text-xs text-muted">AI is off — your notes are still saved and used.</span>}
@@ -1743,12 +1765,40 @@ function InjuriesStep({ draft, set }: StepProps) {
           including with third-party AI, and obtain explicit permission before doing so."
           Health text is the most sensitive thing this app touches; "our AI provider" is
           not a disclosure the athlete can act on. */}
-      <p className="mt-2 text-xs text-muted">
-        Tapping <span className="font-semibold text-foreground">Analyze</span> sends this text to{" "}
-        <span className="font-semibold text-foreground">Google (Gemini)</span>, our AI provider, to turn it into
-        training limits. Don&apos;t want that? Skip the button — your notes still save, and the safety check runs on
-        your device either way.
-      </p>
+      {askConsent ? (
+        <div className="mt-3 animate-fade-up rounded-2xl border border-line bg-surface-2 p-4">
+          <div className="text-sm font-semibold">Send this to Google (Gemini)?</div>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted">
+            To turn your description into training limits, the words you typed above are sent to{" "}
+            <span className="font-semibold text-foreground">Google (Gemini)</span>, our AI provider. That text is
+            about your body, so we ask separately rather than folding it into the terms you accepted.
+          </p>
+          <ul className="mt-2.5 space-y-1 text-xs text-muted">
+            <li>· Only this text — never your name, your plan, or anything from Apple Health.</li>
+            <li>· You can turn this off later in Profile.</li>
+            <li>· Say no and nothing is sent: your notes still save, and the safety check runs on your device.</li>
+          </ul>
+          <div className="mt-3 flex gap-2">
+            <button onClick={grantConsent} className="btn btn-primary flex-1 py-2.5 text-sm">Allow</button>
+            <button onClick={() => setAskConsent(false)} className="btn btn-ghost flex-1 py-2.5 text-sm">No thanks</button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-muted">
+          {consented ? (
+            <>
+              <span className="font-semibold text-foreground">Analyze</span> sends this text to{" "}
+              <span className="font-semibold text-foreground">Google (Gemini)</span> to turn it into training limits —
+              you allowed this, and can turn it off in Profile.
+            </>
+          ) : (
+            <>
+              Prefer to keep it on your device? Just skip <span className="font-semibold text-foreground">Analyze</span>{" "}
+              — your notes still save, and the safety check runs here either way.
+            </>
+          )}
+        </p>
+      )}
 
       {flag && <RedFlagCard flag={flag} />}
 

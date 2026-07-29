@@ -239,6 +239,15 @@ export interface Consent {
   documentVersion: string;
 }
 
+/** Permission to send health text to the AI provider, and the evidence for it.
+ *  `provider` is recorded because consent is to a named third party, not to "AI" in
+ *  the abstract — if we ever change provider the old consent no longer covers it. */
+export interface AiHealthConsent {
+  granted: boolean;
+  atISO: string;
+  provider: string;
+}
+
 // A stretch of days the athlete can't train (vacation, work, life).
 export interface DateRange {
   startISO: string; // yyyy-mm-dd
@@ -285,6 +294,13 @@ export interface Profile {
   injuries?: Injury[]; // injuries/aches to train around
   healthScreen?: HealthScreen; // PAR-Q-style pre-participation screening (onboarding)
   consent?: Consent; // terms + privacy agreement recorded at account creation
+  /** Separate, explicit permission to send injury/health text to the AI provider.
+   *  Deliberately NOT part of `consent` above: GDPR treats health data as special
+   *  category, and consent for it must be unbundled from accepting the terms, freely
+   *  given, and withdrawable — hence its own field, its own opt-in, and a revoke
+   *  control in Profile. Absent/false ⇒ nothing about the athlete's body is sent
+   *  anywhere (ticket #63). */
+  aiHealthConsent?: AiHealthConsent;
   blackouts?: DateRange[]; // days off (vacation, work travel)
   equipment?: EquipmentAccess; // what the athlete can actually access
   intakeNotes?: string; // free-text "anything else" the athlete told us

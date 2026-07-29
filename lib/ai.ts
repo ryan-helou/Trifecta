@@ -26,6 +26,23 @@ export function aiEnabled(): boolean {
   return !!aiKey();
 }
 
+/** May we send the athlete's own words about injuries and pain to the provider?
+ *
+ *  Deliberately NOT the same question as aiEnabled(). Free Gemini tiers may use
+ *  submitted content to improve the models, and injury/medical free text is GDPR
+ *  Article 9 special-category data and in scope for the FTC Health Breach Notification
+ *  Rule. "We're probably on a fine tier" is not a control, so this makes it one:
+ *  the health-text path stays off until the operator explicitly attests, per
+ *  deployment, that the configured endpoint is a no-training tier covered by a DPA.
+ *
+ *  Fail CLOSED. With the flag unset the LLM step is skipped and the deterministic
+ *  red-flag triage in lib/redFlags.ts still runs — that path has no key, no network
+ *  and no failure mode — so the safety floor is unaffected and the athlete simply
+ *  doesn't get the convenience of auto-structured constraints. (Ticket #63.) */
+export function healthTextAllowed(): boolean {
+  return aiEnabled() && process.env.AI_HEALTH_NO_TRAINING === "1";
+}
+
 /** Human label for the third party that actually receives the athlete's text.
  *
  *  The coach sheet used to render a hard-coded "Powered by Claude · Haiku" while this

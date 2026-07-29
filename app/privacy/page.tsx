@@ -37,7 +37,7 @@ export default function PrivacyPolicy() {
             <b> never uploaded to our servers</b>, and only the resulting “session completed” is
             synced. Trifecta <b>never writes to Apple Health</b>.
           </li>
-          <li><b>AI features (optional):</b> if you tap <b>Analyze</b> on your injury notes, or use the AI coach note, that text is sent to <b>Google (Gemini)</b>, our AI provider, to turn it into training limits or a short note. Nothing is sent unless you tap. Your data is not used to train their models.</li>
+          <li><b>AI features (optional, off by default):</b> nothing about your body is sent anywhere unless you switch on <b>Analyse my injury notes with AI</b> — a separate choice from accepting these terms, which you can withdraw at any time in <span className="whitespace-nowrap">Profile → AI features</span>. With it on, the text you type about aches and injuries is sent to <b>Google (Gemini)</b> to turn into training limits, and the AI coach may be told which areas you are training around. With it off, neither happens and the on-device safety check still runs. We only send health text to a no-training tier, so it is not used to improve their models.</li>
         </ul>
       </Section>
 
