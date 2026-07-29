@@ -174,6 +174,28 @@ heavily. But Apple's architecture is categorically different.
 - **Gotcha.** Even with a native app, HealthKit background delivery is throttled and
   best-effort; you design for eventual, not real-time, sync, and dedup Apple Watch +
   iPhone double-counts (a notorious step/distance duplication problem `[8]`).
+- **The entitlement is a promise App Review audits — guideline 2.5.1.** Shipping the
+  HealthKit entitlement obliges you to *clearly identify the HealthKit functionality in the
+  app's user interface*. This is not a metadata or privacy-policy requirement; a reviewer
+  opens the app and looks for it. **Trifecta 1.0 (8) was rejected on exactly this
+  (2026-07-29).** The cause was structural, not cosmetic: the Apple Health card was a child
+  of the Strava component, whose first statement was `if (!status) return null` — `status`
+  being the response to an unrelated Strava API call — so the only HealthKit UI in the
+  product could silently fail to exist. It was additionally gated on an async
+  availability probe, filed under a heading that said "Device sync", and placed at the
+  bottom of the fifth tab. **Rules that follow:**
+  - HealthKit UI must be a **top-level section that names itself** ("Apple Health"), never
+    nested inside, or conditioned on, an unrelated integration's state.
+  - It must render **before** authorization is granted and **whether or not** the
+    availability probe succeeded — if HealthKit is genuinely unavailable, *say so* rather
+    than removing the section, or the entitlement has no visible counterpart.
+  - State the scope on screen: read-only, what types, and that nothing leaves the device.
+  - Put the exact path (tab → section heading → on-screen copy) in **App Review Notes**.
+    Ours previously ended with "Apple Health access is optional and not needed to review
+    core features" — an instruction not to go looking, in the app then cited for not being
+    findable.
+  - Gate it: [maestro/health.yaml](../../maestro/health.yaml) signs in as the demo account
+    Apple uses and asserts the section is present on Profile. It fails RED on the old code.
 
 ### 1.4 WHOOP — recovery/strain, API-friendly
 
