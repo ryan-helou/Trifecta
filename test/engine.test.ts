@@ -12,6 +12,7 @@
 import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts, injuryMods, restDayFor } from "../lib/planEngine";
 import type { Profile, Plan, Injury, Workout, Segment } from "../lib/types";
 import { ZONES } from "../lib/zones";
+import { targetView } from "../lib/targets";
 
 let checks = 0;
 let failures = 0;
@@ -499,6 +500,68 @@ section("hard-day spacing: 48h between hard run/bike/brick work");
     }
     ok(adjacent === 0, `${c.name}: no back-to-back hard run/bike/brick days (${adjacent})${example ? ` — e.g. ${example}` : ""}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Bike targets stay executable without a power meter.
+//
+// Onboarding tells an athlete with no meter to leave FTP blank and promises we'll
+// pace their rides by heart rate and feel instead. The bike branch headlined
+// "56–75% FTP" regardless — a percentage of a number they were just told they
+// didn't need, and cannot measure. Run and swim degrade to real pace targets, so
+// only the bike broke the promise; a persona tester's single most important
+// question was exactly this, and the honest answer was "no".
+//
+// The invariant: whatever the athlete has or hasn't entered, the HEADLINE target
+// must be something they can act on out on the road.
+{
+  const base: Profile = {
+    username: "t",
+    raceType: "half",
+    raceDateISO: "2026-11-14",
+    level: "intermediate",
+    workoutsPerWeek: 6,
+    perSport: { swim: 2, bike: 2, run: 2 },
+    strength: { enabled: false, daysPerWeek: 0, split: "full" },
+    longSessionDay: 5,
+    restDayPreference: 0,
+    unitPreference: "metric",
+    equipment: { pool: true, trainer: true, gym: true },
+    blackouts: [],
+    createdAtISO: "2026-07-29T00:00:00.000Z",
+  };
+
+  const cases: { name: string; profile: Profile; expect: RegExp }[] = [
+    // no meter, no HR data → RPE plus plain words
+    { name: "no FTP, no HR", profile: base, expect: /^RPE \d+(–\d+)? · \D+$/ },
+    // no meter but a max HR → heart rate, which their watch shows
+    { name: "no FTP, maxHR", profile: { ...base, maxHR: 188 }, expect: /^\d+–\d+ bpm$/ },
+    // has a meter → watts, as before
+    { name: "FTP set", profile: { ...base, ftp: 240 }, expect: /^\d+–\d+ W$/ },
+  ];
+
+  for (const c of cases) {
+    const plan = generatePlan(c.profile, "2026-07-29");
+    for (const z of [1, 2, 3, 4, 5] as const) {
+      const view = targetView("bike", z, plan.paces, "metric");
+      ok(
+        c.expect.test(view.primary),
+        `${c.name}: bike Z${z} headline is actionable — got "${view.primary}"`,
+      );
+      ok(
+        !/% FTP/.test(view.primary) || !!plan.paces.bike.ftp,
+        `${c.name}: bike Z${z} never headlines %FTP without an FTP — got "${view.primary}"`,
+      );
+    }
+  }
+
+  // and the %FTP prescription is never simply lost — it stays as supporting detail
+  const noFtp = generatePlan(base, "2026-07-29");
+  const v = targetView("bike", 2, noFtp.paces, "metric");
+  ok(
+    v.secondary.some((s) => /% FTP/.test(s)),
+    `no FTP: the %FTP band survives in secondary — got [${v.secondary.join(" | ")}]`,
+  );
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
