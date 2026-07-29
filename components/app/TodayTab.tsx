@@ -67,10 +67,12 @@ export function TodayTab() {
 
   return (
     <div className="space-y-5 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
-      <div className="animate-fade-up flex items-center justify-between">
-        <div>
+      <div className="animate-fade-up flex items-center justify-between gap-3">
+        {/* min-w-0 + truncate: without them a long username shoves Log/Coach off the
+            row instead of ellipsing, since flex items refuse to shrink past content */}
+        <div className="min-w-0">
           <div className="eyebrow text-[0.72rem]">{greeting}</div>
-          <div className="font-display text-2xl font-semibold capitalize tracking-tight">{username}</div>
+          <div className="truncate font-display text-2xl font-semibold capitalize tracking-tight">{username}</div>
           {streak.current >= 2 && (
             <div className="mt-1 flex items-center gap-1.5 text-[0.82rem] font-medium text-muted">
               <Icon name="flame" size={14} className="text-accent" />
@@ -78,7 +80,7 @@ export function TodayTab() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-shrink-0 items-center gap-2">
           <button onClick={() => openLog()} className="card-glass flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold">
             <span aria-hidden className="text-base leading-none text-accent">＋</span>
             Log

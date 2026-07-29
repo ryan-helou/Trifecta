@@ -1,0 +1,97 @@
+# Visual tour (not a gate — prefixed `_` so verify-ios.sh skips it). Logs into the
+# populated `trifectademo` account on the live API and screenshots every main-app
+# surface, so a UI change can be eyeballed before/after on a real device.
+#
+#   maestro --udid <udid> test maestro/_tour.yaml
+#
+# Keyboard trap: while the WKWebView keyboard is up the two inputs' reported bounds
+# overlap, so a tap meant for the password lands back in the username field. Tapping
+# the inert "Password" label blurs the input and drops the keyboard first — same
+# technique as login.yaml, which _screenshots.yaml was missing.
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 15000
+# These plain taps are themselves the regression test for the login-screen fix: the
+# card used to be pinned to the bottom of a 100dvh column, so once the keyboard came
+# up the password field sat underneath it and this step was unreachable.
+# Fill PASSWORD FIRST, then username. With the keyboard up the username field still
+# sits above the keyboard's top edge but the password field does not, so the password
+# is only reliably tappable while the keyboard is still down. (Neither a tap on the
+# password input nor the accessory bar's next-field chevron actually moves WKWebView
+# focus — both report COMPLETED and silently append to whatever field was focused,
+# which is how "trifectademodemopass123" kept ending up in the username box.)
+# `eraseText` before each field makes the block idempotent, so the retry can re-enter
+# credentials cleanly instead of appending to a half-filled form. The tap on the
+# password input lands only intermittently in the WKWebView, which is what the retry
+# is actually for. Gate on "Friends" — it appears only in the tab bar, never in Today's
+# body copy, so it can't match page text the way "Progress"/"Plan" do.
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: "••••••••"
+      - eraseText
+      - inputText: "demopass123"
+      - tapOn: "ironmike"
+      - eraseText
+      - inputText: "trifectademo"
+      - pressKey: Enter       # submits the <form> — no button tap to mis-land
+      - extendedWaitUntil:
+          visible: "Friends"
+          timeout: 40000
+- waitForAnimationToEnd
+
+- takeScreenshot: tour-1-today
+- swipe:
+    start: 50%, 80%
+    end: 50%, 25%
+- waitForAnimationToEnd
+- takeScreenshot: tour-1b-today-scrolled
+
+# Tab bar by POINT, not by label. The tab names also occur in page copy ("Progress"
+# is an eyebrow on the Progress tab, "Plan" appears in Today's week card), and Maestro
+# taps the first match — which opened a workout sheet and then the Coach sheet instead
+# of switching tabs. The bar is five equal columns pinned to the bottom, so the
+# positions are stable.
+- tapOn:
+    point: "30%,94%"        # Plan
+- waitForAnimationToEnd
+- takeScreenshot: tour-2-plan
+
+- tapOn:
+    point: "50%,94%"        # Progress
+- waitForAnimationToEnd
+- takeScreenshot: tour-3-progress
+
+- tapOn:
+    point: "70%,94%"        # Friends
+- waitForAnimationToEnd
+- takeScreenshot: tour-4-friends
+
+- tapOn:
+    point: "90%,94%"        # Profile
+- waitForAnimationToEnd
+- takeScreenshot: tour-5-profile
+
+- tapOn:
+    point: "10%,94%"        # back to Today — proves the tab bar round-trips
+- waitForAnimationToEnd
+- takeScreenshot: tour-6-today-return
