@@ -223,6 +223,8 @@ platform :ios do
 
     In the previously reviewed build this section was rendered inside the Strava card and could fail to appear. That is fixed in this build, and an automated UI test now asserts the section is present on the Profile tab.
 
+    The attached screenshot "profile-apple-health.png" shows this screen. It is captured on an iOS Simulator (iPhone 17) rather than a physical device, which we note for transparency.
+
     SCOPE OF HEALTHKIT USE
 
     Read-only access to workout samples only. Trifecta never writes to or modifies HealthKit. Workouts are matched to the training plan on-device; health data is not uploaded to our server and is not used for advertising.
