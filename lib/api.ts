@@ -130,7 +130,7 @@ export async function apiIntake(text: string, consent: boolean) {
     method: "POST",
     body: JSON.stringify({ text, consent }),
   });
-  return data as { enabled?: boolean; injuries?: ParsedInjury[] };
+  return data as { available?: boolean; enabled?: boolean; injuries?: ParsedInjury[] };
 }
 
 /** Ask the cheap AI for a short "why this plan" note plus per-phase coaching notes. */
