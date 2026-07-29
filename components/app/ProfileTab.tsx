@@ -12,6 +12,7 @@ import { InstallHint } from "./InstallHint";
 import { Connections } from "./Connections";
 import { Notifications } from "./Notifications";
 import { Wordmark } from "../Wordmark";
+import { legalHref } from "@/lib/runtime";
 
 export function ProfileTab() {
   const { plan, username, profile, logout, deleteAccount, resetPlan } = useApp();
@@ -186,10 +187,14 @@ export function ProfileTab() {
           </div>
         )}
 
+        {/* legalHref, not a bare "/privacy": in the bundled app the extensionless path
+            resolves to no file and the tap does nothing at all. See lib/runtime.ts. */}
         <div className="pt-1 text-center text-xs text-muted">
-          <a href="/privacy" className="underline">Privacy</a>
+          <a href={legalHref("/support")} className="underline">Support</a>
           <span className="px-2">·</span>
-          <a href="/terms" className="underline">Terms</a>
+          <a href={legalHref("/privacy")} className="underline">Privacy</a>
+          <span className="px-2">·</span>
+          <a href={legalHref("/terms")} className="underline">Terms</a>
         </div>
       </div>
 

@@ -111,7 +111,7 @@ export async function apiCoach(context: string, question: string) {
     method: "POST",
     body: JSON.stringify({ context, question }),
   });
-  return data as { enabled?: boolean; text?: string };
+  return data as { enabled?: boolean; text?: string; provider?: string };
 }
 
 export interface ParsedInjury {

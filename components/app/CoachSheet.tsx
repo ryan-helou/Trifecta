@@ -28,6 +28,7 @@ export function CoachSheet({
 }) {
   const [input, setInput] = useState(prefill ?? "");
   const [busy, setBusy] = useState(false);
+  const [provider, setProvider] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export function CoachSheet({
     try {
       const ctx = summarizeForCoach(plan, today);
       const res = await apiCoach(ctx, q);
+      if (res.provider) setProvider(res.provider);
       setMessages((m) => [...m, { role: "coach", text: res.text || "…" }]);
     } catch {
       setMessages((m) => [
@@ -76,7 +78,14 @@ export function CoachSheet({
           <Reactor size={30} spinning={false} />
           <div className="flex-1">
             <div className="font-display font-bold"><Wordmark /> Coach</div>
-            <div className="text-xs text-muted">Powered by Claude · Haiku</div>
+            {/* Reported by the server, not hard-coded. This line read "Powered by
+                Claude · Haiku" while every request actually went to Google's Gemini
+                endpoint — the UI naming the wrong company for where the athlete's text
+                goes (guideline 5.1.2(i)). Until the first reply tells us, say what is
+                true of every case: it leaves the device. */}
+            <div className="text-xs text-muted">
+              {provider ? `Powered by ${provider}` : "AI coach — your question is sent to our AI provider"}
+            </div>
           </div>
           <button onClick={onClose} aria-label="Close coach" className="text-muted hover:text-foreground">✕</button>
         </div>
