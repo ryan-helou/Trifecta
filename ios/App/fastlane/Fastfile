@@ -198,24 +198,62 @@ platform :ios do
   end
 
   desc "Create the App Store review detail (Apple's demo login + contact) — also fixes deliver's first-version 'No data' crash on fetch_app_store_review_detail."
+  # The notes App Review reads before they open the app. The repo is the source of
+  # truth for this text, not the web form, so it can't silently drift.
+  #
+  # 1.0 (8) was rejected under guideline 2.5.1 — HealthKit entitlement shipped, no
+  # HealthKit functionality the reviewer could find in the UI. The old version of
+  # these notes made that worse: its last line said Apple Health "is optional and not
+  # needed to review core features", which is an instruction not to go looking. Now
+  # the notes name the exact tab, the exact section heading, and what the screen says.
+  REVIEW_NOTES = <<~NOTES.strip
+    Triathlon training app. Sign in with the demo account above — it has a fully populated IRONMAN 70.3 plan (Today / Plan / Progress / Friends / Profile).
+
+    WHERE THE HEALTHKIT FUNCTIONALITY IS (re: guideline 2.5.1)
+
+    Tap "Profile" in the bottom tab bar. The section headed "APPLE HEALTH" is visible there without scrolling. It reads:
+
+      Auto-complete from Apple Health
+      Reads your swim, bike, run and strength workouts and checks off the planned session each one matches.
+      • Read-only — Trifecta never writes to Apple Health.
+      • Stays on your device — nothing from Health is uploaded.
+      [ Sync with Apple Health ]
+
+    Tapping "Sync with Apple Health" triggers the HealthKit read-authorization prompt, then reads recent workouts and marks the matching planned sessions done.
+
+    In the previously reviewed build this section was rendered inside the Strava card and could fail to appear. That is fixed in this build, and an automated UI test now asserts the section is present on the Profile tab.
+
+    SCOPE OF HEALTHKIT USE
+
+    Read-only access to workout samples only. Trifecta never writes to or modifies HealthKit. Workouts are matched to the training plan on-device; health data is not uploaded to our server and is not used for advertising.
+  NOTES
+
   lane :store_reviewinfo do |opts|
     asc_key
     app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
     version = app.get_edit_app_store_version
+    UI.user_error!("no editable App Store version") if version.nil?
+    attrs = {
+      contactFirstName: "Ryan",
+      contactLastName: "Helou",
+      contactPhone: opts[:phone] || "+1 000 000 0000",
+      contactEmail: "ryan.helou@gmail.com",
+      demoAccountRequired: true,
+      demoAccountName: "trifectademo",
+      demoAccountPassword: "demopass123",
+      notes: REVIEW_NOTES
+    }
     existing = (version.fetch_app_store_review_detail rescue nil)
     if existing
-      UI.success("review detail already exists (#{existing.id})")
+      # Idempotent on purpose: this lane used to bail out with "already exists" and
+      # leave stale notes in place, which is how the misleading Apple Health line
+      # survived into the review that cited us for it.
+      Spaceship::ConnectAPI.patch_app_store_review_detail(
+        app_store_review_detail_id: existing.id, attributes: attrs
+      )
+      UI.success("updated review detail #{existing.id}")
     else
-      d = version.create_app_store_review_detail(attributes: {
-        contactFirstName: "Ryan",
-        contactLastName: "Helou",
-        contactPhone: opts[:phone] || "+1 000 000 0000",
-        contactEmail: "ryan.helou@gmail.com",
-        demoAccountRequired: true,
-        demoAccountName: "trifectademo",
-        demoAccountPassword: "demopass123",
-        notes: "Triathlon training app. Sign in with the demo account above — it has a fully populated IRONMAN 70.3 plan (Today / Plan / Progress). Apple Health access is optional and not needed to review core features."
-      })
+      d = version.create_app_store_review_detail(attributes: attrs)
       UI.success("created review detail #{d.id}")
     end
   end
