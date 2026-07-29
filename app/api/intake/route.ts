@@ -79,13 +79,20 @@ export async function POST(req: NextRequest) {
   // permission — not inferred from accepting the terms, and revocable in Profile.
   // Neither is sufficient alone, and the deterministic triage below runs regardless.
   const ai = healthTextAllowed() && body.consent === true;
-  if (!text) return NextResponse.json({ enabled: ai, injuries: [] });
+  // `available` is the CAPABILITY (is the no-training endpoint configured at all),
+  // separate from `enabled` (capability AND this athlete's consent). The client needs
+  // the distinction: without it the UI offers "Analyze with AI", walks the athlete
+  // through consenting to send their health text to Google, and only then discovers
+  // the feature is switched off — consent theatre, and a feature that looks broken.
+  const available = healthTextAllowed();
+  if (!text) return NextResponse.json({ available, enabled: ai, injuries: [] });
 
   // Deterministic triage first, on the athlete's raw words — independent of the
   // model, and of whether AI is configured or rate-limited at all.
   const redFlag = detectRedFlags(text);
   if (redFlag.matched) {
     return NextResponse.json({
+      available,
       enabled: ai,
       redFlag,
       // never the model's read of severity here: a flagged presentation only
@@ -94,8 +101,8 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (!ai) return NextResponse.json({ enabled: false, injuries: [] });
-  if (!allow(uid)) return NextResponse.json({ enabled: true, injuries: [] });
+  if (!ai) return NextResponse.json({ available, enabled: false, injuries: [] });
+  if (!allow(uid)) return NextResponse.json({ available, enabled: true, injuries: [] });
 
   try {
     const out = await aiJSON<{ injuries?: unknown }>(
@@ -103,8 +110,8 @@ export async function POST(req: NextRequest) {
       `Athlete says:\n"""${text}"""`,
       700,
     );
-    return NextResponse.json({ enabled: true, injuries: sanitize(out?.injuries) });
+    return NextResponse.json({ available, enabled: true, injuries: sanitize(out?.injuries) });
   } catch {
-    return NextResponse.json({ enabled: true, injuries: [] });
+    return NextResponse.json({ available, enabled: true, injuries: [] });
   }
 }

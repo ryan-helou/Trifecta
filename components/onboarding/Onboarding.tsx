@@ -1672,6 +1672,20 @@ function InjuriesStep({ draft, set }: StepProps) {
   const [status, setStatus] = useState<"idle" | "loading" | "off" | "done" | "flagged">("idle");
   const [flag, setFlag] = useState<RedFlagMatch | null>(null);
   const [askConsent, setAskConsent] = useState(false);
+  // Is the AI path wired at all? Asked with an EMPTY body, so this probe sends none of
+  // the athlete's words anywhere. Without it the UI would offer "Analyze with AI", walk
+  // them through consenting to send health text to Google, and only then reveal the
+  // feature is switched off — a consent dialog for something that cannot happen.
+  const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    apiIntake("", false)
+      .then((r) => live && setAiAvailable(r.available === true))
+      .catch(() => live && setAiAvailable(false));
+    return () => {
+      live = false;
+    };
+  }, []);
   const consented = draft.aiHealthConsent?.granted === true;
 
   // Recorded on the draft the moment it's given, so it travels with the profile and can
@@ -1742,13 +1756,15 @@ function InjuriesStep({ draft, set }: StepProps) {
         }}
       />
       <div className="mt-3 flex items-center gap-3">
-        <button
-          onClick={() => (consented ? analyze(true) : setAskConsent(true))}
-          disabled={status === "loading"}
-          className="btn btn-primary px-5 py-2.5 text-sm"
-        >
-          {status === "loading" ? "Reading…" : draft.injuries.length ? "Re-analyze" : "Analyze with AI"}
-        </button>
+        {aiAvailable === true && (
+          <button
+            onClick={() => (consented ? analyze(true) : setAskConsent(true))}
+            disabled={status === "loading"}
+            className="btn btn-primary px-5 py-2.5 text-sm"
+          >
+            {status === "loading" ? "Reading…" : draft.injuries.length ? "Re-analyze" : "Analyze with AI"}
+          </button>
+        )}
         {status === "off" && <span className="text-xs text-muted">AI is off — your notes are still saved and used.</span>}
         {status === "done" && !draft.injuries.length && text.trim() && (
           <span className="text-xs text-muted">Nothing to work around — noted.</span>
@@ -1783,6 +1799,10 @@ function InjuriesStep({ draft, set }: StepProps) {
             <button onClick={() => setAskConsent(false)} className="btn btn-ghost flex-1 py-2.5 text-sm">No thanks</button>
           </div>
         </div>
+      ) : aiAvailable !== true ? (
+        <p className="mt-2 text-xs text-muted">
+          Your notes are saved and used to shape the plan, and the safety check runs on your device.
+        </p>
       ) : (
         <p className="mt-2 text-xs text-muted">
           {consented ? (
