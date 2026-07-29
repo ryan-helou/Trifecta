@@ -17,7 +17,7 @@ import {
 } from "../lib/auth-server";
 import { getStore } from "../lib/db";
 
-process.env.NODE_ENV = "test";
+// (NODE_ENV is read-only under tsc; the dev secret fallback applies by default anyway)
 
 let pass = 0;
 function ok(label: string, cond: boolean) {
