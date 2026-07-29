@@ -1,0 +1,49 @@
+# Visual tour of the onboarding questionnaire (not a gate — `_` prefixed). Walks the
+# first few steps and screenshots them, so the two things that are only visible on a
+# real device can be checked: that a short step no longer leaves ~45% of the screen
+# blank, and that a long scrolling step doesn't run its content under the status bar.
+#
+#   maestro --udid <udid> test maestro/_onboarding-tour.yaml
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- tapOn: "Create your plan.*"
+- extendedWaitUntil:
+    visible: "What are you training for?"
+    timeout: 20000
+- waitForAnimationToEnd
+- takeScreenshot: ob-1-race
+
+- tapOn: ".*Ironman 70.3.*"     # the card exposes title + distances as one a11y string
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "When's race day?"
+    timeout: 20000
+- waitForAnimationToEnd
+- takeScreenshot: ob-2-racedate      # was ~45% dead space below the date field
+
+# Continue is disabled until the date question is answered, so take the "don't know"
+# branch rather than trying to drive the native date picker.
+- tapOn: ".*I don't know my race date yet.*"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- takeScreenshot: ob-3-level
+
+# Walk on to the pre-participation screening — the long, scrolling step where content
+# was running under the iOS clock before the status-bar scrim.
+- repeat:
+    times: 6
+    commands:
+      - tapOn: "Continue"
+      - waitForAnimationToEnd
+- takeScreenshot: ob-4-walked
+- scroll
+- scroll
+- takeScreenshot: ob-5-scrolled-under-status-bar

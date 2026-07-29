@@ -104,11 +104,16 @@ export function TabDeck({
   }, [onChange]);
 
   // a fresh tab always starts centred (the previous drag transform is cleared here)
+  // AND scrolled to the top. Tabs share the document scroller, so without the reset
+  // the new tab inherited the old one's offset: scrolling down Today and tapping
+  // Progress landed you mid-page on a half-cut stat card, and Plan opened with its
+  // week header shoved under the status bar. A tab should always open at its top.
   useEffect(() => {
     if (trackRef.current) {
       trackRef.current.style.transition = "none";
       trackRef.current.style.transform = "translateX(0)";
     }
+    window.scrollTo(0, 0);
   }, [tab]);
 
   return (
