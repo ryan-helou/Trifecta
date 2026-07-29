@@ -110,6 +110,15 @@ export function setToken(token: string): void {
     } catch {
       keychainHealthy = false;
     }
+    // Say it out loud. The whole reason this bug survived is that the failure was
+    // silent — it cost a keychain-database dump to find. One warning in the device log
+    // (`xcrun simctl spawn <udid> log stream`) turns that into a five-second check.
+    if (keychainHealthy === false) {
+      console.warn(
+        "[trifecta] Keychain write failed — session persisted to the sandboxed fallback instead. " +
+          "If this appears on a signed device build, the session token is not in the Keychain.",
+      );
+    }
   })();
 }
 
