@@ -48,9 +48,14 @@ appId: app.trifecta.mobile
 - tapOn: "Profile"
 - waitForAnimationToEnd:
     timeout: 5000
+# centerElement, because the bottom nav is `sticky bottom-0`: mid-scroll the footer
+# links pass UNDER it, Maestro still reports them visible, and the tap lands on the tab
+# bar instead of the link (observed once — the run ended on Progress). Centring puts the
+# link in open space before tapping.
 - scrollUntilVisible:
     element: "Privacy"
     direction: DOWN
+    centerElement: true
     timeout: 20000
 - tapOn: "Privacy"
 # The policy itself must render — not a blank WebView, not the app's own 404.
@@ -73,6 +78,7 @@ appId: app.trifecta.mobile
 - scrollUntilVisible:
     element: "Support"
     direction: DOWN
+    centerElement: true
     timeout: 20000
 - tapOn: "Support"
 - extendedWaitUntil:
