@@ -52,13 +52,27 @@ export async function healthAvailable(): Promise<boolean> {
   }
 }
 
-/** Prompt for read access to workouts. Returns whether workouts are readable. */
+/** Present the HealthKit permission sheet for workouts (a no-op after the first time).
+ *
+ *  Returns whether the ASK succeeded — deliberately NOT whether access was granted,
+ *  because iOS never tells you that. HealthKit hides read authorization by design: if
+ *  it revealed a denial, apps could infer the user has something to hide. Under the
+ *  hood the plugin reports `readAuthorized` from `getRequestStatusForAuthorization`,
+ *  which answers "do I still need to ask?" — `.unnecessary` (already asked, allowed OR
+ *  denied) maps to authorized, `.shouldRequest` maps to denied.
+ *
+ *  We used to gate the whole sync on that value, which was wrong in both directions:
+ *  it could report "access is off" to someone who had just tapped Allow (the status is
+ *  read as the sheet settles), and report authorized for someone who had tapped Deny.
+ *  The Apple-sanctioned pattern is the only honest one — ask, then read, and let the
+ *  result speak. A denied read returns an empty set, indistinguishable from "no
+ *  workouts", which is exactly what Apple intends. */
 export async function requestHealthAuth(): Promise<boolean> {
   const h = await plugin();
   if (!h) return false;
   try {
-    const status = await h.requestAuthorization({ read: ["workouts"] });
-    return status.readAuthorized.includes("workouts");
+    await h.requestAuthorization({ read: ["workouts"] });
+    return true;
   } catch {
     return false;
   }
