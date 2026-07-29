@@ -1,0 +1,141 @@
+# DEEP tour (not a gate — `_` prefixed so verify-ios.sh skips it).
+#
+# _tour.yaml walks the five tabs and screenshots each. That proves navigation, not the
+# app. Everything a reviewer actually does with the demo account lives one level deeper:
+# open a session, read the targets, start the player, mark it done. None of it has ever
+# been driven on a device — which is exactly the gap that let the last two rejectable
+# defects through, because both were invisible from source.
+#
+# Purpose is eyeball evidence, not assertions: screenshot every surface so a human (or a
+# vision pass) can see whether it's coherent, then turn whatever is broken into a real
+# gate.
+#
+# Login technique is copied verbatim from _tour.yaml — password FIRST, then username,
+# submit with Enter. See that file for why.
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 15000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: "••••••••"
+      - eraseText
+      - inputText: "demopass123"
+      - tapOn: "ironmike"
+      - eraseText
+      - inputText: "trifectademo"
+      - pressKey: Enter
+      - extendedWaitUntil:
+          visible: "Friends"
+          timeout: 40000
+- waitForAnimationToEnd
+
+# ---- 1. Today, and the session underneath it --------------------------------
+- takeScreenshot: deep-01-today
+# Open the first session card. Tapping by point rather than by title: titles vary with
+# whatever the demo plan has scheduled today, and a rest day has no card at all.
+- tapOn:
+    point: "50%,42%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: deep-02-session-detail
+# Scroll the detail — the targets, the step list, the "why this session" line.
+- swipe:
+    start: 50%, 75%
+    end: 50%, 30%
+- waitForAnimationToEnd
+- takeScreenshot: deep-03-session-detail-scrolled
+- swipe:
+    start: 50%, 75%
+    end: 50%, 30%
+- waitForAnimationToEnd
+- takeScreenshot: deep-04-session-detail-bottom
+
+# ---- 2. back out, then the Plan tab in depth --------------------------------
+- runFlow:
+    when:
+      visible: "✕"
+    commands:
+      - tapOn: "✕"
+- waitForAnimationToEnd
+- tapOn:
+    point: "30%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: deep-05-plan
+- swipe:
+    start: 50%, 80%
+    end: 50%, 25%
+- waitForAnimationToEnd
+- takeScreenshot: deep-06-plan-scrolled
+
+# ---- 3. Progress: the charts, which are the moat ----------------------------
+- tapOn:
+    point: "50%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: deep-07-progress
+- swipe:
+    start: 50%, 80%
+    end: 50%, 25%
+- waitForAnimationToEnd
+- takeScreenshot: deep-08-progress-scrolled
+- swipe:
+    start: 50%, 80%
+    end: 50%, 25%
+- waitForAnimationToEnd
+- takeScreenshot: deep-09-progress-bottom
+
+# ---- 4. Friends ---------------------------------------------------------------
+- tapOn:
+    point: "70%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: deep-10-friends
+
+# ---- 5. Profile, all the way down --------------------------------------------
+- tapOn:
+    point: "90%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: deep-11-profile
+- swipe:
+    start: 50%, 80%
+    end: 50%, 25%
+- waitForAnimationToEnd
+- takeScreenshot: deep-12-profile-scrolled
+- swipe:
+    start: 50%, 80%
+    end: 50%, 25%
+- waitForAnimationToEnd
+- takeScreenshot: deep-13-profile-bottom
+
+# ---- 6. Edit race & training settings — the deepest form in the app ----------
+- runFlow:
+    when:
+      visible: ".*Edit race.*"
+    commands:
+      - tapOn: ".*Edit race.*"
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - takeScreenshot: deep-14-edit-settings
+      - swipe:
+          start: 50%, 80%
+          end: 50%, 25%
+      - waitForAnimationToEnd
+      - takeScreenshot: deep-15-edit-settings-scrolled

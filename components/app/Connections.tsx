@@ -121,6 +121,7 @@ function AppleHealthCard() {
   const [state, setState] = useState<HealthState>("checking");
   const [busy, setBusy] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [hint, setHint] = useState(false);
 
   useEffect(() => {
     healthAvailable()
@@ -134,12 +135,10 @@ function AppleHealthCard() {
 
   const sync = async () => {
     setBusy(true);
-    const authed = await requestHealthAuth();
-    if (!authed) {
-      setBusy(false);
-      toast({ text: "Apple Health access is off — turn it on in Settings › Privacy & Security › Health › Trifecta.", tone: "warning" });
-      return;
-    }
+    // Ask, then read. We do NOT branch on the return value: iOS never reveals whether
+    // read access was granted, so the only honest signal is what the read gives back.
+    // Branching on it told athletes who had just tapped Allow that "access is off".
+    await requestHealthAuth();
     const res = plan ? await syncAppleHealth(plan) : null;
     setBusy(false);
     setLastSyncedAt(new Date().toISOString());
@@ -147,9 +146,12 @@ function AppleHealthCard() {
       applyPlan(res.plan);
       toast({ text: `Apple Health — ${res.applied} session${res.applied > 1 ? "s" : ""} marked done.`, tone: "success" });
       setTimeout(() => window.location.reload(), 900);
-    } else {
-      toast({ text: "Apple Health — no new workouts to match.", tone: "default" });
+      return;
     }
+    // Empty is genuinely ambiguous — no matching workouts, or access declined, and
+    // Apple makes those indistinguishable on purpose. Say both rather than guess.
+    setHint(true);
+    toast({ text: "Apple Health — no new workouts to match.", tone: "default" });
   };
 
   return (
@@ -204,6 +206,14 @@ function AppleHealthCard() {
                   ? `Last read ${timeAgo(lastSyncedAt)}`
                   : "iOS will ask your permission the first time."}
               </p>
+              {hint && (
+                <p className="mt-2 rounded-xl border border-line px-3 py-2.5 text-xs text-muted">
+                  Nothing came back. If you have workouts from the last 30 days, check Trifecta is
+                  allowed to read them in <b className="text-foreground">Settings › Privacy &amp; Security
+                  › Health › Trifecta</b> — iOS doesn&apos;t tell apps when read access is off, so we
+                  can&apos;t tell the difference from here.
+                </p>
+              )}
             </>
           )}
         </div>
