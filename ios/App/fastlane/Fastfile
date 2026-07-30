@@ -534,4 +534,40 @@ platform :ios do
       UI.important("edit-version check skipped: #{e.message}")
     end
   end
+
+  desc "Update the App Review notes on the current version. Usage: fastlane store_notes text:'…'"
+  lane :store_notes do |opts|
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    version = app.get_edit_app_store_version || UI.user_error!("no editable version")
+    detail = version.fetch_app_store_review_detail || UI.user_error!("no review detail")
+    text = opts[:text] || UI.user_error!("pass text:'…'")
+    detail.update(attributes: { notes: text })
+    UI.success("review notes updated (#{text.length} chars) on version #{version.version_string}")
+  end
+
+  desc "Cancel the in-progress/rejected review submission so a new build can be submitted."
+  lane :store_cancel do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    open = app.get_review_submissions(limit: 10).reject { |s| (s.state rescue nil) == "COMPLETE" }
+    if open.empty?
+      UI.success("no open review submission — nothing to cancel")
+    else
+      open.each do |s|
+        UI.message("cancelling submission #{s.id} (state=#{s.state})")
+        s.cancel_submission
+      end
+      # A cancelled submission keeps OWNING the version until it reaches COMPLETE.
+      # Submitting before then fails with "A review submission is already in progress".
+      40.times do |i|
+        still = app.get_review_submissions(limit: 10).reject { |s| (s.state rescue nil) == "COMPLETE" }
+        break UI.success("all submissions COMPLETE — version released") if still.empty?
+        UI.message("poll #{i}: still open -> #{still.map { |s| s.state }.join(', ')}")
+        sleep(10)
+      end
+    end
+    v = (app.get_edit_app_store_version rescue nil)
+    UI.success("editable version #{v&.version_string} state=#{v && (v.app_store_state rescue v.app_version_state)}")
+  end
 end
