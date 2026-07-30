@@ -65,3 +65,29 @@ appId: app.trifecta.mobile
 - assertVisible: ".*never writes to Apple Health.*"
 - assertVisible: ".*Sync with Apple Health.*"
 - takeScreenshot: 11-apple-health-card
+# --- the 2.1(a) regression -------------------------------------------------
+# Build 12 was rejected under guideline 2.1(a): "Sync with Apple Health button was
+# unresponsive." Everything above this line PASSED on that exact build, because
+# assertVisible proves the button EXISTS, not that it WORKS — and it existed. It was
+# `disabled`: `state` starts "checking" and only leaves it when healthAvailable()
+# resolves, which awaited a dynamic import() of the Capacitor plugin. That import
+# HANGS FOREVER in the bundled WKWebView (the same trap documented in lib/notify.ts
+# and lib/tokenStore.ts), so setState never fired and the button never enabled.
+#
+# So: TAP it, and prove the app actually responds. Permissions are denied above, so
+# the read comes back empty and the app must say so — reaching that toast means the
+# whole path ran: probe resolved -> button enabled -> tap handled -> plugin called ->
+# result rendered. If the plugin import ever hangs again, this fails instead of Apple.
+#
+# Timing: HealthKit genuinely cannot work on this simulator — the gate builds unsigned
+# (CODE_SIGNING_ALLOWED=NO), so the app carries no HealthKit entitlement, no permission
+# sheet is presented and the plugin's completion never fires. That is a simulator
+# artifact, not the device behaviour. What this flow therefore proves is the property
+# Apple actually rejected us on: the button RESPONDS, and the UI always resolves to a
+# message instead of a spinner that never ends. It reaches the toast via the timeouts in
+# lib/health.ts (20s auth + 20s read), so allow comfortably more than 40s.
+- tapOn: "Sync with Apple Health"
+- extendedWaitUntil:
+    visible: ".*no new workouts to match.*"
+    timeout: 70000
+- takeScreenshot: 12-apple-health-tapped
