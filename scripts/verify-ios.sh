@@ -67,6 +67,30 @@ if ! grep -q 'com.apple.developer.healthkit' ios/App/App/App.entitlements; then
 fi
 echo "    entitlements wired into both configs ✓"
 
+# 2c) no lazy Capacitor plugin imports in client code.
+#
+# A dynamic import() of a Capacitor plugin HANGS FOREVER inside the bundled WKWebView.
+# This repo has now been bitten FOUR times by the same line of code:
+#   lib/tokenStore.ts  -> login hung on "One sec…"
+#   lib/notify.ts      -> notifications card never rendered on native
+#   lib/health.ts      -> App Store REJECTION, guideline 2.1(a), 2026-07-30:
+#                         "Sync with Apple Health button was unresponsive"
+#   lib/ota.ts         -> notifyAppReady() never lands, risking a bundle rollback
+#
+# It is invisible to every runtime gate — the code is reachable, the element renders,
+# assertVisible passes — so assert it statically. Plugins must be imported at the top
+# level. If you need code-splitting, split something that is not a native bridge.
+echo "==> checking for lazy Capacitor plugin imports"
+LAZY=$(grep -rnE "await import\(['\"]@(capacitor|capgo|aparajita)" \
+  --include="*.ts" --include="*.tsx" lib/ components/ app/ hooks/ 2>/dev/null || true)
+if [ -n "$LAZY" ]; then
+  echo "!! dynamic import() of a Capacitor plugin — this hangs forever in the WKWebView:"
+  echo "$LAZY" | sed 's/^/     /'
+  echo "   Hoist it to a static top-level import (see lib/health.ts for why)."
+  exit 1
+fi
+echo "    no lazy plugin imports ✓"
+
 # 3) clean (re)install — a fresh install also clears any stale WebView storage
 xcrun simctl uninstall "$UDID" "$BUNDLE_ID" 2>/dev/null || true
 xcrun simctl install "$UDID" "$APP"

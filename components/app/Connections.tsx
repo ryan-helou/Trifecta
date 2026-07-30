@@ -123,10 +123,30 @@ function AppleHealthCard() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [hint, setHint] = useState(false);
 
+  // Belt and braces after the guideline-2.1(a) rejection (2026-07-30).
+  //
+  // The real bug was a dynamic import() hanging in the WKWebView (fixed in lib/health.ts),
+  // but the reason a hung probe became a REJECTION rather than a slow card is that the
+  // button was disabled until this resolved. A probe is not allowed to decide whether a
+  // control works, so it no longer gates `disabled` — and this watchdog stops `state`
+  // sitting in "checking" forever if any future plugin call stalls.
+  //
+  // The timeout falls through to "ready", never "unavailable": showing a working button
+  // to someone who has no health store is a no-op read, whereas telling an athlete who
+  // HAS one that Apple Health "isn't available on this device" is a lie we cannot detect.
   useEffect(() => {
+    let done = false;
+    const settle = (s: HealthState) => {
+      if (!done) {
+        done = true;
+        setState(s);
+      }
+    };
     healthAvailable()
-      .then((ok) => setState(ok ? "ready" : "unavailable"))
-      .catch(() => setState("unavailable"));
+      .then((ok) => settle(ok ? "ready" : "unavailable"))
+      .catch(() => settle("unavailable"));
+    const t = setTimeout(() => settle("ready"), 4000);
+    return () => clearTimeout(t);
   }, []);
 
   // HealthKit exists only inside the native shell. On the web PWA there is no
@@ -195,7 +215,10 @@ function AppleHealthCard() {
             <>
               <button
                 onClick={sync}
-                disabled={busy || state === "checking"}
+                // NOT gated on `state` — see the watchdog above. Tapping before the
+                // probe resolves is safe: requestHealthAuth() and readHealthWorkouts()
+                // both degrade to false/[] when no health store is present.
+                disabled={busy}
                 className="btn mt-3 w-full py-3 text-sm font-semibold"
                 style={{ background: "#111111", color: "#fff" }}
               >

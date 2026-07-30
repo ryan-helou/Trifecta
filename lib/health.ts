@@ -2,6 +2,7 @@ import type { Activity } from "./activity";
 import { applyActivityToPlan } from "./activity";
 import type { Discipline, Plan } from "./types";
 import { IS_NATIVE } from "./runtime";
+import { Health } from "@capgo/capacitor-health";
 
 // ---------------------------------------------------------------------------
 // Apple Health (HealthKit) integration — the native feature that clears Apple
@@ -31,25 +32,53 @@ function disciplineOfWorkout(t: string): Discipline | null {
   return null;
 }
 
-async function plugin() {
+// STATICALLY imported on purpose — see the import at the top of this file.
+//
+// A lazy import() of a Capacitor plugin HANGS FOREVER inside the bundled WKWebView.
+// That is the documented root cause of the old login hang (lib/tokenStore.ts) and of
+// the notifications card never rendering (lib/notify.ts), and on 2026-07-30 it cost us
+// an App Store rejection under guideline 2.1(a): "Sync with Apple Health button was
+// unresponsive."
+//
+// The mechanism is worth spelling out, because the symptom pointed at the wrong place.
+// Connections.tsx disabled the button while its `state` was "checking", and `state`
+// only left "checking" when healthAvailable() resolved — which awaited the import
+// below. The promise never settled, so the button was never enabled and a tap did
+// nothing at all. It still LOOKED perfectly tappable (the colour is set inline, so
+// there is no visual disabled state), which is exactly why every assertVisible-based
+// test passed and a human reviewer found it in seconds.
+//
+// No runtime chunk, no hang. Do not make this dynamic again.
+function plugin() {
   if (!IS_NATIVE) return null;
-  try {
-    const { Health } = await import("@capgo/capacitor-health");
-    return Health;
-  } catch {
-    return null;
-  }
+  return Health;
+}
+
+/** Race a native bridge call against the clock. Mirrors lib/tokenStore.ts.
+ *
+ *  Every call below goes through this, because a Capacitor bridge call can fail by
+ *  NEVER CALLING BACK — not by rejecting — and a `catch` cannot see that. Measured
+ *  2026-07-30 on an unsigned simulator build (CODE_SIGNING_ALLOWED=NO, so no HealthKit
+ *  entitlement): requestAuthorization presented no sheet, logged nothing, and its
+ *  completion never fired. The button sat on "Reading Apple Health…" forever.
+ *
+ *  That particular cause is a simulator artifact — a signed device build gets the real
+ *  sheet — but "the UI is hostage to a native callback" is not something to ship on the
+ *  strength of "it should be fine on device", especially in the exact feature Apple
+ *  already rejected us over. Timing out and telling the truth is always better than a
+ *  spinner that never ends. */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    Promise.resolve(p).catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
 }
 
 /** Is a native health store (HealthKit / Health Connect) available on this device? */
 export async function healthAvailable(): Promise<boolean> {
-  const h = await plugin();
+  const h = plugin();
   if (!h) return false;
-  try {
-    return (await h.isAvailable()).available;
-  } catch {
-    return false;
-  }
+  return withTimeout(h.isAvailable().then((r) => r.available), 4000, false);
 }
 
 /** Present the HealthKit permission sheet for workouts (a no-op after the first time).
@@ -68,23 +97,24 @@ export async function healthAvailable(): Promise<boolean> {
  *  result speak. A denied read returns an empty set, indistinguishable from "no
  *  workouts", which is exactly what Apple intends. */
 export async function requestHealthAuth(): Promise<boolean> {
-  const h = await plugin();
+  const h = plugin();
   if (!h) return false;
-  try {
-    await h.requestAuthorization({ read: ["workouts"] });
-    return true;
-  } catch {
-    return false;
-  }
+  // 20s: a real athlete reading the HealthKit sheet has ample time, while a bridge that
+  // will never answer releases the UI instead of holding it forever. The return value is
+  // deliberately ignored by callers (see the doc comment above), so timing out here only
+  // means "stop waiting", never "access denied".
+  return withTimeout(h.requestAuthorization({ read: ["workouts"] }).then(() => true), 20000, false);
 }
 
 /** Read recent workouts (default: last 30 days) as source-agnostic Activities. */
 export async function readHealthWorkouts(sinceISO?: string): Promise<Activity[]> {
-  const h = await plugin();
+  const h = plugin();
   if (!h) return [];
   const startDate = sinceISO ?? new Date(Date.now() - 30 * 864e5).toISOString();
   try {
-    const { workouts } = await h.queryWorkouts({ startDate, limit: 100 });
+    const { workouts } = await withTimeout(h.queryWorkouts({ startDate, limit: 100 }), 20000, {
+      workouts: [] as Awaited<ReturnType<typeof h.queryWorkouts>>["workouts"],
+    });
     return workouts.map((w) => ({
       source: "healthkit" as const,
       id: w.platformId ?? `${w.workoutType}-${w.startDate}`,
