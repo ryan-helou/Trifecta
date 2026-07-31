@@ -131,16 +131,8 @@ export function ProfileTab() {
           the Apple Health section without hunting (guideline 2.5.1). */}
       <Connections />
 
-      <Section title="Training paces">
-        <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm, unit)} first />
-        <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} />
-        <Row k="Bike FTP" v={paces.bike.ftp ? `${paces.bike.ftp} W` : "Zone / RPE based"} />
-        {paces.hr.lthr ? <Row k="Threshold HR" v={`${paces.hr.lthr} bpm${paces.hr.lthrSource === "estimated" ? " · est." : ""}`} /> : null}
-        {paces.hr.maxHR ? <Row k="Max HR" v={`${paces.hr.maxHR} bpm`} /> : null}
-        <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
-          {paces.run.source === "pr" ? "Dialed in from your PRs." : "Estimated from your level — add PRs to sharpen them."}
-        </div>
-      </Section>
+      <PacesSection paces={paces} unit={unit} />
+
 
       <Section title="Manage your plan">
         <ActionRow first onClick={openSettings} label="Edit race & training settings" />
@@ -208,6 +200,38 @@ export function ProfileTab() {
       <div className="eyebrow pb-4 text-center text-[0.66rem]">
         <Wordmark /> · your path to the finish line
       </div>
+    </div>
+  );
+}
+
+/** Training paces are a power-user surface — most athletes never touch these
+ *  numbers, and staring at "Bike FTP · 240 W" without context reads as noise.
+ *  Collapse behind "Show" so the tab stays scannable for the mainstream user;
+ *  anyone who wants to see or manually override them is one tap away. */
+function PacesSection({ paces, unit }: { paces: NonNullable<ReturnType<typeof useApp>["plan"]>["paces"]; unit: "metric" | "imperial" }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="mb-2 flex w-full items-center justify-between text-left"
+        aria-expanded={open}
+      >
+        <span className="eyebrow text-[0.72rem]">Training paces</span>
+        <span className="text-xs text-muted">{open ? "Hide" : "Show"} <span className="ml-0.5 text-accent-soft">{open ? "▴" : "▾"}</span></span>
+      </button>
+      {open && (
+        <div className="card overflow-hidden">
+          <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm, unit)} first />
+          <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} />
+          <Row k="Bike FTP" v={paces.bike.ftp ? `${paces.bike.ftp} W` : "Zone / RPE based"} />
+          {paces.hr.lthr ? <Row k="Threshold HR" v={`${paces.hr.lthr} bpm${paces.hr.lthrSource === "estimated" ? " · est." : ""}`} /> : null}
+          {paces.hr.maxHR ? <Row k="Max HR" v={`${paces.hr.maxHR} bpm`} /> : null}
+          <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
+            {paces.run.source === "pr" ? "Dialed in from your PRs." : "Estimated from your level — add PRs to sharpen them."}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

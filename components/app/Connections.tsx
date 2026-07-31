@@ -35,12 +35,42 @@ function timeAgo(iso?: string | null): string {
   athlete has granted access yet.
 */
 export function Connections() {
+  // On iOS, Apple Health is strictly the better sync path (no OAuth, no per-app
+  // cap, data stays on device) so it leads and Strava sits behind a collapse as
+  // a secondary option. Non-native has no HealthKit at all — Strava is the only
+  // sync path, so lead with it uncollapsed.
   return (
     <>
-      <AppleHealthCard />
-      <StravaCard />
+      {IS_NATIVE ? (
+        <>
+          <AppleHealthCard />
+          <StravaCardCollapsible />
+        </>
+      ) : (
+        <StravaCard />
+      )}
       <AiHealthConsentCard />
     </>
+  );
+}
+
+/** On iOS, wrap the Strava card in a "Also supported" collapse so the primary
+ *  Apple Health CTA doesn't share the stage. Once expanded (or once already
+ *  connected) it renders the normal card. */
+function StravaCardCollapsible() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="mb-2 flex w-full items-center justify-between text-left"
+        aria-expanded={open}
+      >
+        <span className="eyebrow text-[0.72rem]">Also supported</span>
+        <span className="text-xs text-muted">{open ? "Hide" : "Connect Strava"} <span className="ml-0.5 text-accent-soft">{open ? "▴" : "▾"}</span></span>
+      </button>
+      {open && <StravaCard hideHeader />}
+    </div>
   );
 }
 
@@ -242,7 +272,7 @@ function AppleHealthCard() {
   );
 }
 
-function StravaCard() {
+function StravaCard({ hideHeader }: { hideHeader?: boolean } = {}) {
   const toast = useToast();
   const [status, setStatus] = useState<StravaStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -303,7 +333,9 @@ function StravaCard() {
 
   return (
     <div>
-      <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">Watch &amp; app sync</div>
+      {!hideHeader && (
+        <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">Watch &amp; app sync</div>
+      )}
       <div className="card overflow-hidden">
         {!status.configured ? (
           <div className="px-4 py-3.5 text-sm text-muted">Auto-complete from Strava is coming soon.</div>

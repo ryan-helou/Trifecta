@@ -88,6 +88,47 @@ const FEEL_META: Record<NonNullable<Workout["feel"]>, { icon: IconName; label: s
   rough: { icon: "frown", label: "Felt rough" },
 };
 
+/** The written-out interval breakdown, hidden by default. Beginners see the
+ *  Shape bar and the Why-it-matters copy; only the athletes who want to know
+ *  exactly what to hit tap in. Reduces the wall-of-numbers on first render. */
+function SessionStructure({ sections, paces, unit }: { sections: { label: string; segs: Segment[] }[]; paces: Plan["paces"]; unit: Unit }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-left transition hover:brightness-110"
+      >
+        <span className="text-sm font-semibold">Session structure</span>
+        <span className="text-xs text-muted">{open ? "Hide" : "Show"} <span className="ml-0.5 text-accent-soft">{open ? "▴" : "▾"}</span></span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-4">
+          {sections.map((sec, i) => (
+            <div key={i}>
+              <div className="mb-1 flex items-center gap-2.5">
+                <span className="eyebrow text-[0.7rem]">{sec.label}</span>
+                <span aria-hidden className="h-px flex-1 bg-line" />
+              </div>
+              <div>
+                {sec.segs.map((s, j) =>
+                  s.children && s.children.length ? (
+                    <RepBlock key={j} seg={s} paces={paces} unit={unit} />
+                  ) : (
+                    <Step key={j} seg={s} paces={paces} unit={unit} />
+                  ),
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
   const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
   const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
@@ -196,26 +237,14 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
             </div>
           )}
 
-          {/* structure — written out, reps grouped (warm-up / main set / cool-down) */}
-          <div className="mb-5 space-y-4">
-            {sections.map((sec, i) => (
-              <div key={i}>
-                <div className="mb-1 flex items-center gap-2.5">
-                  <span className="eyebrow text-[0.7rem]">{sec.label}</span>
-                  <span aria-hidden className="h-px flex-1 bg-line" />
-                </div>
-                <div>
-                  {sec.segs.map((s, j) =>
-                    s.children && s.children.length ? (
-                      <RepBlock key={j} seg={s} paces={plan.paces} unit={unit} />
-                    ) : (
-                      <Step key={j} seg={s} paces={plan.paces} unit={unit} />
-                    ),
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* Session structure — collapsed by default. Duration + Intensity +
+              the Shape bar upstairs give athletes the size of the session; the
+              full interval breakdown is a power-user detail that intimidates
+              beginners staring at a chart of Zone bands. Anyone who wants it
+              is one tap away, and the guided player renders it live anyway. */}
+          {sections.length > 0 && (
+            <SessionStructure sections={sections} paces={plan.paces} unit={unit} />
+          )}
 
           {/* action panels */}
           {mode === "move" && (
