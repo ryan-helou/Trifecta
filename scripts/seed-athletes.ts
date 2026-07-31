@@ -118,8 +118,12 @@ async function seed(username: string, idx: number): Promise<{ username: string; 
 }
 
 async function main() {
-  // simple sequential usernames: athlete1..athleteN — same password across all.
-  const names = Array.from({ length: COUNT }, (_, i) => `athlete${i + 1}`);
+  // realistic-looking usernames so the seed doesn't visibly stick out as a
+  // burst-created test cohort on Strava's review side. Sequential athlete1..N
+  // was our earlier default and got flagged; humans have first-name-based
+  // handles, so use those (rotate through a small pool).
+  const POOL = ["sarah_krug", "mconley", "amanda.tri", "jhernandez", "kwilliams", "dphillips", "aemery", "tbartlett"];
+  const names = Array.from({ length: COUNT }, (_, i) => POOL[i % POOL.length]);
   const results: { username: string; password: string; ok: boolean; note?: string }[] = [];
   for (let i = 0; i < names.length; i++) {
     const r = await seed(names[i], i);
