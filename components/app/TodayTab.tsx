@@ -169,6 +169,11 @@ export function TodayTab() {
         </div>
       )}
 
+      {/* Post-time nudge — a lightweight prompt when the day is winding down
+          and today's session is still marked planned. Removes the "did I
+          remember to check off?" cognitive load for the manual-log crowd. */}
+      <EveningNudge todays={todays} today={today} />
+
       <div className="animate-fade-up" style={{ animationDelay: "120ms" }}>
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="font-display text-[1.15rem] font-semibold">Today</h2>
@@ -230,6 +235,69 @@ export function TodayTab() {
       {/* overlays — mounted at the screen's top level, outside every animated wrapper */}
       {readyOpen && <ReadinessSheet onClose={() => setReadyOpen(false)} />}
       {formOpen && form && <FormSheet form={form} onClose={() => setFormOpen(false)} />}
+    </div>
+  );
+}
+
+/** Prompts the athlete late in the day if today's session is still planned.
+ *  Two paths: "Yes, done" (one-tap credit) or "Log details" (open the sheet).
+ *  Dismissal is per-workout-per-day (sessionStorage), so it comes back tomorrow
+ *  but doesn't nag if you closed it once already today. Only appears once the
+ *  local hour is past the threshold so morning athletes aren't pestered. */
+const EVENING_HOUR = 16; // 4pm — after this, planned-still-planned probably means "I did it, forgot to log"
+const NUDGE_DISMISS_PREFIX = "trifecta:nudge:";
+type NudgeWorkout = { id: string; title: string; discipline: string; status: string };
+
+function EveningNudge({ todays, today }: { todays: NudgeWorkout[]; today: string }) {
+  const { actions, openLog } = useUI();
+  const toast = useToast();
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(NUDGE_DISMISS_PREFIX + today);
+      if (raw) setDismissed(JSON.parse(raw));
+    } catch {}
+  }, [today]);
+
+  const hour = new Date().getHours();
+  if (hour < EVENING_HOUR) return null;
+
+  const pending = todays.filter((w) => w.status === "planned" && !dismissed.includes(w.id));
+  if (pending.length === 0) return null;
+  const w = pending[0]; // one at a time — the first still-planned session
+
+  const dismiss = (id: string) => {
+    const next = [...dismissed, id];
+    setDismissed(next);
+    try { window.sessionStorage.setItem(NUDGE_DISMISS_PREFIX + today, JSON.stringify(next)); } catch {}
+  };
+
+  const confirm = () => {
+    actions.toggleDone(w.id);
+    dismiss(w.id);
+    toast({
+      text: `Done · ${w.title}`,
+      tone: "success",
+      actionLabel: "Undo",
+      onAction: () => actions.toggleDone(w.id),
+    });
+  };
+  const logDetails = () => { dismiss(w.id); openLog(); };
+
+  return (
+    <div className="animate-fade-up card p-4" style={{ animationDelay: "110ms" }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="eyebrow text-[0.72rem]">Quick check</div>
+          <div className="mt-0.5 font-display text-[1.05rem] font-semibold">Nailed today&apos;s {w.title.toLowerCase()}?</div>
+          <div className="mt-0.5 text-sm text-muted">One tap to check it off. Adjust the details if it went differently.</div>
+        </div>
+        <button onClick={() => dismiss(w.id)} aria-label="Dismiss" className="text-muted transition hover:text-foreground">✕</button>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button onClick={confirm} className="btn btn-primary flex-1 py-2.5 text-sm">Yes, done</button>
+        <button onClick={logDetails} className="btn btn-ghost flex-1 py-2.5 text-sm">Log details</button>
+      </div>
     </div>
   );
 }

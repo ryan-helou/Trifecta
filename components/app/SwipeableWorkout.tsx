@@ -13,11 +13,15 @@ import { useToast } from "./Toast";
   one-way door. Race day gets no swipe actions — it's finished from its sheet.
 */
 export function SwipeableWorkout({ workout, compact }: { workout: Workout; compact?: boolean }) {
-  const { openWorkout, openCheckin, actions } = useUI();
+  const { today, openWorkout, openCheckin, openLog, actions } = useUI();
   const toast = useToast();
   const isRace = workout.id === "w-race-day";
   const done = workout.status === "done";
   const skipped = workout.status === "skipped";
+  // Show the one-tap ✓ only when a completion makes sense — today or earlier,
+  // still planned, not a race. Future workouts don't get it (accidental swipe
+  // through the plan would otherwise mark a Friday session done on Monday).
+  const canQuickDone = !isRace && workout.status === "planned" && workout.date <= today;
 
   const complete = () => {
     actions.toggleDone(workout.id);
@@ -27,6 +31,20 @@ export function SwipeableWorkout({ workout, compact }: { workout: Workout; compa
       // just completed → open the quick check-in (it carries the celebration + an undo)
       openCheckin(workout.id);
     }
+  };
+
+  // One-tap done — the light version of complete(). No check-in sheet, just a
+  // toast that credits the planned duration and offers Undo + Log details for
+  // anyone who wants to override the defaults. Removes 4-5 taps from the most
+  // common "yeah I did it, on-plan" path (the ~80% case).
+  const quickComplete = () => {
+    actions.toggleDone(workout.id);
+    toast({
+      text: `Done · ${workout.title}`,
+      tone: "success",
+      actionLabel: "Log details",
+      onAction: () => { actions.toggleDone(workout.id); openLog(); },
+    });
   };
 
   const skip = () => {
@@ -47,7 +65,12 @@ export function SwipeableWorkout({ workout, compact }: { workout: Workout; compa
 
   return (
     <Swipeable right={right} left={left}>
-      <WorkoutCard workout={workout} onOpen={() => openWorkout(workout.id)} compact={compact} />
+      <WorkoutCard
+        workout={workout}
+        onOpen={() => openWorkout(workout.id)}
+        compact={compact}
+        onQuickComplete={canQuickDone ? quickComplete : undefined}
+      />
     </Swipeable>
   );
 }
