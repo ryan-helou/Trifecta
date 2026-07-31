@@ -259,11 +259,15 @@ function StravaCard() {
   };
 
   useEffect(() => {
-    // surface the OAuth return (?strava=connected|error), then clean the URL
+    // surface the OAuth return (?strava=<code>), then clean the URL. Codes match
+    // app/api/strava/callback/route.ts — connected | deny | state | token | in-use | error.
     const params = new URLSearchParams(window.location.search);
     const s = params.get("strava");
     if (s === "connected") toast({ text: "Strava connected — your sessions auto-complete now.", tone: "success" });
-    else if (s === "error") toast({ text: "Couldn't connect Strava. Try again.", tone: "warning" });
+    else if (s === "in-use") toast({ text: "That Strava account is already linked to another Trifecta user. Revoke it at strava.com/settings/apps first, or connect a different Strava account.", tone: "warning" });
+    else if (s === "deny") toast({ text: "Strava connect cancelled. Try again when ready.", tone: "default" });
+    else if (s === "state") toast({ text: "Connect link expired. Open Connect with Strava again from this page.", tone: "warning" });
+    else if (s === "token" || s === "error") toast({ text: "Couldn't connect Strava. Try again.", tone: "warning" });
     if (s) {
       params.delete("strava");
       const q = params.toString();
