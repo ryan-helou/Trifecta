@@ -7,9 +7,6 @@ import { healthAvailable, requestHealthAuth, syncAppleHealth } from "@/lib/healt
 import { IS_NATIVE } from "@/lib/runtime";
 import { useToast } from "./Toast";
 
-// Monochrome to fit the Paper (black & white) theme. Swap back to "#FC4C02" for Strava brand orange.
-const STRAVA_ORANGE = "#111111";
-
 function timeAgo(iso?: string | null): string {
   if (!iso) return "just now";
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -337,12 +334,16 @@ function StravaCard() {
                 Strava (Garmin, COROS, Wahoo, Apple Watch).
               </p>
             </div>
-            <a
-              href="/api/strava/connect"
-              className="btn mt-3 w-full py-3 text-sm font-semibold"
-              style={{ background: STRAVA_ORANGE, color: "#fff" }}
-            >
-              Connect with Strava
+            {/* Strava's brand guidelines require the official "Connect with Strava" asset,
+                not a re-styled button. Ships from public/brand/strava/ (downloaded from
+                developers.strava.com/guidelines). Rule: link must go to /oauth/authorize
+                (or /oauth/mobile/authorize) — our /api/strava/connect just redirects there. */}
+            <a href="/api/strava/connect" className="mt-3 block" aria-label="Connect with Strava">
+              <img
+                src="/brand/strava/btn_strava_connect_with_orange_x2.png"
+                alt="Connect with Strava"
+                className="mx-auto h-12 w-auto"
+              />
             </a>
           </div>
         )}
@@ -370,16 +371,15 @@ function HealthMark() {
 }
 
 function StravaMark() {
-  // a generic orange summit chevron — evokes Strava's colour without copying its mark
+  // Strava's official "Compatible with Strava" mark (stacked orange), from their
+  // brand-guidelines kit at public/brand/strava/. Rules: don't modify the mark,
+  // don't display it more prominently than your own branding, and use the
+  // "Compatible with Strava" / "Powered by Strava" phrasing when it appears.
   return (
-    <span
-      aria-hidden
-      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-      style={{ background: STRAVA_ORANGE }}
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round">
-        <path d="M4 18 L10 7 L14 14 M13 18 L16.5 11 L20 18" />
-      </svg>
-    </span>
+    <img
+      src="/brand/strava/api_logo_cptblWith_strava_stack_orange.png"
+      alt="Compatible with Strava"
+      className="h-8 w-auto flex-shrink-0"
+    />
   );
 }
