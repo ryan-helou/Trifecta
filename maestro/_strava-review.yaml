@@ -1,0 +1,104 @@
+# Screenshots for the Strava Developer Program review (docs/strava-review/).
+#
+# Strava requires screenshots of every place their data appears in the app + the
+# "Connect with Strava" button. This flow captures both states.
+#
+# Runs against the seeded `trifectademo` account. Handles two phases:
+#   PHASE A (unconnected)  → Profile → screenshot the Strava card in Connect state.
+#   PHASE B (connected)    → user connects manually before/between runs. This flow
+#                            only captures the connected screens. Split so the OAuth
+#                            step (which needs Ryan's Strava cookie in the WKWebView)
+#                            stays out of Maestro.
+#
+# Phase selection via env var PHASE=A or PHASE=B — see scripts/screenshots-strava.sh.
+# Login order (password first) matches the WKWebView focus trap workaround from _tour.yaml.
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
+      - waitForAnimationToEnd:
+          timeout: 3000
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 20000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: "••••••••"
+      - eraseText
+      - inputText: "demopass123"
+      - tapOn: "ironmike"
+      - eraseText
+      - inputText: "trifectademo"
+      - pressKey: Enter
+      - extendedWaitUntil:
+          visible: "Friends"
+          timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 6000
+
+# --- Profile tab (5th tab-bar column) ---
+- tapOn:
+    point: "90%,94%"
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Scroll to the WATCH & APP SYNC section (Strava card lives under Apple Health)
+- scrollUntilVisible:
+    element: "Connect with Strava|Strava connected|Auto-complete from Strava is coming soon"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# The card — either "Connect with Strava" or "Strava connected" depending on phase.
+- takeScreenshot: strava-profile-card
+
+# PHASE B (connected) — also capture a workout with Strava actuals
+- runFlow:
+    when:
+      visible: "Strava connected"
+    commands:
+      # Today tab (1st column)
+      - tapOn:
+          point: "10%,94%"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: strava-today
+      # Plan tab (2nd column) — the seeded COMPLETED sessions are visible here
+      - tapOn:
+          point: "30%,94%"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: strava-plan
+      # Tap into the seeded ride to show actuals in the workout detail
+      - scrollUntilVisible:
+          element: "Aerobic Endurance Ride"
+          direction: DOWN
+          centerElement: true
+          timeout: 15000
+      - tapOn: "Aerobic Endurance Ride"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: strava-workout-detail
