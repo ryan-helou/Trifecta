@@ -10,7 +10,7 @@ import { ReadinessSheet } from "./ReadinessSheet";
 import { FormSheet, FormStrip } from "./FormSheet";
 import { ProgressRing } from "./motion";
 import { Icon } from "./icons";
-import { FitnessHero, PhaseBar, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
+import { FitnessHero, RaceCountdown, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
 import { isFitnessGoal } from "@/lib/planEngine";
 import { profileGaps, gapSignature } from "@/lib/profileGaps";
 import { Profile } from "@/lib/types";
@@ -81,10 +81,9 @@ export function TodayTab() {
           )}
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          <button onClick={() => openLog()} className="card-glass flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold">
-            <span aria-hidden className="text-base leading-none text-accent">＋</span>
-            Log
-          </button>
+          {/* Log used to live in the header too; removed as a duplicate — the
+              full-width "+ Log a workout you did" affordance below the workout
+              list is more discoverable and doesn't crowd Coach here. */}
           <button onClick={() => openCoach()} className="card-glass flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold">
             <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
             Coach
@@ -114,19 +113,7 @@ export function TodayTab() {
       {plan.notice && <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm text-muted">{plan.notice}</div>}
 
       {plan.coachSummary && (
-        <div className="animate-fade-up card-glass rounded-2xl p-4" style={{ animationDelay: "90ms" }}>
-          <div className="mb-1.5 flex items-center gap-2">
-            <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
-            <span className="eyebrow text-[0.72rem]">Why this plan</span>
-          </div>
-          <p className="text-sm leading-relaxed text-foreground/90">{plan.coachSummary}</p>
-          {plan.phaseNotes?.[wk.phase] && (
-            <p className="mt-2.5 border-t border-line/60 pt-2.5 text-sm leading-relaxed text-muted">
-              <span className="font-semibold capitalize text-accent">{wk.phase} block · </span>
-              {plan.phaseNotes[wk.phase]}
-            </p>
-          )}
-        </div>
+        <CoachSummary summary={plan.coachSummary} phaseNote={plan.phaseNotes?.[wk.phase] ?? null} phase={wk.phase} />
       )}
 
       {/* daily readiness — the injury-safe morning check that regulates today */}
@@ -213,28 +200,72 @@ export function TodayTab() {
         </div>
       )}
 
-      {/* week at a glance */}
+      {/* Week at a glance — compressed to a single-row strip. Athletes hitting
+          Today mostly care about "what's today"; the deeper week/phase context
+          lives in the Plan tab. Long PhaseBar + focus paragraph moved there
+          via the tap-through. Kept the progress ring since it's the one bit of
+          per-tap value on this screen (see how much you've banked this week). */}
       <button
         onClick={() => goTab("plan")}
-        className="animate-fade-up card block w-full p-4 text-left transition hover:brightness-110 active:scale-[0.995] active:brightness-125"
+        className="animate-fade-up card flex w-full items-center gap-3 p-3.5 text-left transition hover:brightness-110 active:scale-[0.995]"
         style={{ animationDelay: "180ms" }}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <div className="eyebrow text-[0.72rem]">{wk.phase} phase</div>
-            <div className="mt-0.5 font-display text-[1.12rem] font-semibold">{wk.label.replace(" · Recovery", "")}</div>
-          </div>
-          <ProgressRing value={pct / 100} size={48} stroke={5}>
-            <span className="font-display text-[0.72rem] font-bold tabular-nums">{prog.done}/{prog.total}</span>
-          </ProgressRing>
+        <ProgressRing value={pct / 100} size={38} stroke={4}>
+          <span className="font-display text-[0.62rem] font-bold tabular-nums">{prog.done}/{prog.total}</span>
+        </ProgressRing>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-display text-[0.98rem] font-semibold">{wk.label.replace(" · Recovery", "")}</div>
+          <div className="truncate text-xs text-muted"><span className="capitalize">{wk.phase} phase</span> · tap to open</div>
         </div>
-        <PhaseBar plan={plan} current={wk.index} />
-        <div className="mt-3 text-sm leading-snug text-muted">{wk.focus}</div>
+        <span className="text-accent-soft text-lg">›</span>
       </button>
 
       {/* overlays — mounted at the screen's top level, outside every animated wrapper */}
       {readyOpen && <ReadinessSheet onClose={() => setReadyOpen(false)} />}
       {formOpen && form && <FormSheet form={form} onClose={() => setFormOpen(false)} />}
+    </div>
+  );
+}
+
+/** "Why this plan" only earns space on Today when it has something NEW to say.
+ *  Persists a hash of the last-dismissed summary in localStorage — when the coach
+ *  updates the summary (adaptation, phase change, missed session absorbed), the
+ *  hash mismatches and the card comes back. Same-content re-renders stay hidden. */
+const COACH_SUMMARY_KEY = "trifecta:coach-summary-dismissed";
+
+function CoachSummary({ summary, phaseNote, phase }: { summary: string; phaseNote: string | null; phase: string }) {
+  const sig = summary + "|" + (phaseNote ?? "");
+  const [dismissedSig, setDismissedSig] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    try {
+      setDismissedSig(window.localStorage.getItem(COACH_SUMMARY_KEY));
+    } catch {
+      setDismissedSig(null);
+    }
+  }, []);
+  if (dismissedSig === undefined || dismissedSig === sig) return null;
+
+  const dismiss = () => {
+    try { window.localStorage.setItem(COACH_SUMMARY_KEY, sig); } catch {}
+    setDismissedSig(sig);
+  };
+
+  return (
+    <div className="animate-fade-up card-glass rounded-2xl p-4" style={{ animationDelay: "90ms" }}>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-accent" />
+          <span className="eyebrow text-[0.72rem]">Why this plan</span>
+        </div>
+        <button onClick={dismiss} aria-label="Dismiss" className="text-muted transition hover:text-foreground">✕</button>
+      </div>
+      <p className="text-sm leading-relaxed text-foreground/90">{summary}</p>
+      {phaseNote && (
+        <p className="mt-2.5 border-t border-line/60 pt-2.5 text-sm leading-relaxed text-muted">
+          <span className="font-semibold capitalize text-accent">{phase} block · </span>
+          {phaseNote}
+        </p>
+      )}
     </div>
   );
 }
