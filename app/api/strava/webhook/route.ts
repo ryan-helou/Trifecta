@@ -22,39 +22,50 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ error: "invalid verify token" }, { status: 403 });
 }
 
-// Activity events. Strava wants a 200 within ~2s; the work here is one token
-// check + one fetch + one DB write, which is well inside that. applyActivityToUser
-// is idempotent, so update/retry events are safe. We always 200 so Strava doesn't
-// disable the subscription; missed events are caught by the manual "Sync" backfill.
+// Event router. Strava wants a 200 within ~2s; the work here is small enough to
+// stay well inside that. We always 200 so Strava doesn't disable the subscription;
+// missed activity events are caught by the manual "Sync" backfill.
+//
+// Three shapes matter:
+//   activity create/update → fetch + apply to plan (idempotent)
+//   athlete  update  updates.authorized="false" → deauthorization (Strava API
+//     terms require handling this — drop the stored tokens so we stop calling on
+//     behalf of an athlete who revoked us)
 export async function POST(req: NextRequest) {
-  // The body is unauthenticated and each event triggers a token refresh + Strava
-  // API fetch, so rate-limit the work (per IP and per claimed athlete). We still
-  // always 200 so Strava doesn't disable the subscription; the manual "Sync"
-  // backfill covers anything skipped.
   const ipOk = rateLimit(`strava-wh:ip:${clientIp(req)}`, 120, 60_000).ok;
   const body = await req.json().catch(() => null);
-  if (
-    ipOk &&
-    body &&
-    body.object_type === "activity" &&
-    (body.aspect_type === "create" || body.aspect_type === "update")
-  ) {
-    const athleteId = Number(body.owner_id);
-    const athleteOk = Number.isFinite(athleteId) && rateLimit(`strava-wh:ath:${athleteId}`, 30, 60_000).ok;
-    if (athleteOk) {
-      try {
-        const activityId = Number(body.object_id);
-        const store = getStore();
-        const conn = await store.getStravaByAthlete(athleteId);
-        if (conn) {
-          const token = await validAccessToken(store, conn);
-          const act = await fetchActivity(token, activityId);
-          if (act) await applyActivityToUser(store, conn.userId, act);
-        }
-      } catch {
-        /* never block the 200 — backfill covers gaps */
+  if (!ipOk || !body) return NextResponse.json({ ok: true });
+
+  const athleteId = Number(body.owner_id);
+  if (!Number.isFinite(athleteId)) return NextResponse.json({ ok: true });
+  if (!rateLimit(`strava-wh:ath:${athleteId}`, 30, 60_000).ok) return NextResponse.json({ ok: true });
+
+  try {
+    const store = getStore();
+
+    // Deauthorization. Strava sends the athlete's own event when they revoke us
+    // from strava.com/settings/apps. "authorized" arrives as the string "false".
+    if (
+      body.object_type === "athlete" &&
+      body.aspect_type === "update" &&
+      body.updates && String(body.updates.authorized) === "false"
+    ) {
+      const conn = await store.getStravaByAthlete(athleteId);
+      if (conn) await store.deleteStrava(conn.userId);
+    } else if (
+      body.object_type === "activity" &&
+      (body.aspect_type === "create" || body.aspect_type === "update")
+    ) {
+      const activityId = Number(body.object_id);
+      const conn = await store.getStravaByAthlete(athleteId);
+      if (conn) {
+        const token = await validAccessToken(store, conn);
+        const act = await fetchActivity(token, activityId);
+        if (act) await applyActivityToUser(store, conn.userId, act);
       }
     }
+  } catch {
+    /* never block the 200 — backfill covers gaps, deauth retries on next event */
   }
   return NextResponse.json({ ok: true });
 }
