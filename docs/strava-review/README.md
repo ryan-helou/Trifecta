@@ -32,28 +32,57 @@ Current cap: 10. Check `Number of athletes currently connected` at
 | Number of Intended Users | 5,000 (12-month projection) |
 | Support URL | https://amatri-production.up.railway.app/support |
 
-### Application Description (draft)
+### Application Description
 
-> Trifecta is an adaptive triathlon training app for Olympic, 70.3, and Ironman
-> athletes. Athletes connect their Strava so completed workouts from any
-> Strava-compatible device (Garmin, Wahoo, COROS, Apple Watch, etc.) automatically
-> mark off their planned sessions and feed the app's readiness/load model
-> (Fitness · Fatigue · Form / CTL·ATL·TSB).
+The version submitted 2026-07-31 was tuned against Strava's own approval
+signals — see `docs/strava-review/notes.md` for the research.
+
+> Trifecta is an adaptive triathlon training platform for Olympic, 70.3, and
+> Ironman athletes. It is **complementary to Strava**: Strava is where athletes
+> record and share their sessions; Trifecta is the periodised, day-by-day
+> training plan that adapts around their actual performance. The Strava
+> integration is read-only and closes the training loop, so an athlete's
+> Garmin/Wahoo/COROS/Apple Watch workout that lands on Strava automatically
+> marks off the planned session and feeds our readiness/load model (CTL, ATL,
+> TSB / Fitness, Fatigue, Form). Without Strava, athletes have to check off
+> sessions manually — with Strava, it happens the moment their watch syncs.
 >
-> Strava data used:
-> - Read scope: `read,activity:read_all`
-> - Per activity: sport type, start time (local + UTC offset), moving/elapsed
->   time, distance, average heart rate, average power (only when from a real
->   power meter, `device_watts=true`), and activity name.
-> - Written back to Strava: nothing. Read-only integration.
+> **WE DO NOT ROUTE STRAVA DATA THROUGH AI OR ANY THIRD PARTY.** No LLMs, no
+> intermediary platforms, no analytics vendors, no other users. Strava data
+> stays between our server and the athlete's own Trifecta account. Trifecta
+> does have one optional AI feature (Google Gemini) for interpreting the
+> athlete's own free-text injury notes; it never receives Strava data,
+> activity metrics, workout history, HR/power, or athlete identity. That
+> feature is off by default and requires an explicit in-app consent toggle
+> to enable.
 >
-> Data is stored on our own infrastructure (Postgres on Railway) tied to the
-> user's Trifecta account. Athletes disconnect from Profile → Connections at any
-> time; deauthorization events from Strava also drop tokens server-side.
+> **DATA USE**
+> - Scope: `read, activity:read_all` (minimum required to close the training loop).
+> - Per activity we read: sport type, start time (local + UTC offset),
+>   moving/elapsed time, distance, average HR, and average power only when it
+>   comes from a real meter (`device_watts=true`). Also activity name for display.
+> - We do not upload activities, do not create kudos/comments, do not write to
+>   Strava in any way.
 >
-> Webhook subscription active for activity `create`/`update` and athlete
-> deauthorization events. Backfill is a small (14-21 day) window used only on
-> initial connect and manual "Sync now".
+> **STORAGE & PRIVACY**
+> - Strava tokens and activity summaries stored in our own Postgres on Railway,
+>   keyed to the user's Trifecta account.
+> - Athletes disconnect at any time from Profile → Connections (drops tokens).
+> - Deauthorization webhook shipped: when an athlete revokes the app from
+>   strava.com/settings/apps, we drop their tokens server-side within seconds.
+>
+> **TECHNICAL PRACTICES**
+> - Push-subscription for activity create/update and athlete deauth (not polling).
+> - Token refresh is single-flighted per user to avoid the concurrent-refresh
+>   race that would invalidate an athlete's tokens.
+> - Backfill on connect capped at 14 days; manual "Sync now" capped at 21 days
+>   — both well inside the 15-min/day rate limit.
+> - Read-only: no upload, no activity mutation, no social actions.
+>
+> **BRAND**
+> - Athletes connect via a "Connect with Strava" affordance in Profile →
+>   Connections. If Strava's brand review would prefer the official button
+>   asset from the brand-guidelines kit, we'll swap it immediately.
 
 ### Compliance checkboxes (verify before ticking)
 
