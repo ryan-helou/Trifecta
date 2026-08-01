@@ -9,7 +9,7 @@ import { ToastProvider } from "./Toast";
 import { TodayTab } from "./TodayTab";
 import { PlanTab } from "./PlanTab";
 import { ProgressTab } from "./ProgressTab";
-import { FriendsTab } from "./FriendsTab";
+import { LeagueTab } from "./league/LeagueTab";
 import { ProfileTab } from "./ProfileTab";
 import { WorkoutDetail } from "./WorkoutDetail";
 import { CheckinSheet } from "./CheckinSheet";
@@ -210,7 +210,7 @@ export function AppShell() {
               {tab === "today" && <TodayTab />}
               {tab === "plan" && <PlanTab />}
               {tab === "progress" && <ProgressTab />}
-              {tab === "friends" && <FriendsTab />}
+              {tab === "league" && <LeagueTab />}
               {tab === "profile" && <ProfileTab />}
             </TabDeck>
           </div>

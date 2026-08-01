@@ -7,12 +7,16 @@ export const dynamic = "force-dynamic";
 
 // DELETE /api/account — permanently erase the signed-in user and all their data
 // (Apple 5.1.1(v) in-app account deletion + GDPR right to erasure). The DB cascade
-// removes their Strava connection, follows, and kudos along with the account.
+// removes their Strava connection, follows, kudos, and league activities along
+// with the account.
 export async function DELETE(req: NextRequest) {
   const uid = await getUserIdFromRequest(req);
   if (!uid) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   const store = getStore();
+  // Leagues they own would otherwise cascade away with them, deleting a
+  // competition out from under everyone else in it. Hand them over first.
+  await store.handOffOwnedLeagues(uid);
   await store.deleteUser(uid);
 
   const res = NextResponse.json({ ok: true });

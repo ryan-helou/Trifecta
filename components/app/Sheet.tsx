@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { haptic } from "@/lib/haptics";
 
 const DISMISS_DISTANCE = 96; // px dragged before release dismisses
@@ -66,6 +67,10 @@ export function Sheet({
   const closingRef = useRef(false);
   const stackToken = useRef<object>({}); // this instance's identity in sheetStack
   const [closing, setClosing] = useState(false);
+  // document.body doesn't exist while the static export is prerendered, so the
+  // portal target is only safe to reach for after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const dismiss = useCallback(() => {
     if (closingRef.current) return;
@@ -193,7 +198,7 @@ export function Sheet({
     };
   }, [dismiss]);
 
-  return (
+  const sheet = (
     <div className="fixed inset-0 z-50 flex justify-center" role="dialog" aria-modal="true" aria-label={label}>
       <div
         className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${
@@ -201,10 +206,15 @@ export function Sheet({
         }`}
         onClick={dismiss}
       />
-      <div className="relative flex w-full max-w-md flex-col justify-end">
+      {/* pointer-events-none: this wrapper is full-height and paints above the
+          backdrop, so without it every tap in the empty space above the panel hit
+          the wrapper instead of the backdrop and tap-outside-to-dismiss silently
+          did nothing. (Every sheet also ships an explicit close control — this just
+          makes the gesture people actually reach for work.) */}
+      <div className="pointer-events-none relative flex w-full max-w-md flex-col justify-end">
         <div
           ref={panelRef}
-          className={`animate-sheet-up relative flex max-h-[92vh] flex-col overflow-hidden rounded-t-[26px] border border-line bg-surface shadow-2xl safe-b ${panelClassName}`}
+          className={`animate-sheet-up pointer-events-auto relative flex max-h-[92vh] flex-col overflow-hidden rounded-t-[26px] border border-line bg-surface shadow-2xl safe-b ${panelClassName}`}
         >
           <div
             data-sheet-handle
@@ -221,4 +231,13 @@ export function Sheet({
       </div>
     </div>
   );
+
+  // Portal to <body>, because `position: fixed` is NOT relative to the viewport when
+  // any ancestor has a transform — that ancestor becomes the containing block. TabDeck
+  // sets `transform: translateX(...)` on the tab track for the swipe gesture, so a sheet
+  // opened from inside a tab (rather than from AppShell, where every sheet used to live)
+  // rendered its backdrop but positioned the panel outside the visible box: a dimmed
+  // screen with no sheet on it. Nothing throws and no assertion fails — it only shows up
+  // by looking. Portaling makes the component correct from anywhere in the tree.
+  return mounted && typeof document !== "undefined" ? createPortal(sheet, document.body) : null;
 }
