@@ -43,7 +43,12 @@ appId: app.trifecta.mobile
     commands:
       - tapOn: "Continue"
       - waitForAnimationToEnd
-- takeScreenshot: ob-4-walked
+- takeScreenshot: ob-4-review
+
+# Back one step to the injuries box. With the PAR-Q step removed this is the ONLY health
+# screen, so its copy has to carry the medical prompt — worth eyeballing on device.
+- tapOn: "Back"
+- waitForAnimationToEnd
+- takeScreenshot: ob-5-injuries
 - scroll
-- scroll
-- takeScreenshot: ob-5-scrolled-under-status-bar
+- takeScreenshot: ob-6-injuries-scrolled

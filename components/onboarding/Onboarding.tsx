@@ -5,7 +5,7 @@ import { DateField } from "@/components/app/DateField";
 import { useApp } from "../AppProvider";
 import { LoadingAnimation } from "../LoadingAnimation";
 import { Wordmark } from "../Wordmark";
-import { AiHealthConsent, DateRange, Discipline, HealthAnswer, Injury, Level, Profile, RaceType, StrengthSplit, Unit } from "@/lib/types";
+import { AiHealthConsent, DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit, Unit } from "@/lib/types";
 import { detectRedFlags, redFlagConstraints, RED_FLAG_DISCLAIMER, type RedFlagMatch } from "@/lib/redFlags";
 import { generatePlan } from "@/lib/planEngine";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
@@ -53,13 +53,17 @@ interface Draft {
   thresholdHr?: number;
   maxHR?: number;
   unit?: Unit; // km vs mi for distance/pace display
-  // PAR-Q-style pre-participation screen (see HEALTH_ITEMS). Nothing required.
-  health: { answers: Record<string, HealthAnswer>; acknowledged?: boolean };
   injuries: Injury[];
   intakeNotes?: string;
 }
 
-const STEPS = ["race", "custom", "date", "level", "frequency", "strength", "schedule", "prs", "health", "injuries", "review"] as const;
+// No separate PAR-Q health step: the six yes/no cards were the heaviest moment in
+// onboarding and sat immediately before the payoff. The injuries free-text carries the
+// screen now — it asks for symptoms as well as niggles, and `detectRedFlags`
+// (lib/redFlags.ts) triages the answer on-device for cardiac, bone-stress, neuro and
+// acute-trauma language, so a referral still fires without a questionnaire. Trade-off
+// accepted deliberately: this only catches what the athlete volunteers.
+const STEPS = ["race", "custom", "date", "level", "frequency", "strength", "schedule", "prs", "injuries", "review"] as const;
 
 const STEP_LABELS: Record<(typeof STEPS)[number], string> = {
   race: "Your race",
@@ -70,7 +74,6 @@ const STEP_LABELS: Record<(typeof STEPS)[number], string> = {
   strength: "Strength",
   schedule: "Schedule",
   prs: "Benchmarks",
-  health: "Health check",
   injuries: "Injuries",
   review: "Review",
 };
@@ -151,7 +154,6 @@ const DEFAULT_DRAFT: Draft = {
   strength: { enabled: false, daysPerWeek: 2, split: "full" },
   equipment: { pool: true, trainer: true, gym: true },
   blackouts: [],
-  health: { answers: {} },
   injuries: [],
 };
 
@@ -263,9 +265,6 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
     // real-event identity only applies to a bare race distance, never custom/fitness
     const isRealRace = rt !== "custom" && !fitness;
     const ps = resolvePerSport(draft);
-    // the health screen is recorded only if they actually answered something —
-    // an untouched screen stays absent rather than reading as "all clear".
-    const answered = Object.keys(draft.health.answers).length > 0;
     const strengthDays = draft.strength.enabled ? draft.strength.daysPerWeek : 0;
     const wpw = Math.max(1, Math.min(21, ps.swim + ps.bike + ps.run + strengthDays));
     return {
@@ -295,15 +294,9 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
       blackouts: draft.blackouts.filter((b) => b.startISO && b.endISO && b.startISO <= b.endISO),
       injuries: draft.injuries.length ? draft.injuries : undefined,
       aiHealthConsent: draft.aiHealthConsent,
-      healthScreen: answered
-        ? {
-            version: PARQ_VERSION,
-            answers: draft.health.answers,
-            flagged: healthFlags(draft.health.answers),
-            acknowledged: draft.health.acknowledged,
-            completedAtISO: new Date().toISOString(),
-          }
-        : undefined,
+      // healthScreen is intentionally never written now — the PAR-Q step is gone. The
+      // field stays on Profile (optional) so profiles created before this change keep
+      // parsing and keep their recorded screen.
       intakeNotes: draft.intakeNotes?.trim() || undefined,
       createdAtISO: new Date().toISOString(),
     };
@@ -465,7 +458,6 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
           {step === "strength" && <StrengthStep draft={draft} set={setDraft} />}
           {step === "schedule" && <ScheduleStep draft={draft} set={setDraft} total={totalSessions} />}
           {step === "prs" && <PRStep draft={draft} set={setDraft} parseTime={parseTime} />}
-          {step === "health" && <HealthStep draft={draft} set={setDraft} />}
           {step === "injuries" && <InjuriesStep draft={draft} set={setDraft} />}
           {step === "review" && <ReviewStep draft={draft} total={totalSessions} profile={finalProfile} />}
           </div>
@@ -1556,114 +1548,6 @@ function NumFieldOpt({
   );
 }
 
-// ---------------- health screen (PAR-Q style) ----------------
-//
-// Pre-participation screening, in the spirit of the PAR-Q+ but kept to six
-// questions so it reads like a coach checking in, not a clinic intake form.
-// See docs/knowledge/03-injury-and-load-management.md §4H: we screen and record
-// it because prescribing training without knowing relevant history is exactly
-// where liability attaches. A "yes" points at a doctor — it never blocks the
-// app, and (like every onboarding question) none of it is required.
-
-const PARQ_VERSION = "parq-2026-07";
-
-const HEALTH_ITEMS: { id: string; q: string }[] = [
-  { id: "heart", q: "Has a doctor ever told you that you have a heart condition?" },
-  { id: "chest", q: "Do you get pain or tightness in your chest when you're active?" },
-  { id: "dizzy", q: "Do you ever get dizzy, lose your balance, or black out?" },
-  // "bone or joint" made an athlete with shin splints stop and wonder whether that
-  // even counted. Name the soft-tissue cases so the answer is obvious.
-  { id: "joint", q: "Do you have a bone, joint, tendon or muscle problem — shin splints, a bad knee, a dodgy back — that gets worse with activity?" },
-  { id: "meds", q: "Are you on prescribed medication for your blood pressure or heart?" },
-  { id: "other", q: "Any other reason a doctor would tell you not to train right now?" },
-];
-
-const healthFlags = (answers: Record<string, HealthAnswer>) =>
-  HEALTH_ITEMS.filter((i) => answers[i.id] === "yes").map((i) => i.id);
-
-function HealthStep({ draft, set }: StepProps) {
-  const answers = draft.health.answers;
-  const flagged = healthFlags(answers);
-  const answer = (id: string, v: HealthAnswer) =>
-    set((d) => ({
-      ...d,
-      health: {
-        ...d.health,
-        // tapping the same answer again clears it — nothing here is required
-        answers: (() => {
-          const next = { ...d.health.answers };
-          if (next[id] === v) delete next[id];
-          else next[id] = v;
-          return next;
-        })(),
-      },
-    }));
-
-  return (
-    <div>
-      <Head
-        title="Quick health check"
-        sub="Six yes/no questions before we build anything. Answer what you can — none of it is required, and none of it stops you using Trifecta."
-      />
-
-      <div className="flex flex-col gap-2.5">
-        {HEALTH_ITEMS.map((item) => (
-          <div key={item.id} className="rounded-2xl border border-line bg-surface-2 p-4">
-            <div className="text-sm font-medium leading-snug">{item.q}</div>
-            <div className="mt-2.5 flex gap-2">
-              {(["yes", "no"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => answer(item.id, v)}
-                  aria-pressed={answers[item.id] === v}
-                  className={`chip px-4 py-1.5 text-[0.8rem] capitalize ${answers[item.id] === v ? "is-selected" : ""}`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {flagged.length > 0 && (
-        <div
-          className="animate-fade-up mt-5 rounded-2xl border p-4"
-          style={{ borderColor: "var(--warning)", background: "color-mix(in oklab, var(--warning) 10%, transparent)" }}
-        >
-          <div className="font-display font-semibold" style={{ color: "var(--warning)" }}>
-            Worth a word with your doctor first
-          </div>
-          <p className="mt-1.5 text-sm text-muted">
-            {flagged.length === 1 ? "One of your answers is" : `${flagged.length} of your answers are`} the kind of thing
-            a doctor should sign off before you start a new training block. Have that conversation before your first hard
-            session — we&apos;ll keep building your plan either way, but they know your history and we don&apos;t.
-          </p>
-          <button
-            onClick={() => set((d) => ({ ...d, health: { ...d.health, acknowledged: !d.health.acknowledged } }))}
-            aria-pressed={!!draft.health.acknowledged}
-            className="mt-3 flex w-full items-start gap-2.5 rounded-xl border border-line bg-surface p-3 text-left transition hover:bg-surface-2"
-          >
-            <span
-              aria-hidden
-              className={`mt-0.5 grid h-5 w-5 flex-shrink-0 place-items-center rounded-md border text-[0.7rem] font-bold ${
-                draft.health.acknowledged ? "border-accent bg-accent text-on-accent" : "border-line"
-              }`}
-            >
-              {draft.health.acknowledged ? "✓" : ""}
-            </span>
-            <span className="text-sm">Got it — I&apos;ll check with my doctor before I start.</span>
-          </button>
-        </div>
-      )}
-
-      <p className="mt-5 text-xs text-muted">
-        This is a screening question set, not a diagnosis. Trifecta writes training plans — it isn&apos;t a medical
-        service, and it can&apos;t clear you to train.
-      </p>
-    </div>
-  );
-}
 
 const SEV_LABEL: Record<Injury["severity"], string> = { niggle: "mild", moderate: "moderate", severe: "severe" };
 
@@ -1737,17 +1621,21 @@ function InjuriesStep({ draft, set }: StepProps) {
 
   return (
     <div>
-      {/* History matters as much as what hurts today: a shin-splint episode two years
-          ago is a recurrence risk the engine should ramp around, and it previously had
-          nowhere to go — the health screen asks only about a CURRENT problem. Both now
-          go in the same box, because two textareas is two chances to skip. */}
+      {/* This box is now the ONLY health screen — the PAR-Q step was removed, so the
+          prompt has to earn what those six questions used to elicit. It asks for three
+          things on purpose: what hurts now, what has flared up before (a shin-splint
+          episode two years ago is a recurrence risk the engine ramps around), and the
+          medical side — because nobody asked "any injuries?" volunteers that they black
+          out or take heart medication, and those are the answers with real risk on them.
+          The symptoms named below are deliberately the ones detectRedFlags triages as
+          `cardiac`, so if an athlete does mention them the referral fires. */}
       <Head
-        title="Any injuries or aches?"
-        sub="Type it like you'd text a coach — what's bothering you now, and anything that's flared up before. We'll build the plan around it."
+        title="Anything we should know?"
+        sub="Type it like you'd text a coach — what's bothering you now, anything that's flared up before, and anything a doctor has told you about. We'll build the plan around it."
       />
       <textarea
         className="input min-h-[110px] resize-none"
-        placeholder="e.g. My left knee gets sore on long runs. Had shin splints a couple of years ago that took months to settle."
+        placeholder="e.g. My left knee gets sore on long runs. Had shin splints a couple of years ago that took months to settle. On medication for blood pressure."
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -1848,7 +1736,18 @@ function InjuriesStep({ draft, set }: StepProps) {
         </div>
       )}
 
-      <p className="mt-5 text-xs text-muted">
+      {/* Names the cardiac symptoms out loud. With the PAR-Q step gone this is the only
+          place they get asked about, and an athlete who is never prompted will not think
+          "dizzy on hard efforts" belongs in a box headed injuries. Wording matches what
+          detectRedFlags looks for (chest pain/tightness, blacking out, dizziness on
+          effort, disproportionate breathlessness) so mentioning it actually triggers the
+          referral. See docs/knowledge/03-injury-and-load-management.md §1.7. */}
+      <p className="mt-5 text-xs leading-relaxed text-muted">
+        Worth mentioning here too: chest pain or tightness, dizziness or blacking out, or getting unusually
+        breathless when you train — plus any heart or blood-pressure medication. Those are the ones to talk to a
+        doctor about before a hard block.
+      </p>
+      <p className="mt-2.5 text-xs leading-relaxed text-muted">
         Nothing bothering you and nothing in the past? Leave it blank and continue. Past injuries don&apos;t restrict
         your plan — we just ramp those sports more carefully. Trifecta isn&apos;t a medical service; see a
         professional for real pain.
