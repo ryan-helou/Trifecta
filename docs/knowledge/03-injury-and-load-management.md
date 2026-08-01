@@ -510,6 +510,23 @@ lowers — the standard we're held to.*
 - Screen at onboarding with a **PAR-Q-style pre-participation questionnaire** (cardiac
   history, current injury, pregnancy, etc.) and record it — knowing the user's relevant
   history is exactly what negligence hinges on.
+
+  > ⚠️ **Current state, 2026-08-01 — we do NOT do this, by deliberate product decision.**
+  > The six-question PAR-Q step was **removed from onboarding** (it was the heaviest moment
+  > in the flow and sat immediately before the payoff). The injuries free-text step is now
+  > the only health screen: its prompt asks for current niggles, past history, *and* the
+  > medical side, and explicitly names the cardiac symptoms so they get mentioned —
+  > `detectRedFlags` (`lib/redFlags.ts`) then triages the text on-device for `cardiac`,
+  > `bone-stress`, `neuro` and `acute-trauma` language and fires a referral.
+  >
+  > **Be honest about the trade:** this only catches what the athlete *volunteers*. A
+  > questionnaire asks everyone about syncope and heart medication; a free-text box asks
+  > nobody. The referral logic and the disclaimer (the other two DOs) are intact, and the
+  > `healthScreen` field remains on `Profile` so screens recorded before this date are
+  > preserved — but there is no longer a recorded pre-participation screen for new
+  > athletes. If we ever want the record back, the cheap version is a single
+  > "none of these apply" affirmation over the same items, which is how PAR-Q+ is actually
+  > administered and is one tap for most people.
 - Use **informed-consent / assumption-of-risk** language and, where enforceable, a
   liability waiver (validity varies by jurisdiction — get counsel; don't assume a
   click-through waiver is universally binding).
