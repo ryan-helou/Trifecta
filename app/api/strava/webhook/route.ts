@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
 import { applyActivityToUser, fetchActivity, validAccessToken } from "@/lib/strava";
+import { recordStravaActivity, removeStravaActivity } from "@/lib/league/ingest";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
@@ -61,8 +62,18 @@ export async function POST(req: NextRequest) {
       if (conn) {
         const token = await validAccessToken(store, conn);
         const act = await fetchActivity(token, activityId);
-        if (act) await applyActivityToUser(store, conn.userId, act);
+        if (act) {
+          await applyActivityToUser(store, conn.userId, act);
+          // Same fetched activity, second consumer: league scoring. Independent of
+          // the plan apply above, which no-ops for a user who has no plan.
+          await recordStravaActivity(store, conn.userId, act);
+        }
       }
+    } else if (body.object_type === "activity" && body.aspect_type === "delete") {
+      // Deleting on Strava should take the points with it. Only the league log is
+      // touched — an already-completed workout keeps its actuals.
+      const conn = await store.getStravaByAthlete(athleteId);
+      if (conn) await removeStravaActivity(store, conn.userId, Number(body.object_id));
     }
   } catch {
     /* never block the 200 — backfill covers gaps, deauth retries on next event */

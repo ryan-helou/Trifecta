@@ -1,0 +1,129 @@
+import type { LeagueActivity, LeagueMember, LeagueSettings } from "./types";
+import { standingsForRange } from "./scoring";
+import { shortMonth, type DayKey } from "./dates";
+
+/**
+ * Seasons are two-calendar-month blocks, numbered from Season 1 = the block
+ * containing the league's kickoff month: with an August kickoff, Season 1 is
+ * Aug–Sep, Season 2 Oct–Nov, Season 3 Dec–Jan, and so on. Everything derives
+ * from the date — no storage — so the numbering rolls forward on its own and a
+ * league that goes quiet for a year picks up at the right number.
+ */
+
+export interface SeasonInfo {
+  number: number; // 1-based
+  label: string; // "Season 1"
+  monthsLabel: string; // "Aug–Sep"
+  start: DayKey;
+  end: DayKey;
+}
+
+function ymOf(day: DayKey): { y: number; m: number } {
+  const [y, m] = day.split("-").map(Number);
+  return { y, m }; // m is 1–12
+}
+const pad = (n: number) => String(n).padStart(2, "0");
+const lastDay = (y: number, m: number) => new Date(y, m, 0).getDate(); // m is 1–12
+
+export function seasonByNumber(n: number, seasonStart: DayKey): SeasonInfo {
+  const a = ymOf(seasonStart);
+  const anchorAbs = a.y * 12 + (a.m - 1); // 0-based absolute month index
+  const startAbs = anchorAbs + (n - 1) * 2;
+  const sy = Math.floor(startAbs / 12);
+  const sm = (startAbs % 12) + 1;
+  const endAbs = startAbs + 1;
+  const ey = Math.floor(endAbs / 12);
+  const em = (endAbs % 12) + 1;
+  // Season 1 opens on the league's kickoff, not the 1st of its month. The kickoff
+  // sits inside season 1's month block (Aug 3 in an Aug–Sep season), so without
+  // this clamp the days before it would score into the season — and someone who
+  // logged on Aug 1 would lead a season that hadn't started. `start` is the
+  // scoring window, so every range built from it is fixed here rather than at
+  // each call site.
+  const monthStart = `${sy}-${pad(sm)}-01`;
+  const start = n === 1 && seasonStart > monthStart ? seasonStart : monthStart;
+  return {
+    number: n,
+    label: `Season ${n}`,
+    monthsLabel: `${shortMonth(sm - 1)}–${shortMonth(em - 1)}`,
+    start,
+    end: `${ey}-${pad(em)}-${pad(lastDay(ey, em))}`,
+  };
+}
+
+/** The season a day falls in, or null if it's before Season 1 (pre-season). */
+export function seasonFor(day: DayKey, seasonStart: DayKey): SeasonInfo | null {
+  const a = ymOf(seasonStart);
+  const d = ymOf(day);
+  const monthsSince = (d.y - a.y) * 12 + (d.m - a.m);
+  if (monthsSince < 0) return null;
+  return seasonByNumber(Math.floor(monthsSince / 2) + 1, seasonStart);
+}
+
+export function firstSeason(seasonStart: DayKey): SeasonInfo {
+  return seasonByNumber(1, seasonStart);
+}
+
+/**
+ * The day a season opens for the league — the first day that scores into it.
+ * `seasonByNumber` already clamps Season 1 to the kickoff, so this is just the
+ * season's start; it stays as a named accessor because "when does this season
+ * open" reads better at the call site than `.start`.
+ */
+export function seasonOpensOn(season: SeasonInfo): DayKey {
+  return season.start;
+}
+
+export type SeasonStatus = "past" | "live" | "upcoming";
+
+export interface SeasonChampion {
+  season: SeasonInfo;
+  champion: { member: LeagueMember; points: number } | null;
+  status: SeasonStatus;
+}
+
+/** Every season from 1 up to the current one (newest first), with its champion —
+ *  the member with the most points inside that season's window. Before Season 1
+ *  opens, returns just the upcoming Season 1. */
+export function seasonChampions(
+  members: LeagueMember[],
+  activities: LeagueActivity[],
+  settings: LeagueSettings,
+  refDay: DayKey,
+  seasonStart: DayKey = settings.seasonStart,
+): SeasonChampion[] {
+  if (!seasonStart) return [];
+  const current = seasonFor(refDay, seasonStart);
+  if (!current) {
+    return [{ season: firstSeason(seasonStart), champion: null, status: "upcoming" }];
+  }
+  const out: SeasonChampion[] = [];
+  for (let n = current.number; n >= 1; n--) {
+    const season = seasonByNumber(n, seasonStart);
+    const standings = standingsForRange(members, activities, settings, [season.start, season.end]);
+    const top = standings.find((s) => s.points > 0) ?? null;
+    out.push({
+      season,
+      champion: top ? { member: top.member, points: top.points } : null,
+      status: n === current.number ? "live" : "past",
+    });
+  }
+  return out;
+}
+
+/**
+ * The reigning champion — winner of the most recent COMPLETED season — who wears
+ * gold through the current season. Null before any season has finished (so nobody
+ * is gilded during Season 1 or the pre-season).
+ */
+export function reigningChampionId(
+  members: LeagueMember[],
+  activities: LeagueActivity[],
+  settings: LeagueSettings,
+  refDay: DayKey,
+): string | null {
+  const past = seasonChampions(members, activities, settings, refDay).find(
+    (c) => c.status === "past" && c.champion,
+  );
+  return past?.champion?.member.userId ?? null;
+}

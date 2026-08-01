@@ -1,0 +1,106 @@
+# Trifecta iOS — League tab end-to-end smoke test (Maestro).
+#
+# EXCLUDED FROM THE GATE ON PURPOSE (leading underscore; see scripts/verify-ios.sh,
+# which globs maestro/[!_]*.yaml).
+#
+# Why: the gate builds the app against the LIVE Railway API
+# (scripts/build-static.mjs defaults NEXT_PUBLIC_API_BASE to
+# https://amatri-production.up.railway.app). The League endpoints only exist on the
+# feat/league branch, so until that branch is deployed this flow would fail against
+# a server with no /api/league — a red gate that says nothing about the code.
+#
+# TO ENABLE: once feat/league is deployed to Railway, rename this to league.yaml and
+# prove it green on 3 fresh-install runs before trusting it (verify-feature skill).
+#
+# Verified by hand on the simulator against a local API at build time: sign in →
+# League tab → Board/Week/Log/Titles/Feed render → log a session → board re-scores.
+#
+# Test account: simtest_qa / simpass123
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 15000
+# Keyboard must come down between fields or the two inputs' bounds overlap and the
+# password lands in the username box — see login.yaml for the full story.
+- tapOn: "ironmike"
+- inputText: "simtest_qa"
+- tapOn: "Password"
+- tapOn: "••••••••"
+- inputText: "simpass123"
+- tapOn: "Password"
+- tapOn: "Sign in"
+# The tab shell is up once the bottom nav paints.
+- extendedWaitUntil:
+    visible: "League"
+    timeout: 30000
+
+- tapOn: "League"
+- extendedWaitUntil:
+    visible: "Board"
+    timeout: 20000
+- takeScreenshot: 10-league-board
+
+# Each panel renders. Chip labels are exact strings, so no wildcards needed.
+- tapOn: "Week"
+- extendedWaitUntil:
+    visible: ".*Your week.*"
+    timeout: 15000
+- takeScreenshot: 11-league-week
+
+- tapOn: "Log"
+- extendedWaitUntil:
+    visible: "Distance in km"
+    timeout: 15000
+- takeScreenshot: 12-league-log
+
+# Log a real session and prove the board takes it.
+- tapOn: "Distance in km"
+- inputText: "5"
+- tapOn: ".*Log a session.*"      # inert heading: blurs the input, drops the keyboard
+- tapOn: "Log it"
+- extendedWaitUntil:
+    visible: ".*Your sessions.*"
+    timeout: 15000
+- takeScreenshot: 13-league-logged
+
+- tapOn: "Titles"
+- extendedWaitUntil:
+    visible: "Hall of fame"
+    timeout: 25000     # titles is computed server-side over the full history
+- takeScreenshot: 14-league-titles
+
+- tapOn: "Feed"
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 15000
+- takeScreenshot: 15-league-feed
+
+# The invite sheet is the regression guard for the portal fix: it renders from
+# inside a tab, and TabDeck's transform used to make `position: fixed` resolve
+# against the tab track — backdrop visible, panel nowhere on screen.
+- tapOn:
+    id: "Invite to league"
+    optional: true
+- tapOn: "Board"
+- extendedWaitUntil:
+    visible: "How points work"
+    timeout: 15000
+- takeScreenshot: 16-league-scoring-key
