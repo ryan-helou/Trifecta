@@ -389,6 +389,27 @@ section("projected PMC (the 'where the plan takes you' arc)");
   ok(JSON.stringify(proj) === JSON.stringify(proj2), "projectedPmc is a pure function of (plan, today, through)");
 }
 
+// ---- 10. a brand-new plan is not "behind" on its own pre-start days ----
+// A plan built mid-week starts on the preceding Monday, so its first days are already
+// past the moment it exists — the athlete never had a chance to do them. assessAdaptation
+// must not read those as missed and trip the ease trigger on day one. The guard anchors
+// the look-back to createdAtISO, so it can't fire before the plan existed.
+section("fresh plan isn't 'behind' on day one");
+{
+  const p = generatePlan(profile({}), ANCHOR);
+  const start = p.startDateISO;              // whatever Monday the engine actually chose
+  const midWeek = addDays(start, 3);         // "today" = Thursday of week one
+  // built today, nothing completed → every past-of-today session is still "planned"
+  const fresh: Plan = { ...p, profile: { ...p.profile, createdAtISO: midWeek + "T09:00:00.000Z" } };
+  const day1 = assessAdaptation(fresh, midWeek);
+  ok(!(day1?.kind === "ease" && day1.cause === "missed"), `a plan built today isn't 'behind' on its pre-start days (got ${day1?.kind}/${day1?.cause})`);
+
+  // control: two weeks of genuinely ignored sessions on an older plan STILL flags
+  const older: Plan = { ...p, profile: { ...p.profile, createdAtISO: start + "T09:00:00.000Z" } };
+  const late = assessAdaptation(older, addDays(start, 12));
+  ok(late?.kind === "ease" && late.cause === "missed", `real ignored sessions still trip the ease (got ${late?.kind}/${late?.cause})`);
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures > 0) {
   console.error(`\n❌ ${failures} load invariant(s) FAILED`);

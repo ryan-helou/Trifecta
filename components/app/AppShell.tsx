@@ -131,8 +131,14 @@ export function AppShell() {
     },
   };
 
+  // A brand-new plan starts on mondayOf(today), so this week's already-past days are
+  // planned sessions the athlete never had a chance to do — counting them made a plan
+  // built minutes ago open with "You've missed 8 sessions." A planned past session is a
+  // real miss only if it was scheduled on or after the plan first existed; createdAtISO
+  // is stable across rebuilds (unlike generatedAtISO), so it's the right anchor.
+  const planStart = plan.profile.createdAtISO?.slice(0, 10);
   const missed = Object.values(plan.workouts).filter(
-    (w) => w.discipline !== "rest" && w.date < today && w.status === "planned",
+    (w) => w.discipline !== "rest" && w.date < today && w.status === "planned" && (!planStart || w.date >= planStart),
   );
   const showRealign = missed.length >= 3 && !dismissRealign;
   const adaptation = assessAdaptation(plan, today);

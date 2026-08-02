@@ -12,7 +12,7 @@ import { useToast } from "./Toast";
   (toggle), swipe left to skip. Each fires an undo toast so nothing is a
   one-way door. Race day gets no swipe actions — it's finished from its sheet.
 */
-export function SwipeableWorkout({ workout, compact }: { workout: Workout; compact?: boolean }) {
+export function SwipeableWorkout({ workout, compact, hint }: { workout: Workout; compact?: boolean; hint?: boolean }) {
   const { today, openWorkout, openCheckin, openLog, actions } = useUI();
   const toast = useToast();
   const isRace = workout.id === "w-race-day";
@@ -64,7 +64,7 @@ export function SwipeableWorkout({ workout, compact }: { workout: Workout; compa
     isRace || skipped ? undefined : { label: "Skip", icon: <Icon name="skip" size={18} />, color: "var(--danger)", run: skip };
 
   return (
-    <Swipeable right={right} left={left}>
+    <Swipeable right={right} left={left} hint={hint}>
       <WorkoutCard
         workout={workout}
         onOpen={() => openWorkout(workout.id)}

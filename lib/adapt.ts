@@ -497,7 +497,12 @@ export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSugges
   const next = plan.weeks.find((w) => w.index === cur.index + 1);
   if (!next || next.isRaceWeek) return null; // never touch race week
 
-  const from = addDays(todayISO, -14);
+  // Look back two weeks, but never before the plan existed — otherwise a brand-new plan's
+  // pre-start days (it begins on mondayOf(today)) read as a wall of missed sessions and
+  // trip the ease trigger on day one. createdAtISO is stable across rebuilds.
+  const created = plan.profile.createdAtISO?.slice(0, 10);
+  const window = addDays(todayISO, -14);
+  const from = created && created > window ? created : window;
   const past = Object.values(plan.workouts).filter(
     (w) => w.discipline !== "rest" && w.date >= from && w.date < todayISO,
   );
