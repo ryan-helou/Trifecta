@@ -6,8 +6,9 @@ import { useUI } from "./ui";
 import { CountUp, useMounted } from "./motion";
 import { weekOfDate } from "./widgets";
 import { computeStreak, trainingStats } from "@/lib/stats";
-import { FormBand, PmcPoint, formStateFor } from "@/lib/load";
+import { FormBand, PmcPoint, formStateFor, projectedPmc } from "@/lib/load";
 import { FORM_TINT } from "./FormSheet";
+import { addDays } from "@/lib/dates";
 import { creditedDiscipline, creditedSeconds } from "@/lib/adapt";
 import { fmtDuration } from "@/lib/format";
 import { DISCIPLINE_META } from "@/lib/zones";
@@ -25,6 +26,17 @@ export function ProgressTab() {
   const stats = trainingStats(plan, today);
   const form = formStateFor(plan, today);
   const bankedHrs = stats.bankedSec / 3600;
+
+  // The forward-looking form arc: actual load so far + the load the plan prescribes
+  // ahead, folded into the PMC all the way to the end of the plan. Unlike stats.pmc
+  // (history only), this shows where the plan TAKES you — fitness climbing through the
+  // build, the taper's fatigue drop, and form crossing into fresh at the start line — so
+  // the chart means something from day one instead of an empty box until week two.
+  const lastWeek = plan.weeks[plan.weeks.length - 1];
+  const arcEnd = lastWeek ? addDays(lastWeek.startDate, 6) : today;
+  const formArc = projectedPmc(plan, today, arcEnd);
+  let todayIdx = formArc.findIndex((p) => p.dateISO === today);
+  if (todayIdx < 0) todayIdx = today > arcEnd ? formArc.length - 1 : 0;
 
   // discipline breakdown of completed time — credit swapped ("did something else")
   // sessions to what the athlete actually did, matching the banked-hours totals.
@@ -68,22 +80,28 @@ export function ProgressTab() {
               <span className="eyebrow text-[0.66rem]">{form.word}</span>
             </span>
           ) : (
-            <div className="eyebrow text-[0.66rem]">from what you&apos;ve completed</div>
+            <div className="eyebrow text-[0.66rem]">your plan&apos;s projection</div>
           )}
         </div>
-        <p className="mb-3 text-xs text-muted">The dark line is fitness; the faint one is fatigue. The gap between them is your form.</p>
-        {form && stats.pmc.length > 1 ? (
+        <p className="mb-3 text-xs text-muted">
+          The dark line is fitness; the faint one is fatigue. The gap between them is your form.{" "}
+          {todayIdx < formArc.length - 1 && <span>Dashed is where the plan takes you.</span>}
+        </p>
+        {formArc.length > 1 ? (
           <>
-            <PmcChart points={stats.pmc} band={form.band} mounted={mounted} />
-            <div className="eyebrow mt-3 flex items-center gap-4 text-[0.66rem]">
+            <PmcChart points={formArc} todayIndex={todayIdx} band={form?.band ?? "building"} mounted={mounted} />
+            <div className="eyebrow mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.66rem]">
               <span className="flex items-center gap-1.5"><span aria-hidden className="h-[2px] w-3.5 rounded-full bg-accent" /> Fitness</span>
               <span className="flex items-center gap-1.5"><span aria-hidden className="h-px w-3.5" style={{ background: "var(--text-faint)" }} /> Fatigue</span>
-              <span className="flex items-center gap-1.5"><span aria-hidden className="h-2 w-2 rounded-[3px]" style={{ background: FORM_TINT[form.band] }} /> Form</span>
+              <span className="flex items-center gap-1.5"><span aria-hidden className="h-2 w-2 rounded-[3px]" style={{ background: FORM_TINT[form?.band ?? "building"] }} /> Form</span>
+              {todayIdx < formArc.length - 1 && (
+                <span className="flex items-center gap-1.5"><span aria-hidden className="h-[2px] w-3.5" style={{ background: "repeating-linear-gradient(90deg, var(--accent) 0 3px, transparent 3px 6px)" }} /> Projected</span>
+              )}
             </div>
           </>
         ) : (
           <div className="flex h-28 items-center justify-center rounded-xl border border-dashed border-line text-center text-sm text-muted">
-            Your form story starts after your first week of sessions.
+            Your form story appears once your plan has weeks to chart.
           </div>
         )}
       </div>
@@ -188,20 +206,37 @@ export function ProgressTab() {
 */
 const W = 100, H = 100, PAD = 5; // the chart's viewBox, stretched to the box by preserveAspectRatio="none"
 
-function PmcChart({ points, band, mounted }: { points: PmcPoint[]; band: FormBand; mounted: boolean }) {
+function PmcChart({
+  points,
+  todayIndex,
+  band,
+  mounted,
+}: {
+  points: PmcPoint[];
+  todayIndex: number;
+  band: FormBand;
+  mounted: boolean;
+}) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   // the fitness line's drawn length in CSS pixels, once measured; null = draw it solid
   const [dash, setDash] = useState<number | null>(null);
   const [drawn, setDrawn] = useState(false);
 
   const n = points.length;
+  const ti = Math.max(0, Math.min(n - 1, todayIndex)); // today's index in the arc
+  const hasPast = ti >= 1;
+  const hasFuture = ti < n - 1;
   const max = Math.max(1, ...points.map((p) => Math.max(p.ctl, p.atl)));
   const x = (i: number) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
   const y = (v: number) => H - PAD - (v / max) * (H - PAD * 2);
   const pt = (px: number, v: number) => `${px.toFixed(1)},${y(v).toFixed(1)}`;
 
-  const ctlLine = points.map((p, i) => pt(x(i), p.ctl)).join(" ");
-  const atlLine = points.map((p, i) => pt(x(i), p.atl)).join(" ");
+  // Split each line at today: the past is solid (what actually happened), the future is
+  // dashed (where the plan takes you). Slice indices map straight back to the original i.
+  const pastCtlLine = points.slice(0, ti + 1).map((p, i) => pt(x(i), p.ctl)).join(" ");
+  const pastAtlLine = points.slice(0, ti + 1).map((p, i) => pt(x(i), p.atl)).join(" ");
+  const futureCtlLine = points.slice(ti).map((p, k) => pt(x(ti + k), p.ctl)).join(" ");
+  const futureAtlLine = points.slice(ti).map((p, k) => pt(x(ti + k), p.atl)).join(" ");
 
   // the between-fill, split wherever the lines cross so each stretch carries
   // its own meaning; the crossing is interpolated so neither tint bleeds past it
@@ -248,7 +283,9 @@ function PmcChart({ points, band, mounted }: { points: PmcPoint[]; band: FormBan
     // the reduced-motion kill-switch in globals.css silences keyframes only —
     // a transition has to opt out here
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const coords = ctlLine.split(" ").map((p) => p.split(",").map(Number));
+    // draw-in animates the ACTUAL (past) line only; the projection just fades in dashed
+    const coords = pastCtlLine.split(" ").map((p) => p.split(",").map(Number));
+    if (coords.length < 2) return; // nothing drawn yet (brand-new plan — all projection)
     const measure = () => {
       const box = svg.getBoundingClientRect();
       if (!box.width || !box.height) return;
@@ -265,7 +302,7 @@ function PmcChart({ points, band, mounted }: { points: PmcPoint[]; band: FormBan
     const ro = new ResizeObserver(measure);
     ro.observe(svg);
     return () => ro.disconnect();
-  }, [ctlLine]);
+  }, [pastCtlLine]);
 
   // hold the undrawn state for one painted frame, then let the transition run
   useEffect(() => {
@@ -292,41 +329,90 @@ function PmcChart({ points, band, mounted }: { points: PmcPoint[]; band: FormBan
             style={{ opacity: mounted ? 1 : 0, transition: "opacity .7s ease .55s" }}
           />
         ))}
-        <polyline
-          points={atlLine}
-          fill="none"
-          stroke="var(--text-faint)"
-          strokeWidth="1"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-          style={{ opacity: mounted ? 1 : 0, transition: "opacity .7s ease .55s" }}
-        />
-        <polyline
-          points={ctlLine}
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-          strokeDasharray={dash ?? undefined}
-          strokeDashoffset={dash != null && !drawn ? dash : 0}
-          style={{
-            opacity: mounted ? 1 : 0,
-            transition: "opacity .45s ease, stroke-dashoffset 1.1s cubic-bezier(.4,.1,.2,1)",
-          }}
-        />
+        {/* today divider — separates what happened from what's projected */}
+        {hasPast && hasFuture && (
+          <line
+            x1={x(ti)}
+            y1={PAD}
+            x2={x(ti)}
+            y2={H - PAD}
+            stroke="var(--line)"
+            strokeWidth="1"
+            strokeDasharray="2 2"
+            vectorEffect="non-scaling-stroke"
+            style={{ opacity: mounted ? 1 : 0, transition: "opacity .5s ease .5s" }}
+          />
+        )}
+
+        {/* fatigue — faint; past solid, future dashed */}
+        {hasPast && (
+          <polyline
+            points={pastAtlLine}
+            fill="none"
+            stroke="var(--text-faint)"
+            strokeWidth="1"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            style={{ opacity: mounted ? 1 : 0, transition: "opacity .7s ease .55s" }}
+          />
+        )}
+        {hasFuture && (
+          <polyline
+            points={futureAtlLine}
+            fill="none"
+            stroke="var(--text-faint)"
+            strokeWidth="1"
+            strokeDasharray="2 3"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            style={{ opacity: mounted ? 0.7 : 0, transition: "opacity .7s ease .7s" }}
+          />
+        )}
+
+        {/* fitness — accent; past solid (draws itself in), future dashed (projection) */}
+        {hasFuture && (
+          <polyline
+            points={futureCtlLine}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2"
+            strokeDasharray="3 3"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            style={{ opacity: mounted ? 0.85 : 0, transition: "opacity .6s ease .7s" }}
+          />
+        )}
+        {hasPast && (
+          <polyline
+            points={pastCtlLine}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            strokeDasharray={dash ?? undefined}
+            strokeDashoffset={dash != null && !drawn ? dash : 0}
+            style={{
+              opacity: mounted ? 1 : 0,
+              transition: "opacity .45s ease, stroke-dashoffset 1.1s cubic-bezier(.4,.1,.2,1)",
+            }}
+          />
+        )}
       </svg>
-      {/* today — the fitness line's terminus, tinted by the state word above */}
+      {/* today — "you are here" on the fitness line, tinted by the state word above */}
       <span
         aria-hidden
         className="absolute h-1.5 w-1.5 rounded-full"
         style={{
-          left: `${x(n - 1)}%`,
-          top: `${y(points[n - 1].ctl)}%`,
+          left: `${x(ti)}%`,
+          top: `${y(points[ti].ctl)}%`,
           transform: "translate(-50%, -50%)",
           background: FORM_TINT[band],
+          boxShadow: "0 0 0 2px var(--surface)",
           opacity: mounted ? 1 : 0,
           transition: "opacity .4s ease 1s",
         }}
