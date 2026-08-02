@@ -23,8 +23,33 @@ appId: app.trifecta.mobile
     timeout: 15000
 - waitForAnimationToEnd
 - takeScreenshot: onb-01-race
+# Pick a real distance so the race step can advance (it's the one required answer), and
+# so the date step stays in the flow.
+- tapOn: ".*Ironman 70.3.*"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "When's race day?"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: onb-02-date
+- tapOn: ".*I don't know my race date yet.*"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "How experienced are you?"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: onb-03-level
+# The Experience step forks. To screenshot EVERY screen (frequency, strength, schedule,
+# benchmarks, injuries) we take the "Fine-tune first" branch, which opens all of them.
+- tapOn: ".*Fine-tune first.*"
+- extendedWaitUntil:
+    visible: "How often for each sport?"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: onb-04-frequency
+# strength → schedule → benchmarks → injuries → review (five Continues, defaults left as-is)
 - repeat:
-    times: 6
+    times: 5
     commands:
       - scrollUntilVisible:
           element:
@@ -34,6 +59,9 @@ appId: app.trifecta.mobile
       - tapOn: "Continue"
       - waitForAnimationToEnd
       - takeScreenshot: onb-step
+- extendedWaitUntil:
+    visible: "Here's your plan setup"
+    timeout: 15000
 - takeScreenshot: onb-07-review
 - scrollUntilVisible:
     element:
