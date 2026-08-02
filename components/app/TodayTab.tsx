@@ -176,8 +176,8 @@ export function TodayTab() {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {todays.map((w) => (
-              <SwipeableWorkout key={w.id} workout={w} />
+            {todays.map((w, i) => (
+              <SwipeableWorkout key={w.id} workout={w} hint={i === 0} />
             ))}
           </div>
         )}

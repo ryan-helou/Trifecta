@@ -73,6 +73,19 @@ export function WorkoutCard({ workout, onOpen, compact, onQuickComplete }: Props
           ) : (
             !compact && <span>{meta.label}</span>
           )}
+          {/* the plan quietly softened this session — surface it, so the athlete FEELS the
+              adaptivity instead of it happening silently. --warning is the app's "eased" hue. */}
+          {!done && workout.easedCause && (
+            <>
+              <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
+              <span
+                className="rounded-full px-1.5 py-[0.5px] text-[0.66rem] font-semibold"
+                style={{ background: "color-mix(in oklab, var(--warning) 18%, transparent)", color: "var(--warning)" }}
+              >
+                Eased
+              </span>
+            </>
+          )}
         </span>
       </span>
 

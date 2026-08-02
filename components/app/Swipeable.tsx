@@ -24,15 +24,19 @@ const THRESHOLD = 84; // px past which release fires the action
   - A swipe that moved suppresses the trailing click, so swiping a card never
     also opens it. Mouse users are unaffected — this is touch-only.
 */
+const HINT_KEY = "trifecta:swipe-hint-seen"; // one peek, ever — not per card, not per session
+
 export function Swipeable({
   children,
   left,
   right,
+  hint = false,
   className = "",
 }: {
   children: React.ReactNode;
   left?: SwipeAction; // revealed by swiping the card left (finger moves ←)
   right?: SwipeAction; // revealed by swiping the card right (finger moves →)
+  hint?: boolean; // first-run only: nudge the card to reveal its action, teaching the gesture
   className?: string;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -156,6 +160,35 @@ export function Swipeable({
       root.removeEventListener("click", onClickCapture, true);
     };
   }, [left, right]);
+
+  // First-run gesture nudge: once, ever, the primary card slides a little to reveal its
+  // "Done" tray then springs back — the swipe was completely invisible otherwise. Guarded
+  // by localStorage (re-checked at fire time so simultaneously-mounted cards don't all
+  // peek), skipped under reduced motion, and only where there's a right action to show.
+  useEffect(() => {
+    if (!hint || !right) return;
+    if (typeof window === "undefined") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    try { if (localStorage.getItem(HINT_KEY)) return; } catch {}
+    const fg = fgRef.current;
+    const tray = leftTrayRef.current; // the right-action tray is anchored left
+    if (!fg) return;
+    let back: number | undefined;
+    const go = window.setTimeout(() => {
+      try {
+        if (localStorage.getItem(HINT_KEY)) return; // another card already peeked
+        localStorage.setItem(HINT_KEY, "1");
+      } catch {}
+      fg.style.transition = "transform .55s cubic-bezier(.22,.9,.3,1)";
+      fg.style.transform = "translateX(60px)";
+      if (tray) { tray.style.transition = "opacity .55s ease"; tray.style.opacity = "0.9"; }
+      back = window.setTimeout(() => {
+        fg.style.transform = "translateX(0)";
+        if (tray) tray.style.opacity = "0";
+      }, 720);
+    }, 850);
+    return () => { window.clearTimeout(go); if (back) window.clearTimeout(back); };
+  }, [hint, right]);
 
   return (
     <div ref={rootRef} data-swipeable className={`pan-y relative overflow-hidden rounded-[20px] ${className}`}>
