@@ -14,7 +14,8 @@ import { planSummaryContext } from "@/lib/adapt";
 import { apiIntake, apiPlanSummary, ParsedInjury } from "@/lib/api";
 import { RUN_PR_OPTIONS, SWIM_PR_OPTIONS, BIKE_PR_OPTIONS, prLabel } from "@/lib/paces";
 import { projectRace } from "@/lib/predict";
-import { Icon, IconName } from "../app/icons";
+import { Icon, IconName, DisciplineIcon } from "../app/icons";
+import { DISCIPLINE_META } from "@/lib/zones";
 import { fmtClock, fmtDuration } from "@/lib/format";
 import { todayISO, addDays, fmtFullDate } from "@/lib/dates";
 import { legalHref } from "@/lib/runtime";
@@ -211,6 +212,10 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   // for anon athletes: the plan is built and held here while they create their
   // account — the account is the last step, after they've watched it forge.
   const [built, setBuilt] = useState<{ profile: Profile; plan: ReturnType<typeof generatePlan> } | null>(null);
+  // the athlete has seen (and possibly tweaked) the live plan preview and moved on to
+  // the account step. Separate from `built` so "Back" from the account returns to the
+  // preview, and "Back" from the preview returns to the questionnaire.
+  const [previewSeen, setPreviewSeen] = useState(false);
   const [draft, setDraft] = useState<Draft>(DEFAULT_DRAFT);
 
   // Restore an interrupted flow. Onboarding is ten steps and held everything in React
@@ -421,11 +426,17 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
             startPlan(finalProfile, plan);
             enrich(plan, applyPlan);
           } else {
-            // anon athlete: hold the built plan and move to the final step — the
-            // account. enrich in the background so the AI note is ready if it lands.
+            // anon athlete: hold the built plan and move to the live preview → account.
+            // enrich in the background so the AI note is ready if it lands.
             setBuilt({ profile: finalProfile, plan });
             setGenerating(false);
-            enrich(plan, (p) => setBuilt((b) => (b ? { ...b, plan: p } : b)));
+            // Patch ONLY the AI summary fields onto whatever plan is current — never
+            // replace the whole plan. The athlete can regenerate the plan in the preview
+            // (different sessions), so a late-landing enrichment built from the *original*
+            // plan must not clobber those adjustments; it only layers on the narrative.
+            enrich(plan, (p) =>
+              setBuilt((b) => (b ? { ...b, plan: { ...b.plan, coachSummary: p.coachSummary, phaseNotes: p.phaseNotes } } : b)),
+            );
           }
         }}
       />
@@ -434,8 +445,27 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
 
   // final onboarding step for anon athletes: create the account, then their plan
   // (already built above) is committed and persisted in one atomic move.
+  // Between building the plan and creating the account, show the real first week and let
+  // the athlete tweak the life-fit levers on a plan they can actually see — instead of
+  // guessing at session counts in an abstract form. This is what makes the fast path safe:
+  // refinements move here, onto the live plan. (Returning athletes commit straight to the
+  // app in the LoadingAnimation onDone above, so they never reach this branch.)
+  if (built && !previewSeen) {
+    return (
+      <PlanPreview
+        built={built}
+        anchorISO={draft.startDateISO}
+        onCommit={(profile, plan) => {
+          setBuilt({ profile, plan });
+          setPreviewSeen(true);
+        }}
+        onBack={() => setBuilt(null)}
+      />
+    );
+  }
+
   if (built) {
-    return <AccountStep built={built} onCreate={signupAndStart} onBack={() => setBuilt(null)} onLogin={onLogin} />;
+    return <AccountStep built={built} onCreate={signupAndStart} onBack={() => setPreviewSeen(false)} onLogin={onLogin} />;
   }
 
   return (
@@ -564,6 +594,198 @@ const TERMS_VERSION = "2026-07-23";
 
 /** The last thing an anon athlete does: their plan is already built and waiting;
  *  creating the account commits + persists it and drops them into the app. */
+// ---------------- live plan preview (before the account step) ----------------
+
+// Shows the athlete their real week one and lets them tweak the levers that shape how the
+// plan fits their week — sessions per sport, rest day, long day, weekly-hours cap — with
+// the plan re-generating instantly on every change. `generatePlan` is pure and synchronous;
+// these are discrete tap controls (not sliders/keystrokes), so a rebuild per change is fine
+// and the useMemo only recomputes when a lever actually moves.
+const PREVIEW_WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function PlanPreview({
+  built,
+  anchorISO,
+  onCommit,
+  onBack,
+}: {
+  built: { profile: Profile; plan: ReturnType<typeof generatePlan> };
+  anchorISO?: string;
+  onCommit: (profile: Profile, plan: ReturnType<typeof generatePlan>) => void;
+  onBack: () => void;
+}) {
+  const base = built.profile;
+  const [sessions, setSessions] = useState(base.perSport ?? { swim: 2, bike: 2, run: 2 });
+  const [restDay, setRestDay] = useState<number | undefined>(base.restDayPreference);
+  const [longDay, setLongDay] = useState<number>(base.longSessionDay ?? 5);
+  const [hoursCap, setHoursCap] = useState<number | undefined>(base.weeklyHoursCap);
+  const [showAdjust, setShowAdjust] = useState(false);
+
+  const strengthDays = base.strength?.enabled ? base.strength.daysPerWeek : 0;
+
+  // Manually setting the mix here turns auto-frequency off — otherwise the engine would
+  // ignore the athlete's chosen counts and re-derive them from level.
+  const adjustedProfile: Profile = useMemo(
+    () => ({
+      ...base,
+      perSport: sessions,
+      autoFrequency: false,
+      restDayPreference: restDay,
+      longSessionDay: longDay,
+      weeklyHoursCap: hoursCap,
+      workoutsPerWeek: Math.max(1, Math.min(21, sessions.swim + sessions.bike + sessions.run + strengthDays)),
+    }),
+    [base, sessions, restDay, longDay, hoursCap, strengthDays],
+  );
+
+  const plan = useMemo(() => generatePlan(adjustedProfile, anchorISO), [adjustedProfile, anchorISO]);
+  const week = plan.weeks[0];
+
+  // sessions in calendar order, rest days omitted (the day strip already shows rests)
+  const rows = week
+    ? Array.from({ length: 7 }).flatMap((_, day) =>
+        week.workoutIds
+          .map((id) => plan.workouts[id])
+          .filter((w) => w && w.dayIndex === day)
+          .map((w) => ({ day, w })),
+      )
+    : [];
+
+  const dirty =
+    JSON.stringify(sessions) !== JSON.stringify(base.perSport ?? { swim: 2, bike: 2, run: 2 }) ||
+    restDay !== base.restDayPreference ||
+    longDay !== (base.longSessionDay ?? 5) ||
+    hoursCap !== base.weeklyHoursCap;
+
+  return (
+    <div className="flex flex-1 flex-col safe-t">
+      <div
+        className="mx-auto flex w-full max-w-md flex-1 flex-col px-6 pt-8"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)" }}
+      >
+        <div className="animate-fade-up">
+          <div className="eyebrow text-[0.78rem] text-accent">Your plan is ready</div>
+          <h2 className="mt-2 font-display text-3xl font-semibold leading-tight tracking-tight">Here&apos;s your first week</h2>
+          <p className="mt-2 text-sm text-muted">
+            {plan.totalWeeks} weeks to {base.raceType === "fitness" || !base.raceDateISO ? "build" : "race day"}. Tweak anything
+            that doesn&apos;t fit your week — the plan re-shapes instantly.
+          </p>
+        </div>
+
+        {week && (
+          <div className="mt-6 animate-fade-up">
+            <div className="flex items-baseline justify-between">
+              <span className="font-display text-lg font-semibold">{week.label}</span>
+              <span className="text-sm text-muted tabular-nums">{fmtDuration(Math.round(week.targetHours * 3600))} planned</span>
+            </div>
+
+            {/* day strip — one column per day, zone-coloured dots per session */}
+            <div className="mt-3 flex gap-1.5">
+              {Array.from({ length: 7 }).map((_, day) => {
+                const items = week.workoutIds.map((id) => plan.workouts[id]).filter((w) => w && w.dayIndex === day);
+                return (
+                  <div key={day} className="flex flex-1 flex-col items-center gap-1 rounded-[14px] border border-line bg-surface-2 py-2">
+                    <span className="eyebrow text-[0.6rem]">{PREVIEW_WD[day][0]}</span>
+                    <span className="mt-0.5 flex h-1.5 items-center gap-[3px]">
+                      {items.length === 0 ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-line" />
+                      ) : (
+                        items.slice(0, 3).map((w) => (
+                          <span key={w.id} className="h-1.5 w-1.5 rounded-full" style={{ background: `var(--z${w.primaryZone})` }} />
+                        ))
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {week.focus && <p className="mt-3 text-sm text-muted">{week.focus}</p>}
+
+            {/* the sessions themselves, glanceable */}
+            <div className="mt-4 flex flex-col gap-2">
+              {rows.map(({ day, w }) => {
+                const dc = `var(${(DISCIPLINE_META[w.discipline] ?? DISCIPLINE_META.run).colorVar})`;
+                return (
+                  <div key={w.id} className="flex items-center gap-3 rounded-[14px] border border-line bg-surface py-2.5 pl-3 pr-3.5">
+                    <span
+                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
+                      style={{ background: `color-mix(in oklab, ${dc} 14%, transparent)`, color: dc }}
+                    >
+                      <DisciplineIcon discipline={w.discipline} size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-1 font-display text-[0.92rem] font-semibold">{w.title}</span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+                        <span>{PREVIEW_WD[day]}</span>
+                        <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
+                        <span className="tabular-nums">{w.estDurationSec > 0 ? fmtDuration(w.estDurationSec) : "—"}</span>
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* adjust disclosure — the fine-tune levers, now on a plan you can see */}
+        <div className="mt-5">
+          <button
+            onClick={() => setShowAdjust((v) => !v)}
+            className="text-sm font-semibold text-muted transition hover:text-foreground"
+            aria-expanded={showAdjust}
+          >
+            Adjust the plan <span className="ml-0.5 text-accent-soft">{showAdjust ? "▴" : "▾"}</span>
+          </button>
+          {showAdjust && (
+            <div className="mt-3 flex flex-col gap-3 animate-fade-up">
+              <div className="flex flex-col gap-2">
+                <Stepper label="Swim / week" value={sessions.swim} min={0} max={7} onChange={(n) => setSessions((s) => ({ ...s, swim: n }))} />
+                <Stepper label="Bike / week" value={sessions.bike} min={0} max={7} onChange={(n) => setSessions((s) => ({ ...s, bike: n }))} />
+                <Stepper label="Run / week" value={sessions.run} min={0} max={7} onChange={(n) => setSessions((s) => ({ ...s, run: n }))} />
+              </div>
+              <div>
+                <div className="mb-2 eyebrow text-[0.72rem]">Rest day</div>
+                <div className="flex flex-wrap gap-2">
+                  {PREVIEW_WD.map((w, i) => (
+                    <button key={w} onClick={() => setRestDay((r) => (r === i ? undefined : i))} className={`chip ${restDay === i ? "is-selected" : ""}`}>
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 eyebrow text-[0.72rem]">Long-workout day</div>
+                <div className="flex flex-wrap gap-2">
+                  {PREVIEW_WD.map((w, i) => (
+                    <button key={w} onClick={() => setLongDay(i)} className={`chip ${longDay === i ? "is-selected" : ""}`}>
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <NumFieldOpt label="Cap weekly hours (optional)" value={hoursCap} unit="h" onChange={setHoursCap} />
+            </div>
+          )}
+        </div>
+
+        <div className="mt-auto pt-8">
+          <button onClick={() => onCommit(adjustedProfile, plan)} className="btn btn-primary w-full py-3.5 text-base">
+            {dirty ? "Save this plan" : "Looks good — save it"}
+            <span aria-hidden className="text-lg leading-none">→</span>
+          </button>
+          <div className="mt-3 flex justify-center text-sm">
+            <button onClick={onBack} className="font-semibold text-muted transition hover:text-foreground">
+              ← Back to setup
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccountStep({
   built,
   onCreate,
