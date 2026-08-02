@@ -170,6 +170,41 @@ export function pmc(plan: Plan, todayISO: string): PmcPoint[] {
   return computePmc(dailyLoads(plan, todayISO), { ctl: seed, atl: seed });
 }
 
+/** A session's PRESCRIBED load — what the plan asks for, regardless of completion. Future
+ *  sessions haven't happened, so sessionLoad() reads them as 0; folding that forward just
+ *  decays the curve to nothing (a taper, ironically, looks fine — but a base/build phase
+ *  reads as detraining). This values a planned session at its prescription instead. */
+export function plannedLoad(w: Workout): number {
+  if (w.discipline === "rest") return 0;
+  return zoneRpeMid(w.primaryZone) * (w.estDurationSec / 60);
+}
+
+/** Daily ledger that blends ACTUAL past (completed sessions; misses count as 0) with
+ *  PROJECTED future (each planned session at its prescribed load), split at todayISO —
+ *  i.e. "where you are, and where the plan takes you if you follow it". */
+export function projectedDailyLoads(plan: Plan, todayISO: string, throughISO: string): DailyLoad[] {
+  const lthr = plan.paces.hr.lthr;
+  const byDate: Record<string, number> = {};
+  let start = plan.startDateISO;
+  for (const w of Object.values(plan.workouts)) {
+    if (w.date < start) start = w.date;
+    if (w.date > throughISO) continue;
+    const load = w.date <= todayISO ? sessionLoad(w, lthr).load : plannedLoad(w);
+    if (load > 0) byDate[w.date] = (byDate[w.date] ?? 0) + load;
+  }
+  const days: DailyLoad[] = [];
+  for (let iso = start; iso <= throughISO; iso = addDays(iso, 1)) {
+    days.push({ dateISO: iso, load: byDate[iso] ?? 0 });
+  }
+  return days;
+}
+
+/** The PMC projected to `throughISO`: actual through today, then the prescribed plan. */
+export function projectedPmc(plan: Plan, todayISO: string, throughISO: string): PmcPoint[] {
+  const seed = seedLoad(plan);
+  return computePmc(projectedDailyLoads(plan, todayISO, throughISO), { ctl: seed, atl: seed });
+}
+
 /** Band a day's form. CTL-relative so the thresholds survive the sRPE unit scale. */
 export function formBand(p: PmcPoint): FormBand {
   const pct = (100 * p.tsb) / Math.max(p.ctl, 1);

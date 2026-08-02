@@ -18,6 +18,7 @@ import {
   dailyLoads,
   computePmc,
   pmc,
+  projectedPmc,
   formStateFor,
 } from "../lib/load";
 import { generatePlan } from "../lib/planEngine";
@@ -351,6 +352,41 @@ section("PMC seeding + form actually feeds the plan");
     ok(wkAfter.targetHours < wkBefore.targetHours, `the eased week is genuinely lighter (${wkBefore.targetHours}h → ${wkAfter.targetHours}h)`);
     ok((after.adaptations ?? []).some((a) => a.cause === "form"), "the reason is recorded on the plan as a form adaptation");
   }
+}
+
+// ---- 9. projected PMC: a fresh plan's future BUILDS fitness, not decays it ----
+// The Progress "where the plan takes you" arc folds PLANNED future load forward.
+// The bug this guards: sessionLoad() reads a not-yet-done session as 0 load, so pmc()
+// alone decays a brand-new plan's curve toward zero — fitness *falling* through what is
+// really a base/build block (the decay only looks right during a taper). projectedPmc()
+// values future sessions at their prescription instead, so the arc climbs.
+section("projected PMC (the 'where the plan takes you' arc)");
+{
+  const p = generatePlan(profile({ raceType: "olympic", raceDateISO: weeksFrom(16) }), ANCHOR);
+  const start = ANCHOR;
+  const end = addDays(p.weeks[p.weeks.length - 1].startDate, 6);
+  const seed = seedLoad(p);
+
+  // brand-new plan, nothing completed
+  const proj = projectedPmc(p, start, end);
+  const actualOnly = pmc(p, end);
+  const projPeak = Math.max(...proj.map((q) => q.ctl));
+  const actualEnd = actualOnly[actualOnly.length - 1].ctl;
+
+  ok(projPeak > seed * 1.15, `projected fitness climbs through the build (peak ctl ${projPeak.toFixed(0)} vs seed ${seed.toFixed(0)})`);
+  ok(actualEnd < seed * 0.5, `actual-only fold decays a fresh plan toward zero — the bug projectedPmc fixes (end ctl ${actualEnd.toFixed(0)})`);
+  ok(proj.length === actualOnly.length, "projection spans the same daily range as the actual fold");
+
+  // past stays actual: a completed session before today keeps its logged load in the projection
+  const firstPlanned = Object.values(p.workouts).find((w) => w.discipline !== "rest")!;
+  const done = { ...p, workouts: { ...p.workouts, [firstPlanned.id]: { ...firstPlanned, status: "done" as const } } };
+  const midToday = addDays(firstPlanned.date, 1);
+  const withHistory = projectedPmc(done, midToday, end);
+  ok(withHistory.length === proj.length, "projection with history spans the same range");
+
+  // deterministic — same inputs, byte-identical arc
+  const proj2 = projectedPmc(generatePlan(profile({ raceType: "olympic", raceDateISO: weeksFrom(16) }), ANCHOR), start, end);
+  ok(JSON.stringify(proj) === JSON.stringify(proj2), "projectedPmc is a pure function of (plan, today, through)");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
