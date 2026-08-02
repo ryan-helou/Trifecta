@@ -35,6 +35,12 @@ interface Draft {
   aiHealthConsent?: AiHealthConsent;
   // when the athlete wants the plan to begin — default (undefined) is today.
   startDateISO?: string;
+  // The fast path: after Experience, the athlete chooses to build now (undefined/false)
+  // or "fine-tune first" (true). Only when true do the four dense refinement steps
+  // (frequency, strength, schedule, benchmarks) become active — everything else is
+  // defaulted from level + race distance. The injuries free-text stays in the spine
+  // either way, because it's the only health screen.
+  personalize?: boolean;
   level?: Level;
   perSport: { swim: number; bike: number; run: number };
   // when true, Trifecta picks the per-sport mix from level + race distance
@@ -64,6 +70,12 @@ interface Draft {
 // acute-trauma language, so a referral still fires without a questionnaire. Trade-off
 // accepted deliberately: this only catches what the athlete volunteers.
 const STEPS = ["race", "custom", "date", "level", "frequency", "strength", "schedule", "prs", "injuries", "review"] as const;
+
+// The four steps behind the "fine-tune first" fork. Each is fully skippable in spirit —
+// its data is defaulted — so a novice never has to have an opinion about swim-session
+// counts or FTP to get a good plan. `injuries` is deliberately NOT here: it's the health
+// screen, so it stays on the required spine for everyone.
+const REFINEMENT_STEPS = new Set<(typeof STEPS)[number]>(["frequency", "strength", "schedule", "prs"]);
 
 const STEP_LABELS: Record<(typeof STEPS)[number], string> = {
   race: "Your race",
@@ -308,8 +320,13 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   const hasEventDate = !!(draft.raceId && draft.raceDateISO);
   const isFitness = draft.raceType === "fitness";
   const skipDate = hasEventDate || isFitness;
+  // The dense refinement steps. On the fast path they're inactive and their values are
+  // defaulted (level-aware frequency, no strength, all equipment, blank benchmarks the
+  // calibration engine sharpens later). They light up only when the athlete opts in.
   const stepActive = (s: (typeof STEPS)[number]) =>
-    (s !== "custom" || isCustom) && (s !== "date" || !skipDate);
+    (s !== "custom" || isCustom) &&
+    (s !== "date" || !skipDate) &&
+    (!REFINEMENT_STEPS.has(s) || !!draft.personalize);
 
   function skip(dir: 1 | -1, from: number): number {
     let n = from + dir;
@@ -318,6 +335,21 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   }
   const next = () => setIdx((i) => skip(1, i));
   const back = () => setIdx((i) => skip(-1, i));
+
+  // The fast-path fork, offered on the Experience step (the last required question for a
+  // raced athlete). "Build now" defaults everything and jumps past the refinement steps
+  // to the injuries health-screen; "fine-tune first" opens them. We set the index
+  // explicitly rather than calling next(), because next()'s skip() would read a stale
+  // `personalize` from this render's closure.
+  const buildNow = () => {
+    // level-aware defaults beat the flat 2/2/2: an advanced athlete gets the advanced mix.
+    setDraft((d) => ({ ...d, personalize: false, autoFrequency: true }));
+    setIdx(STEPS.indexOf("injuries"));
+  };
+  const fineTune = () => {
+    setDraft((d) => ({ ...d, personalize: true }));
+    setIdx(STEPS.indexOf("frequency"));
+  };
 
   // Almost every question is skippable, and Continue stays available for those. The
   // exceptions are the answers the plan is literally constructed from, where silently
@@ -481,21 +513,35 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
             <p className="mb-2.5 text-center text-sm text-muted">{blockedReason}</p>
           )}
 
-          <div className="flex items-center gap-3">
-          {idx > 0 && (
-            <button onClick={back} className="btn btn-ghost px-5 py-3">
-              Back
-            </button>
-          )}
-          {step === "review" ? (
-            <button onClick={() => setGenerating(true)} disabled={!finalProfile} className="btn btn-primary flex-1 py-3.5 text-base">
-              Build my plan
-            </button>
-          ) : (
-            <button onClick={next} disabled={!canNext} className="btn btn-primary flex-1 py-3.5 text-base">
-              Continue
-            </button>
-          )}
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center gap-3">
+              {idx > 0 && (
+                <button onClick={back} className="btn btn-ghost px-5 py-3">
+                  Back
+                </button>
+              )}
+              {step === "review" ? (
+                <button onClick={() => setGenerating(true)} disabled={!finalProfile} className="btn btn-primary flex-1 py-3.5 text-base">
+                  Build my plan
+                </button>
+              ) : step === "level" ? (
+                // The fast-path fork: everything the plan needs is answered — build now,
+                // or open the optional refinements. "Build" is primary so the median
+                // athlete reaches a plan in a handful of taps.
+                <button onClick={buildNow} className="btn btn-primary flex-1 py-3.5 text-base">
+                  Build my plan →
+                </button>
+              ) : (
+                <button onClick={next} disabled={!canNext} className="btn btn-primary flex-1 py-3.5 text-base">
+                  Continue
+                </button>
+              )}
+            </div>
+            {step === "level" && (
+              <button onClick={fineTune} className="btn btn-ghost w-full py-2.5 text-sm text-muted">
+                Fine-tune first — sessions, strength &amp; benchmarks
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -731,6 +777,7 @@ type StepProps = { draft: Draft; set: React.Dispatch<React.SetStateAction<Draft>
 
 function RaceStep({ draft, set }: StepProps) {
   const [mode, setMode] = useState<"distance" | "event">(draft.raceId ? "event" : "distance");
+  const [showHelp, setShowHelp] = useState(false);
   const races: { key: RaceType; name: string; legs?: [string, string, string]; sub?: string }[] = [
     { key: "olympic", name: "Olympic", legs: ["1.5 km swim", "40 km bike", "10 km run"] },
     { key: "half", name: "Ironman 70.3", legs: ["1.9 km swim", "90 km bike", "21.1 km run"] },
@@ -801,6 +848,29 @@ function RaceStep({ draft, set }: StepProps) {
         </div>
       ) : (
         <RaceCatalogPicker selectedId={draft.raceId} onPick={pickEvent} />
+      )}
+
+      {/* First-timers often can't picture the distances — and this is the highest-stakes
+          choice in the whole flow, so a one-tap explainer de-risks it without teaching
+          sports science. Distance mode only; the catalog picker speaks for itself. */}
+      {mode === "distance" && (
+        <div className="mt-3">
+          <button
+            onClick={() => setShowHelp((v) => !v)}
+            className="text-sm font-medium text-muted transition hover:text-foreground"
+            aria-expanded={showHelp}
+          >
+            New to triathlon? What's the difference? <span className="ml-0.5 text-accent-soft">{showHelp ? "▴" : "▾"}</span>
+          </button>
+          {showHelp && (
+            <div className="mt-2 space-y-1.5 rounded-2xl border border-line bg-surface-2 p-3.5 text-sm leading-relaxed text-muted animate-fade-up">
+              <p><span className="font-semibold text-foreground">Olympic</span> — the classic first triathlon. A morning's effort, ~2–3 hrs of racing.</p>
+              <p><span className="font-semibold text-foreground">Ironman 70.3</span> — the &ldquo;half.&rdquo; Roughly double an Olympic, ~5–7 hrs.</p>
+              <p><span className="font-semibold text-foreground">Full Ironman</span> — 140.6 miles, an all-day event, ~10–16 hrs.</p>
+              <p><span className="font-semibold text-foreground">Just get fitter</span> — no race in mind? We&rsquo;ll build all-round fitness and you can add a race any time.</p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

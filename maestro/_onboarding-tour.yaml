@@ -36,19 +36,22 @@ appId: app.trifecta.mobile
 - waitForAnimationToEnd
 - takeScreenshot: ob-3-level
 
-# Walk on to the pre-participation screening — the long, scrolling step where content
-# was running under the iOS clock before the status-bar scrim.
-- repeat:
-    times: 6
-    commands:
-      - tapOn: "Continue"
-      - waitForAnimationToEnd
-- takeScreenshot: ob-4-review
-
-# Back one step to the injuries box. With the PAR-Q step removed this is the ONLY health
-# screen, so its copy has to carry the medical prompt — worth eyeballing on device.
-- tapOn: "Back"
+# The Experience step now forks: "Build my plan" (the fast path — defaults everything and
+# jumps to the injuries health screen) or "Fine-tune first" (opens the refinement steps).
+# Take the fast path; it's what the median new user sees.
+- tapOn: ".*Build my plan.*"
+- extendedWaitUntil:
+    visible: "Anything we should know?"
+    timeout: 15000
 - waitForAnimationToEnd
-- takeScreenshot: ob-5-injuries
+# The injuries box is the ONLY health screen with the PAR-Q step removed, so its copy has
+# to carry the medical prompt — worth eyeballing on device.
+- takeScreenshot: ob-4-injuries
 - scroll
-- takeScreenshot: ob-6-injuries-scrolled
+- takeScreenshot: ob-5-injuries-scrolled
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Here's your plan setup"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ob-6-review
