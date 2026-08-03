@@ -21,10 +21,13 @@ const MIN_INTERVAL_MS = 10 * 60 * 1000; // don't re-read HealthKit more than onc
 export function useAppleHealthAutoSync(plan: Plan | null, applyPlan: (p: Plan) => void): void {
   // refs so the mount-once effect always sees the latest plan / applier without re-binding
   const planRef = useRef(plan);
-  planRef.current = plan;
   const applyRef = useRef(applyPlan);
-  applyRef.current = applyPlan;
   const lastRun = useRef(0);
+  // keep refs current without writing them during render (react-hooks/refs)
+  useEffect(() => {
+    planRef.current = plan;
+    applyRef.current = applyPlan;
+  });
 
   useEffect(() => {
     if (!IS_NATIVE) return;

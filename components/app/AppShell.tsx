@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../AppProvider";
 import { UICtx, UIActions, TabKey, CoachMsg } from "./ui";
 import { BottomNav } from "./BottomNav";
@@ -36,8 +36,6 @@ import { track } from "@/lib/analytics";
 import { calibratePaces } from "@/lib/calibrate";
 import { derivePaces } from "@/lib/paces";
 import { loadNotifPrefs, refreshReminders } from "@/lib/notify";
-import { syncAppleHealth } from "@/lib/health";
-import { IS_NATIVE } from "@/lib/runtime";
 
 const COACH_GREETING: CoachMsg = {
   role: "coach",
@@ -78,54 +76,6 @@ export function AppShell() {
     const prefs = loadNotifPrefs();
     if (prefs.enabled && plan) refreshReminders(plan, today, prefs);
   }, [plan, today]);
-
-  // Apple Health, automatically — the piece that makes on-device health as
-  // set-and-forget as Strava's webhook, but with no Strava, no OAuth, and no
-  // per-app athlete cap (so it works for EVERY user, not just the ones under a
-  // developer-program limit). The manual "Sync with Apple Health" button in
-  // Profile stays the permission entry point; once access is granted there's no
-  // reason to keep making the athlete tap it. This reads on every foreground
-  // (app open / tab back into the app) and silently checks off any newly-finished
-  // workouts.
-  //
-  // Safe by construction: syncAppleHealth only READS (it never calls
-  // requestAuthorization), so it can never pop a permission sheet out of nowhere —
-  // before access is granted the read just returns [] and this is a no-op. It runs
-  // against the freshest plan + applyPlan via refs (so it doesn't resubscribe on
-  // every state change) and self-throttles so rapid foreground toggles can't hammer
-  // the native bridge.
-  const planRef = useRef(plan);
-  const applyPlanRef = useRef(applyPlan);
-  // Keep the refs current without touching them during render (react-hooks/refs).
-  useEffect(() => {
-    planRef.current = plan;
-    applyPlanRef.current = applyPlan;
-  });
-  useEffect(() => {
-    if (!IS_NATIVE) return;
-    let running = false;
-    let lastRunMs = 0;
-    const run = async () => {
-      const cur = planRef.current;
-      if (!cur || running || Date.now() - lastRunMs < 60_000) return;
-      running = true;
-      lastRunMs = Date.now();
-      try {
-        const res = await syncAppleHealth(cur);
-        if (res.applied > 0) applyPlanRef.current(res.plan);
-      } finally {
-        running = false;
-      }
-    };
-    run(); // on app open
-    const onVis = () => document.visibilityState === "visible" && run();
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("focus", run);
-    return () => {
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("focus", run);
-    };
-  }, []);
 
   if (!plan) return null;
 
