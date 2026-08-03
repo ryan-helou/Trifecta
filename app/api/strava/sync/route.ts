@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth-server";
 import { getStore } from "@/lib/db";
 import { applyActivityToUser, fetchRecentActivities, validAccessToken } from "@/lib/strava";
+import { recordStravaActivity } from "@/lib/league/ingest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,12 +21,16 @@ export async function POST(req: NextRequest) {
     const after = Math.floor(Date.now() / 1000) - 21 * 86400; // last 3 weeks
     const acts = await fetchRecentActivities(token, after, 40);
     let matched = 0;
+    let scored = 0;
     for (const a of acts) {
       const r = await applyActivityToUser(store, uid, a);
       if (r.matched && !r.alreadyDone) matched++;
+      // Second consumer of the same pull — league scoring. Deduped by the
+      // strava_imports ledger, so re-syncing never double-scores.
+      if (await recordStravaActivity(store, uid, a)) scored++;
     }
     await store.touchStravaSync(uid);
-    return NextResponse.json({ ok: true, scanned: acts.length, matched });
+    return NextResponse.json({ ok: true, scanned: acts.length, matched, scored });
   } catch {
     return NextResponse.json({ error: "Sync failed. Try again." }, { status: 502 });
   }

@@ -19,7 +19,12 @@ function ago(todayISO: string, iso: string): string {
   return `${Math.floor(d / 7)}w ago`;
 }
 
-export function FriendsTab() {
+/**
+ * The follow/kudos feed. It used to own a bottom-nav tab of its own; that slot is
+ * now the League tab, and this renders as a panel inside it (`embedded`), which
+ * drops the page header and outer padding the host already provides.
+ */
+export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
   const { today } = useUI();
   const toast = useToast();
   const [data, setData] = useState<SocialPayload | null>(null);
@@ -53,11 +58,16 @@ export function FriendsTab() {
   };
 
   return (
-    <div className="space-y-5 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
-      <div className="animate-fade-up">
-        <div className="eyebrow text-[0.72rem]">Friends</div>
-        <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight">Train together</h1>
-      </div>
+    <div
+      className={embedded ? "space-y-5" : "space-y-5 px-4 pb-4"}
+      style={embedded ? undefined : { paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}
+    >
+      {!embedded && (
+        <div className="animate-fade-up">
+          <div className="eyebrow text-[0.72rem]">Friends</div>
+          <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight">Train together</h1>
+        </div>
+      )}
 
       {/* add a friend */}
       <div className="flex gap-2">

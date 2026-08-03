@@ -15,7 +15,7 @@
     "assets:native": "node scripts/gen-native-assets.mjs",
     "build:static": "node scripts/build-static.mjs",
     "ota": "npm run build:static && npx @capgo/cli bundle upload --path out --channel production",
-    "test": "tsx test/engine.test.ts && tsx test/load.test.ts && tsx test/why.test.ts && tsx test/redflags.test.ts && tsx test/analytics.test.ts && tsx test/auth.test.ts && tsx test/health-privacy.test.ts && tsx scripts/test-strava-match.ts"
+    "test": "tsx test/engine.test.ts && tsx test/load.test.ts && tsx test/why.test.ts && tsx test/redflags.test.ts && tsx test/analytics.test.ts && tsx test/auth.test.ts && tsx test/health-privacy.test.ts && tsx scripts/test-strava-match.ts && tsx test/league.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",

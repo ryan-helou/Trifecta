@@ -1,6 +1,28 @@
 import { Plan, Profile } from "./types";
 import { API_BASE, IS_NATIVE } from "./runtime";
 import { getTokenSync } from "./tokenStore";
+import type {
+  League,
+  LeagueActivity,
+  LeagueInvite,
+  LeagueMember,
+  LeagueSettings,
+  LeagueStatePayload,
+  Sport,
+} from "./league/types";
+import type { Badge, MonthChampion, WinRow } from "./league/achievements";
+import type { SeasonChampion } from "./league/season";
+import type { HallRecord } from "./league/records";
+
+/** What GET /api/league/[id]/titles returns — the all-time views, already
+ *  reduced server-side so the payload doesn't grow with league history. */
+export interface TitlesPayload {
+  seasons: SeasonChampion[];
+  weekWins: WinRow[];
+  months: MonthChampion[];
+  records: HallRecord[];
+  badges: Badge[];
+}
 
 // Client-side fetch wrappers for the API routes.
 //
@@ -188,6 +210,126 @@ export async function apiKudos(ownerUsername: string, workoutId: string, on: boo
     body: JSON.stringify({ ownerUsername, workoutId, on }),
   });
   return { ok, ...(data as { error?: string; on?: boolean; kudos?: number }) };
+}
+
+// ---- leagues ----
+
+export async function apiLeagues(): Promise<{ leagues: League[]; invites: LeagueInvite[] } | null> {
+  const { ok, data } = await jsonFetch("/api/league");
+  return ok ? (data as { leagues: League[]; invites: LeagueInvite[] }) : null;
+}
+
+export async function apiCreateLeague(name: string, today: string) {
+  const { ok, data } = await jsonFetch("/api/league", {
+    method: "POST",
+    body: JSON.stringify({ name, today }),
+  });
+  return { ok, ...(data as { error?: string; league?: League }) };
+}
+
+export async function apiLeagueState(
+  leagueId: string,
+  today: string,
+  season?: number,
+): Promise<LeagueStatePayload | null> {
+  const q = new URLSearchParams({ today });
+  if (season) q.set("season", String(season));
+  const { ok, data } = await jsonFetch(`/api/league/${encodeURIComponent(leagueId)}?${q}`);
+  return ok ? (data as LeagueStatePayload) : null;
+}
+
+export async function apiLeagueTitles(leagueId: string, today: string): Promise<TitlesPayload | null> {
+  const { ok, data } = await jsonFetch(
+    `/api/league/${encodeURIComponent(leagueId)}/titles?today=${encodeURIComponent(today)}`,
+  );
+  return ok ? (data as TitlesPayload) : null;
+}
+
+export async function apiUpdateLeague(
+  leagueId: string,
+  patch: { name?: string; settings?: Partial<LeagueSettings>; rotateCode?: boolean },
+) {
+  const { ok, data } = await jsonFetch(`/api/league/${encodeURIComponent(leagueId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return { ok, ...(data as { error?: string; league?: League }) };
+}
+
+export async function apiDeleteLeague(leagueId: string) {
+  const { ok, data } = await jsonFetch(`/api/league/${encodeURIComponent(leagueId)}`, { method: "DELETE" });
+  return { ok, ...(data as { error?: string }) };
+}
+
+export async function apiJoinLeague(code: string) {
+  const { ok, data } = await jsonFetch("/api/league/join", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  return { ok, ...(data as { error?: string; league?: League; already?: boolean }) };
+}
+
+export async function apiInviteToLeague(leagueId: string, username: string) {
+  const { ok, data } = await jsonFetch(`/api/league/${encodeURIComponent(leagueId)}/members`, {
+    method: "POST",
+    body: JSON.stringify({ username }),
+  });
+  return { ok, ...(data as { error?: string; invited?: string }) };
+}
+
+export async function apiAnswerInvite(inviteId: string, accept: boolean) {
+  const { ok, data } = await jsonFetch(`/api/league/invites/${encodeURIComponent(inviteId)}`, {
+    method: "POST",
+    body: JSON.stringify({ accept }),
+  });
+  return { ok, ...(data as { error?: string; joined?: boolean; league?: League }) };
+}
+
+export async function apiRemoveMember(leagueId: string, userId: string) {
+  const { ok, data } = await jsonFetch(
+    `/api/league/${encodeURIComponent(leagueId)}/members/${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+  return { ok, ...(data as { error?: string }) };
+}
+
+export async function apiSetMemberRole(leagueId: string, userId: string, role: "admin" | "member") {
+  const { ok, data } = await jsonFetch(
+    `/api/league/${encodeURIComponent(leagueId)}/members/${encodeURIComponent(userId)}`,
+    { method: "PATCH", body: JSON.stringify({ role }) },
+  );
+  return { ok, ...(data as { error?: string; members?: LeagueMember[] }) };
+}
+
+export async function apiLogActivity(input: {
+  sport: Sport;
+  km: number;
+  occurredOn: string;
+  note?: string | null;
+}) {
+  const { ok, data } = await jsonFetch("/api/league/activities", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return { ok, ...(data as { error?: string; activity?: LeagueActivity }) };
+}
+
+export async function apiUpdateActivity(
+  activityId: string,
+  patch: { sport?: Sport; km?: number; occurredOn?: string; note?: string | null },
+) {
+  const { ok, data } = await jsonFetch(`/api/league/activities/${encodeURIComponent(activityId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return { ok, ...(data as { error?: string; activity?: LeagueActivity }) };
+}
+
+export async function apiDeleteActivity(activityId: string) {
+  const { ok, data } = await jsonFetch(`/api/league/activities/${encodeURIComponent(activityId)}`, {
+    method: "DELETE",
+  });
+  return { ok, ...(data as { error?: string }) };
 }
 
 /** Ship a batch of product events. Fire-and-forget by contract: callers never

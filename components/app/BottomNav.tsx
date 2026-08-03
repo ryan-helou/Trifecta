@@ -8,7 +8,7 @@ const TABS: { key: TabKey; label: string; icon: IconName }[] = [
   { key: "today", label: "Today", icon: "today" },
   { key: "plan", label: "Plan", icon: "plan" },
   { key: "progress", label: "Progress", icon: "progress" },
-  { key: "friends", label: "Friends", icon: "friends" },
+  { key: "league", label: "League", icon: "podium" },
   { key: "profile", label: "Profile", icon: "profile" },
 ];
 

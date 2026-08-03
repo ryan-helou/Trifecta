@@ -13,7 +13,9 @@ export type IconName =
   | "smile" | "neutral" | "frown"
   | "flame" | "medal" | "calendar" | "stopwatch" | "chat" | "flag" | "trophy"
   | "search" | "heart" | "target" | "signal" | "bell" | "install" | "bolt"
-  | "dumbbell" | "check" | "skip";
+  | "dumbbell" | "check" | "skip"
+  // league — badge tiers and the podium tab mark
+  | "crown" | "compass" | "shield" | "star" | "rings" | "mountain" | "wave" | "podium";
 
 export function Icon({
   name,
@@ -208,6 +210,64 @@ export function Icon({
           <path d="M7.5 4.5h9v4a4.5 4.5 0 0 1-9 0z" />
           <path d="M7.5 6H5a2 2 0 0 0 2 3M16.5 6H19a2 2 0 0 1-2 3" />
           <path d="M12 13v3M9 20h6M9.5 20l.5-4h4l.5 4" />
+        </svg>
+      );
+    // ---- league ----
+    case "podium":
+      return (
+        <svg {...p}>{t}
+          <path d="M9.5 10.5h5V21h-5z" />
+          <path d="M3 14.5h6.5V21H3z" />
+          <path d="M14.5 12.5H21V21h-6.5z" />
+          <path d="M12 3l1.2 2.5 2.8.4-2 2 .5 2.7L12 9.3 9.5 10.6l.5-2.7-2-2 2.8-.4z" />
+        </svg>
+      );
+    case "crown":
+      return (
+        <svg {...p}>{t}
+          <path d="M4 17.5h16" />
+          <path d="M3.5 7.5l3.5 4L12 5l5 6.5 3.5-4-1.5 8.5h-15z" />
+        </svg>
+      );
+    case "compass":
+      return (
+        <svg {...p}>{t}
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M15.5 8.5l-2 5-5 2 2-5z" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...p}>{t}
+          <path d="M12 3l7 2.5v6c0 4-3 7.5-7 9.5-4-2-7-5.5-7-9.5v-6z" />
+        </svg>
+      );
+    case "star":
+      return (
+        <svg {...p}>{t}
+          <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.7l5.9-.8z" />
+        </svg>
+      );
+    case "rings":
+      return (
+        <svg {...p}>{t}
+          <circle cx="7.5" cy="12" r="4.5" />
+          <circle cx="16.5" cy="12" r="4.5" />
+          <circle cx="12" cy="12" r="4.5" />
+        </svg>
+      );
+    case "mountain":
+      return (
+        <svg {...p}>{t}
+          <path d="M2.5 19.5l6.5-11 4 6.5 2.5-4 6 8.5z" />
+          <path d="M9 8.5l2.2 3.7" />
+        </svg>
+      );
+    case "wave":
+      return (
+        <svg {...p}>{t}
+          <path d="M2 9.5q2.5-3 5 0t5 0 5 0 5 0" />
+          <path d="M2 15q2.5-3 5 0t5 0 5 0 5 0" />
         </svg>
       );
     case "search":
