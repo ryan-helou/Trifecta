@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth-server";
 import { getStore } from "@/lib/db";
 import { STRAVA_SCOPE, applyActivityToUser, exchangeCode, fetchRecentActivities } from "@/lib/strava";
+import { recordStravaActivity } from "@/lib/league/ingest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,7 +77,10 @@ export async function GET(req: NextRequest) {
     try {
       const after = Math.floor(Date.now() / 1000) - 14 * 86400;
       const acts = await fetchRecentActivities(tokenExchange.accessToken, after, 30);
-      for (const a of acts) await applyActivityToUser(store, uid, a);
+      for (const a of acts) {
+        await applyActivityToUser(store, uid, a);
+        await recordStravaActivity(store, uid, a);
+      }
       await store.touchStravaSync(uid);
     } catch { /* backfill is optional */ }
 

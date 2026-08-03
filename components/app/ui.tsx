@@ -38,7 +38,7 @@ export interface UIActions {
   adapt(suggestion: AdaptationSuggestion): void;
 }
 
-export type TabKey = "today" | "plan" | "progress" | "friends" | "profile";
+export type TabKey = "today" | "plan" | "progress" | "league" | "profile";
 
 export interface UICtxValue {
   today: string;
