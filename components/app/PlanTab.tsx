@@ -4,10 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { SwipeableWorkout } from "./SwipeableWorkout";
-import { PhaseBar, weekOfDate } from "./widgets";
+import { weekOfDate } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
 import { addDays, weekdayShort, fmtDayMonth } from "@/lib/dates";
-import { fmtDuration } from "@/lib/format";
 import { haptic } from "@/lib/haptics";
 import { isFitnessGoal } from "@/lib/planEngine";
 import { Plan, Week } from "@/lib/types";
@@ -62,11 +61,11 @@ export function PlanTab() {
                 <span className="inline-flex items-center gap-1"><Icon name="flag" size={14} />Race</span>
               ) : w.isRecovery ? (
                 <span className="inline-flex items-center gap-1" title="Recovery week">
-                  {w.label.replace(" · Recovery", "")}
+                  Week {w.index + 1}
                   <Icon name="rest" size={13} />
                 </span>
               ) : (
-                w.label
+                `Week ${w.index + 1}`
               )}
             </button>
           );
@@ -84,9 +83,8 @@ export function PlanTab() {
             ‹
           </button>
           <div>
-            <div className="font-display text-[1.15rem] font-semibold">{week.label}</div>
-            <div className="eyebrow mt-1 text-[0.7rem]">
-              {week.phase} phase · {fmtDuration(week.targetHours * 3600)} target
+            <div className="font-display text-[1.15rem] font-semibold">
+              {week.isRaceWeek ? "Race week" : `Week ${week.index + 1}`}
             </div>
           </div>
           <button
