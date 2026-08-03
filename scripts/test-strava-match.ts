@@ -1,5 +1,6 @@
 /* Unit checks for the Strava activity → workout matcher + applier (no network / DB). */
 import { activityLocalDay, actualsFromActivity, applyActivityToUser, disciplineOf, matchActivityToWorkout } from "../lib/strava";
+import { applyActivityToPlan, type Activity } from "../lib/activity";
 import type { AppState, Store } from "../lib/db";
 import type { Plan, Workout } from "../lib/types";
 
@@ -167,6 +168,39 @@ const run500 = { id: 500, type: "Run", name: "Morning Run", start_date_local: "2
   await applyActivityToUser(twoBonus.store, "u1", { id: 950, type: "Run", start_date_local: "2026-07-21T06:00:00Z", moving_time: 1200 });
   await applyActivityToUser(twoBonus.store, "u1", { id: 951, type: "Run", start_date_local: "2026-07-21T18:00:00Z", moving_time: 1500 });
   eq("two bonus unique ids", !!twoBonus.plan().workouts["synced-2026-07-21-run"] && !!twoBonus.plan().workouts["synced-2026-07-21-run-2"], true);
+
+  // ---- cross-source dedup: the same physical run via BOTH feeds counts ONCE ----
+
+  // Apple Watch → Apple Health already logged an off-plan run as a bonus done session.
+  const bothSrc = fakeStore({
+    plan: applyPlan({
+      hk: {
+        ...w("hk", "2026-07-21", "run", 2760, "done"),
+        actuals: { source: "healthkit", activityId: "HK-1", durationSec: 2760, startedAtISO: "2026-07-21T06:30:00Z" },
+        actualDurationSec: 2760,
+      },
+    }),
+  });
+  // the SAME run also lands on Strava (different id, starts a minute later) → must dedup
+  const stravaDup = { id: 1000, type: "Run", start_date_local: "2026-07-21T06:31:00Z", moving_time: 2740, distance: 8000 };
+  const deduped = await applyActivityToUser(bothSrc.store, "u1", stravaDup);
+  eq("strava dup of an Apple Health run does not apply", deduped.matched, false);
+  eq("strava dup creates no second session", Object.keys(bothSrc.plan().workouts).length, 1);
+
+  // reverse: plan carries a Strava run, Apple Health reports the same one → null (client path)
+  const stravaPlan = applyPlan({
+    st: {
+      ...w("st", "2026-07-21", "run", 2760, "done"),
+      actuals: { source: "strava", activityId: 2000, durationSec: 2760, startedAtISO: "2026-07-21T06:30:00Z" },
+      actualDurationSec: 2760,
+    },
+  });
+  const hkDup: Activity = { source: "healthkit", id: "HK-2", discipline: "run", localDay: "2026-07-21", startISO: "2026-07-21T06:32:00Z", durationSec: 2750 };
+  eq("apple-health dup of a Strava run returns null", applyActivityToPlan(stravaPlan, hkDup), null);
+
+  // NOT a dup: a genuinely separate run later the same day from the other feed still counts
+  const laterHk: Activity = { source: "healthkit", id: "HK-3", discipline: "run", localDay: "2026-07-21", startISO: "2026-07-21T18:00:00Z", durationSec: 1800 };
+  eq("distinct cross-source run still applies (creates a bonus)", applyActivityToPlan(stravaPlan, laterHk) !== null, true);
 
   console.log(`\nStrava matcher: ${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
