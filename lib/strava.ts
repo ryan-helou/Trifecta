@@ -2,6 +2,7 @@ import type { Store } from "./db";
 import type { StravaConn } from "./db";
 import type { Discipline, Plan, Workout, WorkoutActuals, Zone } from "./types";
 import { setStatus, reindexWeeks } from "./adapt";
+import { crossSourceDuplicate } from "./activity";
 import { dayIndexOf } from "./dates";
 
 // ---------------------------------------------------------------------------
@@ -335,6 +336,18 @@ export async function applyActivityToUser(store: Store, userId: string, a: Strav
       workoutId = match.workoutId;
       title = existing.title;
     } else {
+      // no planned session → we'd create a bonus. First guard against the same physical
+      // activity already applied via Apple Health (different id, so the carrier check
+      // above missed it) — otherwise the run counts twice in the load charts.
+      const disc = disciplineOf(a);
+      const day = activityLocalDay(a);
+      if (
+        disc &&
+        day &&
+        crossSourceDuplicate(plan, { source: "strava", discipline: disc, localDay: day, startISO: a.start_date, durationSec: a.moving_time ?? a.elapsed_time ?? 0 })
+      ) {
+        return { matched: false };
+      }
       const bonus = addBonusWorkoutFromStrava(plan, a);
       if (!bonus) return { matched: false };
       updatedPlan = bonus.plan;

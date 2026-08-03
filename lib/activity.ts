@@ -48,6 +48,32 @@ export function matchActivity(plan: Plan, a: Activity): Match | null {
   return { workoutId: candidates[0].id, confidence: "medium" };
 }
 
+/** True when a completed session already in the plan is the SAME physical activity as
+ *  this one, arriving from a DIFFERENT source — Strava and Apple Health both report one
+ *  run, with different ids, so the same-id carrier check can't catch it and both would
+ *  otherwise create a bonus session and double-count training load (corrupting CTL/ATL/
+ *  TSB). Matches on same local day + discipline (brick-tolerant) and either overlapping
+ *  start (<15 min apart) or near-equal duration. Same-SOURCE same-day sessions are left
+ *  alone — those are genuine doubles (an AM run and a PM run). Pure. */
+export function crossSourceDuplicate(
+  plan: Plan,
+  x: { source: WorkoutActuals["source"]; discipline: Discipline; localDay: string; startISO?: string; durationSec: number },
+): boolean {
+  const startX = x.startISO ? Date.parse(x.startISO) : NaN;
+  return Object.values(plan.workouts).some((w) => {
+    const ac = w.actuals;
+    if (!ac || ac.source === x.source) return false; // only dedup ACROSS sources
+    if (w.date !== x.localDay) return false;
+    const discOk =
+      w.discipline === x.discipline || (w.discipline === "brick" && (x.discipline === "run" || x.discipline === "bike"));
+    if (!discOk) return false;
+    const startW = ac.startedAtISO ? Date.parse(ac.startedAtISO) : NaN;
+    if (!Number.isNaN(startX) && !Number.isNaN(startW)) return Math.abs(startX - startW) <= 15 * 60 * 1000;
+    const dw = ac.durationSec ?? 0;
+    return dw > 0 && Math.abs(dw - x.durationSec) / Math.max(dw, x.durationSec) <= 0.2;
+  });
+}
+
 export function actualsFromActivity(a: Activity): WorkoutActuals {
   return {
     source: a.source,
@@ -110,9 +136,15 @@ export function applyActivityToPlan(plan: Plan, a: Activity): { plan: Plan; work
   if (carrier) return null;
 
   const match = matchActivity(plan, a);
-  if (!match) return addBonusWorkout(plan, a);
-  const existing = plan.workouts[match.workoutId];
-  if (!existing) return addBonusWorkout(plan, a);
+  const existing = match ? plan.workouts[match.workoutId] : undefined;
+  if (!match || !existing) {
+    // no planned session to complete → we'd create a bonus. First guard against the
+    // same physical activity already landing via another feed (Strava + Apple Health).
+    if (crossSourceDuplicate(plan, { source: a.source, discipline: a.discipline, localDay: a.localDay, startISO: a.startISO, durationSec: a.durationSec })) {
+      return null;
+    }
+    return addBonusWorkout(plan, a);
+  }
 
   const done = setStatus(plan, match.workoutId, "done");
   const acts = actualsFromActivity(a);

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiStravaDisconnect, apiStravaStatus, apiStravaSync, StravaStatus } from "@/lib/api";
 import { useApp } from "../AppProvider";
 import { healthAvailable, requestHealthAuth, syncAppleHealth } from "@/lib/health";
+import { HEALTH_AUTOSYNC_KEY } from "./useAppleHealthAutoSync";
 import { IS_NATIVE } from "@/lib/runtime";
 import { useToast } from "./Toast";
 
@@ -182,6 +183,9 @@ function AppleHealthCard() {
 
   const sync = async () => {
     setBusy(true);
+    // Tapping Sync is the opt-in: from now on we auto-read HealthKit on app open + resume
+    // so completions land without a manual tap. (Reads no-op if access was never granted.)
+    try { localStorage.setItem(HEALTH_AUTOSYNC_KEY, "1"); } catch {}
     // Ask, then read. We do NOT branch on the return value: iOS never reveals whether
     // read access was granted, so the only honest signal is what the read gives back.
     // Branching on it told athletes who had just tapped Allow that "access is off".
