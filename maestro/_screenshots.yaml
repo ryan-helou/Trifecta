@@ -21,6 +21,11 @@
 # Tabs are tapped by POINT (five equal columns pinned to the bottom), same as _tour.yaml.
 # Login fills PASSWORD FIRST then username and submits with Enter — see _tour.yaml for
 # the WKWebView focus trap that makes any other order silently concatenate the fields.
+#
+# The "logged in" gate is the word LEAGUE, not "Friends". The league merge renamed that
+# tab; "Friends" now survives only as an eyebrow INSIDE the League tab, so it is absent
+# from Today and the old assertion could never pass. NOTE: _tour.yaml, _deep-tour.yaml
+# and _strava-review.yaml still gate on "Friends" and have the same problem.
 appId: app.trifecta.mobile
 ---
 - launchApp:
@@ -39,9 +44,12 @@ appId: app.trifecta.mobile
       - tapOn: "Not Now"
       - waitForAnimationToEnd:
           timeout: 3000
+# 120s, not 60s. On a freshly created simulator the first launch after an install has to
+# cold-start the WKWebView AND fetch the app shell over the network; it has overshot 60s
+# twice, failing a run on an app that was rendering perfectly a moment later.
 - extendedWaitUntil:
     visible: "Create your plan"
-    timeout: 60000
+    timeout: 120000
 - extendedWaitUntil:
     visible: ".*Sign in.*"
     timeout: 15000
@@ -65,7 +73,7 @@ appId: app.trifecta.mobile
       - inputText: "trifectademo"
       - pressKey: Enter
       - extendedWaitUntil:
-          visible: "Friends"
+          visible: "League"
           timeout: 60000
 - waitForAnimationToEnd:
     timeout: 6000
@@ -74,14 +82,33 @@ appId: app.trifecta.mobile
 - takeScreenshot: store-1-today
 
 # 2 — the session itself: interval shape, why it matters, per-step targets
+#
+# ${SHOT_SESSION} is the next UPCOMING session, injected by scripts/screenshots-ios.sh.
+# It is deliberately not today's: late in the day the Today screen grows a "QUICK CHECK —
+# Nailed today's <session>?" card that repeats the title above the list, and Maestro
+# matches case-insensitively, so a title regex lands on that card instead of the row.
+# Today's row also has a mark-done toggle carrying the same title. An upcoming session has
+# neither, so a plain title tap is unambiguous.
 - scrollUntilVisible:
-    element: ".*Technique.*"
+    element: ".*${SHOT_SESSION}.*"
     direction: DOWN
     centerElement: true
     timeout: 25000
-- tapOn: ".*Technique.*"
+- tapOn: ".*${SHOT_SESSION}.*"
 - waitForAnimationToEnd:
     timeout: 6000
+# Expand "Session structure". It is COLLAPSED by default (a deliberate product choice —
+# see WorkoutDetail.tsx), which means the sheet opens on a stack of action buttons. That
+# makes a poor screenshot: this frame is captioned "Not just what to do. Why." and the
+# per-interval targets are the whole point of it. One tap turns the shot back into the
+# session breakdown.
+#
+# Wrapped in .* because Maestro matches the WHOLE accessibility label as a regex, and the
+# label for this control is "Session structure Show ▾" — the disclosure state is part of
+# the same node, so the bare string never matches.
+- tapOn: ".*Session structure.*"
+- waitForAnimationToEnd:
+    timeout: 3000
 - takeScreenshot: store-2-session
 
 # 3 — guided player, a beat after it starts so the timer reads as live
@@ -108,7 +135,7 @@ appId: app.trifecta.mobile
 # that a cold boot restores the session (see relaunch.yaml).
 - launchApp
 - extendedWaitUntil:
-    visible: "Friends"
+    visible: "League"
     timeout: 60000
 - waitForAnimationToEnd:
     timeout: 6000

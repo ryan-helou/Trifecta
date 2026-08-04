@@ -14,6 +14,9 @@
     "icons": "node scripts/gen-icons.mjs",
     "assets:native": "node scripts/gen-native-assets.mjs",
     "build:static": "node scripts/build-static.mjs",
+    "store:capture": "scripts/screenshots-ios.sh",
+    "store:frames": "node scripts/gen-store-frames.mjs",
+    "store:shots": "npm run store:capture && npm run store:frames",
     "ota": "npm run build:static && npx @capgo/cli bundle upload --path out --channel production",
     "test": "tsx test/engine.test.ts && tsx test/load.test.ts && tsx test/why.test.ts && tsx test/redflags.test.ts && tsx test/analytics.test.ts && tsx test/auth.test.ts && tsx test/health-privacy.test.ts && tsx scripts/test-strava-match.ts && tsx test/league.test.ts && tsx test/session.test.ts"
   },

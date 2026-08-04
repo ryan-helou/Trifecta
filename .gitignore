@@ -43,3 +43,9 @@ next-env.d.ts
 
 # iOS self-test artifacts (screenshots, junit)
 artifacts/
+
+# inlined webfonts cached by scripts/gen-store-frames.mjs (re-fetched on demand)
+.cache/
+
+# transient snapshot copy used to run a capture without live-editing the original
+scripts/.capture-run.tmp.sh
