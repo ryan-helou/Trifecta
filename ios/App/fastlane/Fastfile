@@ -346,10 +346,22 @@ platform :ios do
       keywords: rd.call("keywords.txt"),
       promotionalText: rd.call("promotional_text.txt"),
       supportUrl: rd.call("support_url.txt"),
-      marketingUrl: rd.call("marketing_url.txt")
+      marketingUrl: rd.call("marketing_url.txt"),
+      # "What's New", which this lane used to omit entirely — so release_notes.txt was
+      # written, committed, and never actually reached App Store Connect. Apple rejects
+      # it on a FIRST version (there is nothing to be new against), hence the rescue:
+      # 1.0 had none, every version after it does.
+      whatsNew: rd.call("release_notes.txt")
     }.reject { |_, v| v.to_s.empty? }
-    vloc.update(attributes: vattrs)
-    UI.success("version copy set (#{vloc.locale}): #{vattrs.keys.join(', ')}")
+    begin
+      vloc.update(attributes: vattrs)
+      UI.success("version copy set (#{vloc.locale}): #{vattrs.keys.join(', ')}")
+    rescue => e
+      UI.important("full update failed (#{e.message}) — retrying without whatsNew")
+      vattrs.delete(:whatsNew)
+      vloc.update(attributes: vattrs)
+      UI.success("version copy set without whatsNew (#{vloc.locale}): #{vattrs.keys.join(', ')}")
+    end
 
     # app-level copy (name / subtitle / privacy url)
     app_info = app.fetch_edit_app_info
@@ -368,6 +380,30 @@ platform :ios do
       UI.success("categories set: Health & Fitness / Sports")
     rescue => e
       UI.important("category set skipped: #{e.message}")
+    end
+  end
+
+  desc "Create the next editable App Store version (metadata/screenshots need one). Usage: fastlane store_version version:1.0.1"
+  # A live app has NO editable version — 1.0 sits at READY_FOR_SALE and every metadata
+  # lane below silently has nothing to write to. iOS has no metadata-only update path
+  # (that's a macOS thing), so changing so much as a screenshot means a new version,
+  # which in turn needs a build whose CFBundleShortVersionString matches it.
+  lane :store_version do |opts|
+    asc_key
+    version = opts[:version] || UI.user_error!("pass version:1.0.1")
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    existing = (app.get_edit_app_store_version rescue nil)
+    if existing
+      UI.success("editable version already exists: #{existing.version_string}")
+    else
+      # NOT AppStoreVersion.create — that class method doesn't exist in spaceship 2.237.
+      # The version is posted against the app.
+      resp = Spaceship::ConnectAPI.post_app_store_version(
+        app_id: app.id,
+        attributes: { versionString: version, platform: "IOS" }
+      )
+      created = resp.to_models.first
+      UI.success("created App Store version #{created.version_string} (#{created.id})")
     end
   end
 

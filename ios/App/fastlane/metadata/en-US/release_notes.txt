@@ -1,1 +1,11 @@
-Welcome to Trifecta. Build an adaptive triathlon plan for your race, train across swim, bike, and run, and watch it recalibrate as your training unfolds. Connect Apple Health or Strava to auto-complete sessions from your watch.
+LEAGUES — Start a points competition with friends. Log swims, rides, runs and gym sessions, and watch the leaderboard move through the week.
+
+APPLE HEALTH, HANDS OFF — Workouts now sync automatically when you open the app, and a session already recorded elsewhere is matched rather than counted twice.
+
+PROGRESS LOOKS FORWARD — The Form chart projects the arc all the way to race day, so you can see where the plan is taking you, not just where you have been.
+
+ONBOARDING — Preview your plan and adjust it before creating an account. New to triathlon? There is a plain-language explainer for picking a race.
+
+CLEARER PLAN — Training weeks are labelled simply "Week 1", "Week 2", and so on, instead of coaching jargon.
+
+FIXES — The Profile tab could render blank in some cases; that is fixed. Signing out now properly ends your session. The day-one "missed sessions" warning is gone, swiping a session is easier to discover, and eased sessions say so.
