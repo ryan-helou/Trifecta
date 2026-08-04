@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { Plan, Profile } from "@/lib/types";
+import { profileToPersist, resolveProfile } from "@/lib/session";
 import { apiDeleteAccount, apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
 import { clearToken, loadToken, setToken } from "@/lib/tokenStore";
 import { notifyAppReady } from "@/lib/ota";
@@ -155,10 +156,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const pendingRestoreRef = useRef<RestoredSession | null>(null);
   const [pendingSession, setPendingSession] = useState<{ username: string } | null>(null);
 
+  // The single choke point for every restore (online boot, offline cache, and the
+  // adopt-pending-session path), so the profile repair below covers all three.
   const applyRestored = useCallback((r: RestoredSession) => {
     versionRef.current = r.version;
     setUsername(r.username);
-    setProfile(r.profile);
+    // resolveProfile, not r.profile: a stored state can carry a plan with no
+    // top-level profile, which used to render the Profile tab completely blank.
+    // The plan's embedded copy recovers it, and the next save writes it back.
+    setProfile(resolveProfile(r.profile, r.plan));
     setPlan(r.plan);
   }, []);
 
@@ -296,8 +302,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const persist = useCallback(
     (uname: string | null, prof: Profile | null, pl: Plan | null) => {
       if (!uname) return;
-      writeCache(uname, prof, pl);
-      pendingRef.current = { uname, prof, pl };
+      // Never let a momentarily-null profile overwrite the one the plan still
+      // carries — that single bad write is what stranded athletes with a blank
+      // Profile tab in the first place.
+      const safeProf = profileToPersist(prof, pl);
+      writeCache(uname, safeProf, pl);
+      pendingRef.current = { uname, prof: safeProf, pl };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         saveTimer.current = null;
@@ -368,8 +378,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!ok) return data.error || "Could not sign in.";
     if (data.token) setToken(data.token); // native: cache now + persist to Keychain in the background
     const st = data.state ?? {};
-    const prof = (st.profile as Profile) ?? null;
     const pl = (st.plan as Plan) ?? null;
+    // same repair as applyRestored — signing in must never land on a blank Profile
+    const prof = resolveProfile(st.profile as Profile | null, pl);
     versionRef.current = typeof data.version === "number" ? data.version : 0;
     latestRef.current = { username: data.user.username, profile: prof, plan: pl };
     setUsername(data.user.username);

@@ -13,14 +13,21 @@ import { Connections } from "./Connections";
 import { Notifications } from "./Notifications";
 import { Wordmark } from "../Wordmark";
 import { legalHref } from "@/lib/runtime";
+import { resolveProfile } from "@/lib/session";
 
 export function ProfileTab() {
-  const { plan, username, profile, logout, deleteAccount, resetPlan } = useApp();
+  const { plan, username, profile: storedProfile, logout, deleteAccount, resetPlan } = useApp();
   const { actions, today, openSettings } = useUI();
   const toast = useToast();
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Belt and braces on top of the repair in AppProvider. This tab used to bail on
+  // `!profile`, which rendered NOTHING — a completely blank Profile for anyone whose
+  // stored state had a plan but no top-level profile, while every other tab (they read
+  // plan.profile) worked normally. A plan always embeds a profile, so read through to
+  // it rather than showing the athlete an empty screen with no way out.
+  const profile = resolveProfile(storedProfile, plan);
   if (!plan || !profile) return null;
 
   const recalibrate = () => {
