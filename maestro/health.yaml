@@ -45,8 +45,10 @@ appId: app.trifecta.mobile
 - assertVisible: "trifectademo"
 - tapOn: "••••••••"
 - inputText: "demopass123"
-- tapOn: "Password"
-- tapOn: "Sign in"
+# Submit with Enter from the focused password field. Tapping "Sign in" broke on
+# iOS 26 / iPhone 17: the keyboard accessory bar covers the button, so the tap never
+# submits and the flow dies on the first logged-in assertion. See maestro/login.yaml.
+- pressKey: Enter
 # The demo account already has a plan, so login lands on the app shell, not onboarding.
 - extendedWaitUntil:
     visible: "Profile"
@@ -61,6 +63,16 @@ appId: app.trifecta.mobile
     visible: "Apple Health"
     timeout: 15000
 - takeScreenshot: 10-profile-apple-health
+# Scroll the card fully into view before asserting its body copy. The section HEADER
+# ("Apple Health") lands on screen while the card itself is still below the fold —
+# how far down depends on what else the demo account renders above it, and the
+# "You've missed N sessions" banner alone pushes it off (artifacts/ios/step-023-*.png
+# caught exactly that: header visible at the bottom edge, bullets off-screen, so
+# assertVisible on the copy was false while the card was perfectly fine).
+- scrollUntilVisible:
+    element: ".*never writes to Apple Health.*"
+    direction: DOWN
+    timeout: 20000
 - assertVisible: "Auto-complete from Apple Health"
 - assertVisible: ".*never writes to Apple Health.*"
 - assertVisible: ".*Sync with Apple Health.*"

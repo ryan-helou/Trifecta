@@ -55,18 +55,38 @@ appId: app.trifecta.mobile
 # resolves against stable coordinates.
 # (hideKeyboard can't dismiss a WKWebView keyboard — Maestro errors. Tapping inert
 # copy blurs the focused input, which drops the keyboard and restores the layout.)
-- tapOn: "ironmike"                          # username field
-- inputText: "simtest_qa"
-- tapOn: "Password"                          # inert label: blurs input → keyboard down
-- assertVisible: "simtest_qa"               # confirm the field actually received the text
+# Retried as a unit: this step is the flow's one remaining flake (~1 run in 3 —
+# `"simtest_qa" is visible` false). The keyboard animating up as the tap lands is
+# enough for the character stream to go to the wrong element, and a half-typed
+# username then fails auth far downstream where the cause is invisible. Retrying the
+# tap+type+verify together turns a transient into a non-event; the assert stays
+# INSIDE the retry so a bad attempt is what triggers the next one.
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: "ironmike"                    # username field
+      - waitForAnimationToEnd:               # let the keyboard settle before typing
+          timeout: 3000
+      - inputText: "simtest_qa"
+      - tapOn: "Password"                    # inert label: blurs input → keyboard down
+      - assertVisible: "simtest_qa"          # confirm the field actually received the text
 - tapOn: "••••••••"                          # password field
 - inputText: "simpass123"
-- tapOn: "Password"                          # blur again before locating the button
-# Submit via the button now that the keyboard is down and it's fully on-screen.
-# Exact match on purpose: the arrow is aria-hidden so the button reads as just
-# "Sign in", while a wildcard would also match the lede "Sign in to pick up your
-# plan…" and tap inert copy instead of submitting.
-- tapOn: "Sign in"                           # submit → POST /api/auth/login
+# Submit with Enter, from inside the focused password field — do NOT go back to
+# tapping the "Sign in" button.
+#
+# Tapping it worked until the keyboard's accessory bar (the ^ v Done toolbar) stopped
+# going away with the keyboard on iOS 26 / iPhone 17. The bar sits exactly over the
+# button, so the tap lands on the toolbar, the form is never submitted, and all four
+# flows then die downstream on their first logged-in assertion — health/legal/relaunch
+# reporting `"Profile" is visible` false and login reporting the onboarding heading,
+# which points at the wrong screen entirely. (artifacts/ios/step-018-*.png shows the
+# bar covering the button.)
+#
+# The form is a real <form onSubmit> with <button type="submit"> (components/AuthScreen.tsx),
+# so Enter submits natively — no need to locate the button at all, and nothing can
+# overlap a keypress.
+- pressKey: Enter                            # submit → POST /api/auth/login
 - extendedWaitUntil:
     visible: "What are you training for?"    # onboarding = auth succeeded + state loaded
     timeout: 30000          # login round-trip (incl. possible Railway cold start) + render

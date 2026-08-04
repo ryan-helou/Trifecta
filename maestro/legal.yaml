@@ -40,8 +40,10 @@ appId: app.trifecta.mobile
 - assertVisible: "trifectademo"
 - tapOn: "••••••••"
 - inputText: "demopass123"
-- tapOn: "Password"
-- tapOn: "Sign in"
+# Submit with Enter from the focused password field. Tapping "Sign in" broke on
+# iOS 26 / iPhone 17: the keyboard accessory bar covers the button, so the tap never
+# submits and the flow dies on the first logged-in assertion. See maestro/login.yaml.
+- pressKey: Enter
 - extendedWaitUntil:
     visible: "Profile"
     timeout: 40000
