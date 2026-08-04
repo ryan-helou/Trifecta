@@ -71,12 +71,17 @@ async function main() {
   // embedded profile), so it must move too or the countdown desyncs from the week position.
   (plan as { raceDateISO?: string }).raceDateISO = shiftedRace;
 
-  // Mark every session up to today as completed (so no "you missed sessions" nudge, and
+  // Mark every session BEFORE today as completed (so no "you missed sessions" nudge, and
   // Progress shows a streak + banked volume + a real fitness curve instead of an empty shell).
+  //
+  // Today's session is deliberately left OPEN. Completing it too makes the demo account
+  // useless for the two things the App Store screenshots exist to show: a Today screen
+  // with work still ahead of you, and the guided player — a finished session has no
+  // "Start guided session" to tap. It also just reads better; nobody markets a rest state.
   const today = new Date().toISOString().slice(0, 10);
   let done = 0;
   for (const w of Object.values(plan.workouts)) {
-    if (w.date <= today && w.discipline !== "rest") {
+    if (w.date < today && w.discipline !== "rest") {
       w.status = "done";
       w.actualDurationSec = w.estDurationSec;
       if (w.estDistanceM) w.actualDistanceM = w.estDistanceM;
@@ -85,7 +90,15 @@ async function main() {
       done++;
     }
   }
-  console.log("generated plan:", plan.weeks.length, "weeks,", Object.keys(plan.workouts).length, "workouts;", done, "marked done through", today);
+
+  // The screenshot flow has to tap today's session by name, and that name changes with
+  // the date. Print it so scripts/screenshots-ios.sh can pass it into Maestro instead of
+  // hardcoding a title that silently stops matching tomorrow.
+  const todaysSession = Object.values(plan.workouts).find(
+    (w) => w.date === today && w.discipline !== "rest",
+  );
+  console.log("generated plan:", plan.weeks.length, "weeks,", Object.keys(plan.workouts).length, "workouts;", done, "marked done before", today);
+  console.log("TODAY_SESSION=" + (todaysSession?.title ?? ""));
 
   const j = { "Content-Type": "application/json" };
   let res = await fetch(`${API}/api/auth/signup`, { method: "POST", headers: j, body: JSON.stringify({ username: USER, password: PASS }) });

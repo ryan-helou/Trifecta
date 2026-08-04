@@ -372,6 +372,13 @@ platform :ios do
   end
 
   desc "Upload ONLY screenshots via deliver (screenshot path doesn't hit the review-detail bug). No submit."
+  # What this uploads are the MARKETING FRAMES in fastlane/screenshots/en-US — captioned,
+  # device-framed artwork, not bare simulator captures. Regenerate them before uploading:
+  #
+  #   npm run store:shots      # capture on the sim, then wrap in frames
+  #
+  # Raw captures live one directory over in fastlane/screenshots-raw/ precisely so they
+  # can't be picked up by deliver and shipped as-is.
   lane :store_shots do
     deliver(
       api_key: asc_key,
