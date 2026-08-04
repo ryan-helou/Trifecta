@@ -45,8 +45,8 @@ appId: app.trifecta.mobile
 - tapOn: "Password"
 - tapOn: "••••••••"
 - inputText: "simpass123"
-- tapOn: "Password"
-- tapOn: "Sign in"
+# Submit with Enter — the keyboard accessory bar covers the button on iOS 26. See login.yaml.
+- pressKey: Enter
 # The tab shell is up once the bottom nav paints.
 - extendedWaitUntil:
     visible: "League"
