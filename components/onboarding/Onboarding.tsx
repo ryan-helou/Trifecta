@@ -528,7 +528,15 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
             and read as half-rendered. Auto margins collapse to zero once a step is
             taller than the space (health screening, review), so those still start at
             the top and scroll normally; justify-center would have clipped their heads. */}
-        <div key={step} className="animate-fade-up flex flex-1 flex-col">
+        {/* The footer below is `sticky`, so on a step taller than the viewport it parks
+            over the tail of the content. This is the clearance that lets the last item
+            scroll out from under it.
+            pb-6 was measured against the race options and still left the row BELOW them
+            — "New to triathlon? What's the difference?" — sliced through the middle. The
+            footer is a hairline + pt-3 + a py-3.5 text-base button + the bottom safe-area
+            inset, i.e. ~80pt on a notched phone, so the clearance has to match that, not
+            the height of one option card. */}
+        <div key={step} className="animate-fade-up flex flex-1 flex-col pb-20">
           <div className="my-auto w-full">
           {step === "race" && <RaceStep draft={draft} set={setDraft} />}
           {step === "custom" && <CustomStep draft={draft} set={setDraft} />}

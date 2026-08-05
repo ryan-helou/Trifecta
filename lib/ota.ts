@@ -1,5 +1,6 @@
 import { IS_NATIVE } from "./runtime";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
+import { SplashScreen } from "@capacitor/splash-screen";
 
 // Capgo OTA. On the bundled native build (Path B) the updater auto-downloads new
 // bundles; calling notifyAppReady() tells it the current bundle booted OK so it
@@ -16,5 +17,15 @@ export async function notifyAppReady(): Promise<void> {
     await CapacitorUpdater.notifyAppReady();
   } catch {
     /* web / plugin unavailable */
+  }
+  // Now that the bundle has booted, drop the native launch screen. It is held open
+  // (launchAutoHide:false) so a cold start never flashes blank white between the
+  // launch mark and the first painted frame. STATICALLY imported for the same reason
+  // as the updater above: a lazy import() of a Capacitor plugin hangs forever in the
+  // bundled WKWebView, and a hang here would leave the splash up permanently.
+  try {
+    await SplashScreen.hide();
+  } catch {
+    /* plugin unavailable — nothing to hide */
   }
 }
