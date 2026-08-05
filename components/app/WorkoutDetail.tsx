@@ -13,6 +13,8 @@ import { buildWorkoutFit, fitFilename } from "@/lib/fit";
 import { whyForWorkout } from "@/lib/why";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
+import { useToast } from "./Toast";
+import { renderShareCard, shareCard, shareCardFilename } from "@/lib/shareCard";
 
 /** A short "8 × 100" / "6 × 3′" summary of a session's main repeat set. */
 function repsSummary(w: Workout): string | null {
@@ -130,6 +132,7 @@ function SessionStructure({ sections, paces, unit }: { sections: { label: string
 
 export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
   const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
+  const toast = useToast();
   const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
   const [note, setNote] = useState("");
   const meta = DISCIPLINE_META[workout.discipline];
@@ -141,6 +144,37 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
   // "start guided session" in-app player; that's gone — #111.)
   const canExport =
     !isRace && workout.discipline !== "rest" && workout.discipline !== "strength" && workout.segments.length > 0;
+
+  // Rendering the card takes a beat (fonts + canvas + PNG encode), and the Web Share
+  // sheet must be opened from the same user gesture, so the button reports its own
+  // state rather than looking dead while it works.
+  const [sharing, setSharing] = useState(false);
+  const share = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const blob = await renderShareCard({ workout, plan, unit });
+      if (!blob) throw new Error("no canvas");
+      const result = await shareCard(
+        blob,
+        shareCardFilename(workout),
+        `${workout.title} — trained with Trifecta`,
+      );
+      if (result === "shared") haptic("success");
+      else if (result === "downloaded") {
+        haptic("success");
+        toast({ text: "Card saved to your downloads." });
+      } else if (result === "failed") {
+        haptic("warning");
+        toast({ text: "Couldn't make that card. Try again?", tone: "warning" });
+      }
+    } catch {
+      haptic("warning");
+      toast({ text: "Couldn't make that card. Try again?", tone: "warning" });
+    } finally {
+      setSharing(false);
+    }
+  };
 
   const exportFit = () => {
     try {
@@ -299,6 +333,13 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                   {workout.status === "skipped" ? "Un-skip" : "Skip workout"}
                 </button>
               </div>
+              {/* Only once it's actually done — a card for a session you haven't
+                  trained yet is a claim, not a result. */}
+              {done && (
+                <button onClick={share} disabled={sharing} className="btn btn-ghost w-full py-2.5 text-sm">
+                  <Icon name="install" size={16} /> {sharing ? "Making your card…" : "Share this session"}
+                </button>
+              )}
               {canExport && (
                 <button onClick={exportFit} className="btn btn-ghost w-full py-2.5 text-sm">
                   <Icon name="install" size={16} /> Export to watch (.FIT)

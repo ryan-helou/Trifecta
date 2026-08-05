@@ -27,6 +27,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FRAMES } from "./store-frames.config.mjs";
+import { FONT_CSS, inlineFontCss } from "./lib/fonts.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Overridable so the frame design can be iterated against a scratch copy of the raw
@@ -45,42 +46,8 @@ const CHROME =
   process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 // ---------------------------------------------------------------- fonts
-
-// Chrome's own UA gets woff2 back from the Google Fonts CSS API (an older UA gets ttf).
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
-
-const FONT_CSS = {
-  // Fraunces carries the display voice — variable opsz + wght, and a true italic.
-  fraunces:
-    "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..900&display=swap",
-  geist: "https://fonts.googleapis.com/css2?family=Geist:wght@300..700&display=swap",
-};
-
-function curl(url, binary = false) {
-  return execFileSync("curl", ["-sSL", "-A", UA, url], {
-    encoding: binary ? "buffer" : "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-}
-
-/** Fetch a Google Fonts stylesheet and inline every font file it points at. */
-function inlineFontCss(name, url) {
-  const cached = join(CACHE, `${name}.css`);
-  if (existsSync(cached)) return readFileSync(cached, "utf8");
-
-  console.log(`  fetching ${name}…`);
-  let css = curl(url);
-  const urls = [...new Set([...css.matchAll(/url\((https:\/\/[^)]+)\)/g)].map((m) => m[1]))];
-  for (const fontUrl of urls) {
-    const buf = curl(fontUrl, true);
-    const mime = fontUrl.endsWith(".woff2") ? "font/woff2" : "font/ttf";
-    css = css.split(fontUrl).join(`data:${mime};base64,${buf.toString("base64")}`);
-  }
-  mkdirSync(CACHE, { recursive: true });
-  writeFileSync(cached, css);
-  return css;
-}
+// The fetch/inline/cache machinery lives in lib/fonts.mjs — the OG card generator
+// needs exactly the same brand faces, and one warm cache serves both.
 
 const dataUri = (path, mime = "image/png") =>
   `data:${mime};base64,${readFileSync(path).toString("base64")}`;

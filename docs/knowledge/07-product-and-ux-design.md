@@ -146,16 +146,28 @@ snaps. **The whole motion layer is killed under `@media (prefers-reduced-motion:
 (`globals.css:290`)** — a real accessibility win most competitors skip. Rule: any new animation gets a
 reduced-motion off-switch in the same commit.
 
-### 1.5 Dark mode: the deliberate gap
-There is no dark theme. `html { color-scheme: light }` and the manifest `theme_color`/`background_color`
-are both `#ffffff`. For a `Paper` identity this is defensible — but understand the cost: our user opens
-this at 5am before a swim and at 10pm logging a session, often on an OLED phone where an all-white app
-is a flashbang. WHOOP built its entire glanceable identity on near-black *because* recovery-red pops
-against it. We don't have to become WHOOP, but "no dark mode" should be a **decision with a rationale in
-this doc**, not a default nobody chose. If/when we add it, the token architecture already supports it:
-add a `@media (prefers-color-scheme: dark)` block that re-points the `--*` variables and re-tune the
-zone ramp for contrast on a dark field (the amber/orange zones will need lightening). See §8 for the
-contrast obligations.
+### 1.5 Dark mode: shipped
+**This section used to say "there is no dark theme." That is no longer true** — it shipped, built
+exactly the way this doc predicted, and the note is corrected here rather than left to mislead.
+`app/globals.css` now carries a `@media (prefers-color-scheme: dark)` block that re-points the `--*`
+tokens, plus `:root[data-theme="light"|"dark"]` for an explicit override, and `viewport.themeColor`
+in `app/layout.tsx` is per-scheme (`#ffffff` / `#0d0d0e`). The motivation stands: our athlete opens
+this at 5am before a swim and at 10pm logging a session, often on an OLED phone where an all-white
+app is a flashbang.
+
+Two re-tunings came with it, and both are load-bearing:
+- **Ink inverts.** `--accent` is `#111111` on paper and `#f4f4f2` on ink, with `--on-accent` flipped
+  to match. "Solid ink" is a role, not a colour.
+- **The data palettes were lifted, not just swapped.** Discipline hues brighten for a dark field
+  (`--bike` `#b06f10` → `#e0a437`), and the zone ramp is lightened *and pulled further apart*, because
+  the light-theme amber reads too close to the green on black. `--run` was lifted again on its own so
+  the three legs carry equal luminance in the welcome chart legend.
+
+**The trap this creates:** anything that renders to a FIXED ground — a share card, an OG image, an
+exported PNG — must not read these tokens off the live document, because it will pick up whichever
+theme the athlete happens to be in and paint it onto a surface that is always ink. `lib/shareCard.ts`
+pins the on-ink hues for this reason, and `test/shareCard.test.ts` asserts the light-theme values can
+never appear. See §8 for the contrast obligations.
 
 ---
 

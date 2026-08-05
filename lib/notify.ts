@@ -178,7 +178,9 @@ export async function refreshReminders(plan: Plan, today: string, prefs: NotifPr
         body,
         tag: `trifecta-reminder-${date}`,
         icon: "/icons/icon-192.png",
-        badge: "/icons/icon-192.png",
+        // see public/sw.js — the badge is alpha-only on Android, so it needs the
+        // transparent silhouette, not the opaque app tile
+        badge: "/icons/badge-72.png",
         data: { url: "/" },
         // TimestampTrigger is not in the TS DOM lib yet — feature-detected above.
         showTrigger: new (window as unknown as { TimestampTrigger: new (t: number) => unknown }).TimestampTrigger(ts),
