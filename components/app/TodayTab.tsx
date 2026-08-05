@@ -169,9 +169,18 @@ export function TodayTab() {
             <span className="font-display text-[0.62rem] font-bold tabular-nums">{prog.done}/{prog.total}</span>
           </ProgressRing>
           <div className="min-w-0 flex-1">
-            <div className="truncate font-display text-[0.98rem] font-semibold">{wk.label.replace(" · Recovery", "")}</div>
+            {/* Derived from the index, not the stored `wk.label` — plans generated before
+                #114 still carry "Build 1" in their saved weeks, and PlanTab has always
+                derived it this way, which is exactly why the same week read "Week 9"
+                there and "Build 1" here. */}
+            <div className="truncate font-display text-[0.98rem] font-semibold">
+              {wk.isRaceWeek ? "Race week" : `Week ${wk.index + 1}`}
+            </div>
             <div className="truncate text-xs text-muted">
-              <span className="capitalize">{wk.phase} phase</span>
+              {/* No "Build phase" here — #114. The phase still shapes the training, but
+                  as a label it's coaching jargon the athlete didn't ask for, and the
+                  same week already reads "Week 9" on the Plan tab. */}
+              <span>{prog.done}/{prog.total} done</span>
               {!fitness && plan.raceDateISO && ` · ${Math.max(0, daysBetween(today, plan.raceDateISO))} days to race`}
               {streak.current >= 2 && ` · ${streak.current}-day streak`}
             </div>

@@ -547,6 +547,9 @@ export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSugges
 
   const easeable = next.phase === "base" || next.phase === "build" || next.phase === "peak";
   const alreadyEased = (plan.easedWeeks ?? []).includes(next.index);
+  // Plain "Week N" for anything the athlete reads (#114). Derived, not the stored
+  // week.label, so plans built before the change read correctly too.
+  const nextLabel = next.isRaceWeek ? "race week" : `Week ${next.index + 1}`;
 
   // Cumulative fatigue debt: how far the athlete's real form has drifted BELOW what
   // this block was designed to cost them. Being "deep in it" is not a trigger — that's
@@ -569,7 +572,7 @@ export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSugges
         : cause === "strain"
         ? `Your recent sessions have felt consistently hard.`
         : `Your fatigue has run deeper than this block was designed to put you.`;
-    return { kind: "ease", weekIndex: next.index, weekLabel: next.label, reason, cause, missed, scheduled, avgStrain, signals: strains.length };
+    return { kind: "ease", weekIndex: next.index, weekLabel: nextLabel, reason, cause, missed, scheduled, avgStrain, signals: strains.length };
   }
 
   // AHEAD: nailing it and feeling comfortable — encouragement, no extra load.
@@ -577,7 +580,7 @@ export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSugges
     return {
       kind: "ahead",
       weekIndex: next.index,
-      weekLabel: next.label,
+      weekLabel: nextLabel,
       reason: "You've hit nearly everything and it's feeling comfortable.",
       cause: "strain",
       missed,
