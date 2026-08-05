@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { trimmedMark, knockout, INK, PAPER } from "./lib/brand-mark.mjs";
 
 // ---------------------------------------------------------------------------
 // Native (iOS/Android) source assets for @capacitor/assets.
@@ -18,27 +19,20 @@ const ICONS = path.join(process.cwd(), "public", "icons");
 const OUT = path.join(process.cwd(), "resources");
 await mkdir(OUT, { recursive: true });
 
-const SRC = path.join(ICONS, "tri-logo.jpeg");
+const mark = await trimmedMark(ICONS);
+const bg = { r: 248, g: 248, b: 248, alpha: 1 }; // the logo's own paper ground
+const DARK = { r: 11, g: 18, b: 32, alpha: 1 }; // the app's dark surface
 
-// Trim the uniform border to the artwork's bounding box (same threshold as the
-// PWA icon pipeline in gen-icons.mjs, which the cream ground needs).
-const markObj = await sharp(SRC)
-  .trim({ threshold: 34 })
-  .png()
-  .toBuffer({ resolveWithObject: true });
-const mark = markObj.data;
-console.log(`trimmed mark → ${markObj.info.width}×${markObj.info.height}`);
+// The glyph is knocked out of its paper (see lib/brand-mark.mjs) so it can be
+// recoloured per ground. Ink on the light tile; paper-white on the dark splash,
+// where the mark's own near-black would otherwise be invisible on navy.
+const inkGlyph = await knockout(mark, INK);
+const paperGlyph = await knockout(mark, PAPER);
 
-// Tile colour = the mark's dominant colour (the bright paper ground), so the
-// mark blends into a seamless field rather than sitting on a visible rectangle.
-const { dominant } = await sharp(mark).stats();
-const bg = { r: dominant.r, g: dominant.g, b: dominant.b, alpha: 1 };
-console.log(`ground → rgb(${bg.r},${bg.g},${bg.b})`);
-
-/** Composite the trimmed mark, fitted to `content` of the square, onto an opaque tile. */
-async function tile(size, content, background = bg) {
+/** Composite a glyph, fitted to `content` of the square, onto an opaque tile. */
+async function tile(size, content, background = bg, art = inkGlyph) {
   const inner = Math.round(size * content);
-  const fitted = await sharp(mark)
+  const fitted = await sharp(art)
     .resize(inner, inner, { fit: "inside", withoutEnlargement: false })
     .toBuffer();
   return sharp({
@@ -50,15 +44,14 @@ async function tile(size, content, background = bg) {
     .png();
 }
 
-// App icon — full-bleed, opaque, mark at 74% (matches the PWA tile framing).
-await (await tile(1024, 0.74)).toFile(path.join(OUT, "icon.png"));
+// App icon — full-bleed, opaque, glyph at 58% (matches the PWA tile framing).
+// Apple's mask rounds the corners hard, so the glyph is kept well inside them.
+await (await tile(1024, 0.58)).toFile(path.join(OUT, "icon.png"));
 console.log("wrote resources/icon.png (1024²)");
 
-// Splash — mark small and centred on the ground; light + dark variants.
-await (await tile(2732, 0.34)).toFile(path.join(OUT, "splash.png"));
+// Splash — glyph small and centred on the ground; light + dark variants.
+await (await tile(2732, 0.22)).toFile(path.join(OUT, "splash.png"));
 console.log("wrote resources/splash.png (2732²)");
 
-await (await tile(2732, 0.34, { r: 11, g: 18, b: 32, alpha: 1 })).toFile(
-  path.join(OUT, "splash-dark.png"),
-);
+await (await tile(2732, 0.22, DARK, paperGlyph)).toFile(path.join(OUT, "splash-dark.png"));
 console.log("wrote resources/splash-dark.png (2732²)");

@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * The Trifecta brand mark — the triathlon course logo (swim waves → bike hills →
- * run ascent → checkered finish flag). The artwork lives in
- * public/icons/tri-logo.jpeg and is baked into the app / PWA icons by
- * scripts/gen-icons.mjs; here we render the same rounded icon chip in-app (auth,
- * boot splash, welcome, coach) so the mark is consistent everywhere.
+ * The Trifecta brand mark — the monogram "T" built from three blocks, one per
+ * discipline. The artwork lives in public/icons/trifecta-logo.jpeg and is baked
+ * into the app / PWA icons by scripts/gen-icons.mjs; here we render the same
+ * rounded icon chip in-app (auth, boot splash, welcome, coach) so the mark is
+ * consistent everywhere.
  *
  * `progress` / `spinning` are accepted for backward-compatibility with the old
  * chronograph dial's call sites but no longer drive animation.

@@ -69,12 +69,18 @@ appId: app.trifecta.mobile
 # "You've missed N sessions" banner alone pushes it off (artifacts/ios/step-023-*.png
 # caught exactly that: header visible at the bottom edge, bullets off-screen, so
 # assertVisible on the copy was false while the card was perfectly fine).
+# Asserts on "Read-only, on-device" rather than the old "never writes to Apple Health"
+# bullet, which was condensed away when the card was slimmed down (2026-08-05). Same
+# property, fewer words: the card's BODY is rendered (not just the section header) and
+# it states what the HealthKit access does. The assertions that actually carry the
+# compliance weight — the card names Apple Health, and the button below both exists and
+# RESPONDS when tapped — are unchanged.
 - scrollUntilVisible:
-    element: ".*never writes to Apple Health.*"
+    element: ".*Read-only, on-device.*"
     direction: DOWN
     timeout: 20000
 - assertVisible: "Auto-complete from Apple Health"
-- assertVisible: ".*never writes to Apple Health.*"
+- assertVisible: ".*Read-only, on-device.*"
 - assertVisible: ".*Sync with Apple Health.*"
 - takeScreenshot: 11-apple-health-card
 # --- the 2.1(a) regression -------------------------------------------------
