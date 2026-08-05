@@ -73,7 +73,10 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(title, {
       body: payload.body || "Time to train.",
       icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
+      // NOT the app icon: Android draws the badge from the alpha channel alone, so an
+      // opaque tile renders as a featureless filled square. badge-72 is the glyph
+      // knocked out onto transparency.
+      badge: "/icons/badge-72.png",
       tag: payload.tag || "trifecta-push",
       data: { url: payload.url || "/" },
     }),

@@ -1,3 +1,4 @@
+import { Logo } from "@/components/Logo";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Privacy Policy — Trifecta" };
@@ -14,7 +15,8 @@ export default function PrivacyPolicy() {
       style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2rem)" }}
     >
       <a href="/" className="text-sm text-muted underline">← Back to Trifecta</a>
-      <h1 className="mt-6 text-2xl font-semibold">Privacy Policy</h1>
+      <div className="mt-6"><Logo size={20} className="text-lg" /></div>
+      <h1 className="mt-3 text-2xl font-semibold">Privacy Policy</h1>
       <p className="mt-1 text-sm text-muted">Last updated {UPDATED}</p>
 
       <p className="mt-6">

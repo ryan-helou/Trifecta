@@ -52,6 +52,27 @@ await squareIcon("apple-icon.png", 180);
 // corners clip. 0.52 keeps the whole mark inside the safe zone (diagonal 0.71).
 await squareIcon("maskable-512.png", 512, { content: 0.52, rounded: false, frame: false });
 
+// Notification badge — 72², monochrome, TRANSPARENT. Not a shrunk app icon.
+//
+// Android draws the notification badge from the ALPHA CHANNEL ONLY: every opaque
+// pixel becomes solid, so handing it a normal icon (an opaque paper tile, which is
+// what we shipped) renders as a featureless filled square. The glyph has to be the
+// only opaque thing in the file. White because Chrome desktop masks/tints it, and
+// white is what every platform's masking assumes.
+await (async () => {
+  const W = 72;
+  const white = await knockout(mark, { r: 255, g: 255, b: 255 });
+  // Runs larger than the app tiles (0.86): the badge is drawn at ~18dp on a phone,
+  // and anything with tile-style padding disappears at that size.
+  const box = Math.round(W * 0.86);
+  const fitted = await sharp(white).resize({ width: box, height: box, fit: "inside" }).toBuffer();
+  await sharp({ create: { width: W, height: W, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: fitted, gravity: "center" }])
+    .png()
+    .toFile(path.join(ICONS, "badge-72.png"));
+  console.log("wrote badge-72.png");
+})();
+
 // Wrap PNG entries in an ICO container (ICO supports embedded PNG data).
 function ico(entries) {
   const header = Buffer.alloc(6);

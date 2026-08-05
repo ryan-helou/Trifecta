@@ -1,4 +1,5 @@
 "use client";
+import { LogoMark } from "@/components/Logo";
 
 // ---------------------------------------------------------------------------
 // Without this, any error thrown while rendering unmounts the whole React tree
@@ -27,6 +28,10 @@ export default function ErrorScreen({ error, reset }: { error: Error & { digest?
 
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center px-8 text-center safe-t">
+      {/* The mark, because this screen's whole job is "the app is still here." A
+          tester read the unbranded blank state as a crash; a page that still looks
+          like Trifecta reads as a handled error instead of a dead end. */}
+      <LogoMark size={26} className="mb-5 text-muted" />
       <div className="font-display text-2xl font-semibold tracking-tight">That didn&apos;t load right</div>
       <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
         Something broke on our side while drawing this screen. Your training data is stored on your

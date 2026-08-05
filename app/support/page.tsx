@@ -1,3 +1,4 @@
+import { Logo } from "@/components/Logo";
 import type { Metadata } from "next";
 import { legalHref } from "@/lib/runtime";
 
@@ -30,8 +31,12 @@ export default function Support() {
           actually want (and have tested) rather than a client-side route change. */}
       {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       <a href="/" className="text-sm text-muted underline">← Back to Trifecta</a>
-      <h1 className="mt-6 text-2xl font-semibold">Support</h1>
-      <p className="mt-1 text-sm text-muted">Trifecta — adaptive triathlon coaching</p>
+      {/* The mark, because this page is the App Store Support URL: a reviewer (and a
+          stuck user) arrives here from the listing, and an unbranded wall of text
+          doesn't obviously belong to the app they just tapped away from. */}
+      <div className="mt-6"><Logo size={20} className="text-lg" /></div>
+      <h1 className="mt-3 text-2xl font-semibold">Support</h1>
+      <p className="mt-1 text-sm text-muted">Adaptive triathlon coaching</p>
 
       <Section title="Contact us">
         <p>

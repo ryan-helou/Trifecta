@@ -18,12 +18,38 @@ const body = Geist({
   subsets: ["latin"],
 });
 
+// og:image has to be an ABSOLUTE url — relative paths are silently dropped by every
+// scraper. metadataBase is what lets Next resolve "/og.png" into one. Overridable so a
+// preview deploy advertises its own card rather than production's.
+const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://amatri-production.up.railway.app";
+
+const TITLE = "Trifecta — First light to finish line";
+const DESCRIPTION =
+  "Train for the longest day. An adaptive, day-by-day triathlon plan for Olympic, 70.3, and the full Ironman 140.6 — built around your race, your level, and your PRs.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE),
   applicationName: "Trifecta",
-  title: "Trifecta — First light to finish line",
-  description:
-    "Train for the longest day. An adaptive, day-by-day triathlon plan for Olympic, 70.3, and the full Ironman 140.6 — built around your race, your level, and your PRs.",
+  title: TITLE,
+  description: DESCRIPTION,
   manifest: "/manifest.webmanifest",
+  // Without these, a link shared into iMessage/Slack/Discord/X is a bare grey URL.
+  // `summary_large_image` is load-bearing: without it Discord renders an 80x80
+  // thumbnail instead of the card. See scripts/gen-og.mjs for the artwork.
+  openGraph: {
+    type: "website",
+    siteName: "Trifecta",
+    title: TITLE,
+    description: DESCRIPTION,
+    url: SITE,
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Trifecta — first light to finish line" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ["/og.png"],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

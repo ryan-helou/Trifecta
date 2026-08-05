@@ -21,6 +21,36 @@ import path from "node:path";
 export const INK = { r: 13, g: 13, b: 13 }; // the mark's own near-black
 export const PAPER = { r: 246, g: 247, b: 249 }; // knocked-out mark on dark grounds
 
+// ---------------------------------------------------------------------------
+// The mark as VECTOR.
+//
+// Measured off the trimmed raster: the glyph is three rectangles on a regular
+// grid — two 151-square caps at x=1 and x=356, and a 151-wide stem at x=179
+// running the full height, with ~27px gaps. Corner radius ~7 (the left edge
+// walks x=6→x=1 between y=1 and y=8).
+//
+// Anywhere the mark sits in UI or on generated artwork, prefer these rects over
+// the PNG: it stays crisp at any size, weighs nothing, and can take its colour
+// from context (so it works on light AND dark grounds, which the baked light
+// tile cannot). components/Logo.tsx carries the same numbers — keep them in step.
+// ---------------------------------------------------------------------------
+export const MARK_VIEWBOX = "0 0 508 478";
+export const MARK_RECTS = [
+  { x: 1, y: 1, w: 151, h: 151 }, // left cap
+  { x: 179, y: 1, w: 151, h: 476 }, // stem
+  { x: 356, y: 1, w: 151, h: 151 }, // right cap
+];
+export const MARK_RADIUS = 7;
+
+/** The mark as a standalone <svg> string, filled with `fill` (default currentColor). */
+export function markSvg({ fill = "currentColor", size = null, className = "" } = {}) {
+  const dims = size ? ` width="${size}" height="${(size * 478) / 508}"` : "";
+  const rects = MARK_RECTS.map(
+    (r) => `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="${MARK_RADIUS}"/>`,
+  ).join("");
+  return `<svg viewBox="${MARK_VIEWBOX}"${dims} class="${className}" fill="${fill}" xmlns="http://www.w3.org/2000/svg">${rects}</svg>`;
+}
+
 /**
  * Trim the source to the artwork's bounding box (~508×478).
  *
