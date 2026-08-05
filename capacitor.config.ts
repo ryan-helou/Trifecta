@@ -49,6 +49,17 @@ const config: CapacitorConfig = {
           // The WebView hangs on cross-origin fetches from capacitor://localhost; native
           // HTTP has no CORS/preflight and no such stall.
           CapacitorHttp: { enabled: true },
+          // Hold the native launch screen until the web app has actually painted.
+          // Without this, iOS tears the storyboard down as soon as the first view
+          // controller appears — which is BEFORE the WKWebView has loaded the bundle,
+          // so a cold start shows 1–2s of blank white between the brand mark and the
+          // app. `launchAutoHide: false` hands us the timing; lib/ota.ts hides it once
+          // the bundle has booted (the same place that already reports a good boot).
+          SplashScreen: {
+            launchAutoHide: false,
+            launchFadeOutDuration: 200,
+            backgroundColor: "#ffffff",
+          },
           // OTA: auto-download a new JS/HTML/CSS bundle and apply it on the next
           // launch. lib/ota.ts calls notifyAppReady() so a good bundle isn't rolled back.
           //
