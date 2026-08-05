@@ -9,7 +9,10 @@ import { celebrationFor, computeStreak } from "@/lib/stats";
 import { Sheet } from "./Sheet";
 import { Celebration } from "./Celebration";
 import { haptic } from "@/lib/haptics";
+import { sessionStrain, STRAIN_OFFER_EASE } from "@/lib/adapt";
+import { track } from "@/lib/analytics";
 import { useUI } from "./ui";
+import { useToast } from "./Toast";
 
 // A little variety so finishing never feels like the same canned response twice.
 const PRAISE = [
@@ -49,6 +52,7 @@ export function CheckinSheet({
   onClose: () => void;
 }) {
   const { actions, unit } = useUI();
+  const toast = useToast();
   const meta = DISCIPLINE_META[workout.discipline];
   const isSwim = workout.discipline === "swim";
   // Distance field speaks one consistent unit: raw metres for swim, else the
@@ -88,6 +92,22 @@ export function CheckinSheet({
     });
     haptic("success");
     onClose();
+
+    // "If my workout was too hard I should tell my coach it was too hard, and he'll
+    // rebuild my plan" (#110). Saying it WAS hard is already this screen's job — so the
+    // answer acts immediately instead of waiting for a two-week trend to notice.
+    // One tap, no typing, and the athlete decides: we offer, we don't impose.
+    const strain = sessionStrain({ ...workout, rpe, feel });
+    if (strain !== null && strain >= STRAIN_OFFER_EASE) {
+      track("adaptation_offered", { cause: "strain" });
+      toast({
+        text: "That was harder than it was meant to be. Want me to ease the next few days?",
+        tone: "warning",
+        actionLabel: "Ease them",
+        onAction: () => actions.ease(7),
+        duration: 9000,
+      });
+    }
   };
 
   const markNotDone = () => {

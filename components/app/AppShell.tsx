@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { UICtx, UIActions, TabKey, CoachMsg } from "./ui";
 import { BottomNav } from "./BottomNav";
 import { TabDeck } from "./TabDeck";
-import { ToastProvider } from "./Toast";
+import { ToastProvider, useToast } from "./Toast";
 import { TodayTab } from "./TodayTab";
 import { PlanTab } from "./PlanTab";
 import { ProgressTab } from "./ProgressTab";
@@ -20,11 +20,11 @@ import { useAppleHealthAutoSync } from "./useAppleHealthAutoSync";
 import { todayISO } from "@/lib/dates";
 import {
   applyAdaptation,
-  assessAdaptation,
   easeUpcoming,
   logCheckin,
   logInstead,
   logWorkout,
+  missedSince,
   moveWorkout,
   rebuildFromToday,
   setStatus,
@@ -42,8 +42,24 @@ const COACH_GREETING: CoachMsg = {
   text: "I'm your Trifecta coach. Ask me anything about today's session, pacing, fueling, or how you're feeling.",
 };
 
+/** How many missed sessions mean "you've fallen behind" — the trigger for realigning
+ *  the remaining plan around today. Two is a bad week everyone has; three is a pattern,
+ *  and by then the untouched days are visibly rotting the plan. */
+const REALIGN_AT_MISSED = 3;
+
+// The toast provider has to sit ABOVE the component that builds `actions`, because
+// those actions are what raise the toasts (a silent rebuild is the bug in #108).
 export function AppShell() {
+  return (
+    <ToastProvider>
+      <AppShellInner />
+    </ToastProvider>
+  );
+}
+
+function AppShellInner() {
   const { plan, profile, applyPlan, applyPlanAndProfile } = useApp();
+  const toast = useToast();
   // once Apple Health is connected, auto-complete matching sessions on open + foreground
   useAppleHealthAutoSync(plan, applyPlan);
   const [tab, setTab] = useState<TabKey>("today");
@@ -53,8 +69,6 @@ export function AppShell() {
   const [coachMsgs, setCoachMsgs] = useState<CoachMsg[]>([COACH_GREETING]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
-  const [dismissRealign, setDismissRealign] = useState(false);
-  const [dismissAdapt, setDismissAdapt] = useState(false);
 
   // Keep "today" live: a PWA left open overnight must roll over to the new day.
   const [today, setToday] = useState(() => todayISO());
@@ -76,6 +90,56 @@ export function AppShell() {
     const prefs = loadNotifPrefs();
     if (prefs.enabled && plan) refreshReminders(plan, today, prefs);
   }, [plan, today]);
+
+  // --- realignment ---------------------------------------------------------
+  // One path for both the manual button and the automatic trigger, so the two can
+  // never drift. Whatever happens, the athlete is TOLD, and can put it back.
+  const realign = useCallback(
+    (source: "manual" | "auto") => {
+      if (!plan) return;
+      const behind = missedSince(plan, today);
+      const prev = plan;
+      // Drop the plan's own `notice`: the toast below already says this, and Today
+      // renders the notice as a card — so keeping both means the athlete reads the
+      // same sentence twice on the screen we just decluttered (#110).
+      const next = { ...rebuildFromToday(plan, today), notice: undefined };
+      track("plan_realigned", { missed: behind.length, auto: source === "auto" });
+      applyPlan(next);
+      const ahead = Object.values(next.workouts).filter((w) => w.date >= today && w.discipline !== "rest").length;
+      toast({
+        text:
+          source === "auto"
+            ? `You'd missed ${behind.length} sessions — I've realigned your plan around today.`
+            : `Plan realigned around today — ${ahead} sessions to race day.`,
+        tone: "success",
+        actionLabel: "Undo",
+        onAction: () => applyPlan(prev),
+        duration: 8000,
+      });
+      // the manual button lives on Profile, where nothing would visibly change —
+      // show them the plan they just rewrote. An automatic realign leaves the athlete
+      // wherever they are; yanking the tab out from under them would be worse.
+      if (source === "manual") setTab("today");
+    },
+    [plan, today, applyPlan, toast],
+  );
+
+  // #109 — the plan realigns ITSELF. This used to need the athlete to notice a banner
+  // and press a button, which is backwards: the people who fall behind are exactly the
+  // ones who stopped opening the app, and they came back to a plan full of dead days.
+  //
+  // Safe to automate only because `missedSince` is scoped to the last realign, so this
+  // converges — it fires once, then not again until they fall behind afresh. The ref
+  // pins it to one firing per plan per day so an Undo actually sticks.
+  const autoRealignedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!plan) return;
+    if (missedSince(plan, today).length < REALIGN_AT_MISSED) return;
+    const key = `${plan.id}·${today}`;
+    if (autoRealignedRef.current === key) return;
+    autoRealignedRef.current = key;
+    realign("auto");
+  }, [plan, today, realign]);
 
   if (!plan) return null;
 
@@ -110,11 +174,34 @@ export function AppShell() {
       const { plan: _p, ...view } = res;
       return view;
     },
-    rebuild: () => {
-      track("plan_realigned", { missed: Object.values(plan.workouts).filter((w) => w.discipline !== "rest" && w.date < today && w.status === "planned").length });
-      applyPlan(rebuildFromToday(plan, today));
+    // Rebuilding used to be silent: it changed the plan correctly, but from the Profile
+    // tab — where the button lives — nothing on screen moved, because the confirmation
+    // only ever rendered on Today. Tapping it looked like a dead button (#108). Now it
+    // says what it did, offers an undo, and takes you to the plan it just rewrote.
+    rebuild: () => realign("manual"),
+    ease: (days) => {
+      const next = easeUpcoming(plan, today, days);
+      // `easeUpcoming` only downgrades HARD sessions, so an easy base week has nothing
+      // to soften and the plan comes back identical. Applying that silently is the same
+      // dead-button feeling as #108 — count what actually moved and say the true thing.
+      const softened = Object.values(next.workouts).filter(
+        (w) => w.easedCause && plan.workouts[w.id]?.easedCause !== w.easedCause,
+      ).length;
+      if (softened === 0) {
+        toast({
+          text: `Nothing to dial back — the next ${days} days are already easy. Rest well.`,
+          tone: "default",
+        });
+        return;
+      }
+      applyPlan(next);
+      toast({
+        text: `Eased the next ${days} days — ${softened} hard ${softened === 1 ? "session" : "sessions"} dialed back.`,
+        tone: "success",
+        actionLabel: "Undo",
+        onAction: () => applyPlan(plan),
+      });
     },
-    ease: (days) => applyPlan(easeUpcoming(plan, today, days)),
     logReadiness: (dateISO, input) => {
       const score = readinessScore(input);
       track("readiness_logged", { score, eased: score < READY_LOW });
@@ -134,17 +221,10 @@ export function AppShell() {
     },
   };
 
-  // A brand-new plan starts on mondayOf(today), so this week's already-past days are
-  // planned sessions the athlete never had a chance to do — counting them made a plan
-  // built minutes ago open with "You've missed 8 sessions." A planned past session is a
-  // real miss only if it was scheduled on or after the plan first existed; createdAtISO
-  // is stable across rebuilds (unlike generatedAtISO), so it's the right anchor.
-  const planStart = plan.profile.createdAtISO?.slice(0, 10);
-  const missed = Object.values(plan.workouts).filter(
-    (w) => w.discipline !== "rest" && w.date < today && w.status === "planned" && (!planStart || w.date >= planStart),
-  );
-  const showRealign = missed.length >= 3 && !dismissRealign;
-  const adaptation = assessAdaptation(plan, today);
+  // The "You've missed N sessions — rebuild?" banner used to live here. It's gone: the
+  // plan realigns itself now (#109), which is the same repair without making a stalled
+  // athlete diagnose their own plan first. One less thing shouting on the home screen
+  // (#110), and the toast still carries an Undo.
 
   const detail = detailId ? plan.workouts[detailId] : null;
   const checkin = checkinId ? plan.workouts[checkinId] : null;
@@ -163,58 +243,12 @@ export function AppShell() {
         actions,
       }}
     >
-      <ToastProvider>
         <div className="flex min-h-full flex-1 flex-col">
           <div className="mx-auto w-full max-w-md flex-1">
-            {showRealign && (
-              <div className="mx-4 mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-3.5 safe-t">
-                <div className="text-sm font-semibold">You&apos;ve missed {missed.length} sessions</div>
-                <div className="mt-0.5 text-sm text-muted">Fallen behind? Rebuild your plan around today so you still land on race day.</div>
-                <div className="mt-2.5 flex gap-2">
-                  <button
-                    onClick={() => { actions.rebuild(); setDismissRealign(true); }}
-                    className="btn btn-primary flex-1 py-2.5 text-sm"
-                  >
-                    Rebuild my plan
-                  </button>
-                  <button onClick={() => setDismissRealign(true)} className="btn btn-ghost px-4 py-2.5 text-sm">
-                    I&apos;m okay
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* closed-loop adaptation — the plan reacting to how training's going */}
-            {!showRealign && adaptation && !dismissAdapt && (
-              adaptation.kind === "ease" ? (
-                <div className="mx-4 mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-3.5 safe-t">
-                  <div className="text-sm font-semibold">Time to ease off?</div>
-                  <div className="mt-0.5 text-sm text-muted">{adaptation.reason} We can soften {adaptation.weekLabel} so you absorb the work and stay healthy.</div>
-                  <div className="mt-2.5 flex gap-2">
-                    <button
-                      onClick={() => { actions.adapt(adaptation); setDismissAdapt(true); }}
-                      className="btn btn-primary flex-1 py-2.5 text-sm"
-                    >
-                      Ease {adaptation.weekLabel}
-                    </button>
-                    <button onClick={() => setDismissAdapt(true)} className="btn btn-ghost px-4 py-2.5 text-sm">
-                      Keep it as is
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="mx-4 mt-4 rounded-2xl border border-accent/40 bg-accent/10 p-3.5 safe-t">
-                  <div className="text-sm font-semibold">You&apos;re ahead of the plan 💪</div>
-                  <div className="mt-0.5 text-sm text-muted">{adaptation.reason} We&apos;re holding the progression steady — consistency now pays off on race day.</div>
-                  <div className="mt-2.5">
-                    <button onClick={() => setDismissAdapt(true)} className="btn btn-ghost px-4 py-2.5 text-sm">
-                      Keep it up
-                    </button>
-                  </div>
-                </div>
-              )
-            )}
-
+            {/* The realign + adaptation banners used to hang here, above EVERY tab, so
+                Plan/Progress/League all opened with the home screen's nagging stapled to
+                the top. The adaptation prompt now competes for Today's single prompt slot
+                (see TodayTab), and realignment is automatic. */}
             <TabDeck tab={tab} onChange={setTab}>
               {tab === "today" && <TodayTab />}
               {tab === "plan" && <PlanTab />}
@@ -226,7 +260,6 @@ export function AppShell() {
 
           <BottomNav tab={tab} onChange={setTab} />
         </div>
-      </ToastProvider>
 
       {detail && <WorkoutDetail workout={detail} plan={plan} />}
       {checkin && <CheckinSheet workout={checkin} plan={plan} today={today} onClose={() => setCheckinId(null)} />}
