@@ -1,6 +1,6 @@
 {
   "name": "trifecta",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "engines": {
     "node": ">=20.9.0"
@@ -17,8 +17,8 @@
     "store:capture": "scripts/screenshots-ios.sh",
     "store:frames": "node scripts/gen-store-frames.mjs",
     "store:shots": "npm run store:capture && npm run store:frames",
-    "ota": "npm run build:static && npx @capgo/cli bundle upload --path out --channel production --apikey \"${CAPGO_TOKEN:-$(cat ~/.capgo)}\"",
-    "test": "tsx test/engine.test.ts && tsx test/load.test.ts && tsx test/realign.test.ts && tsx test/why.test.ts && tsx test/redflags.test.ts && tsx test/analytics.test.ts && tsx test/auth.test.ts && tsx test/health-privacy.test.ts && tsx scripts/test-strava-match.ts && tsx test/league.test.ts && tsx test/session.test.ts"
+    "ota": "node scripts/ota-release.mjs",
+    "test": "tsx test/ota.test.ts && tsx test/engine.test.ts && tsx test/load.test.ts && tsx test/realign.test.ts && tsx test/why.test.ts && tsx test/redflags.test.ts && tsx test/analytics.test.ts && tsx test/auth.test.ts && tsx test/health-privacy.test.ts && tsx scripts/test-strava-match.ts && tsx test/league.test.ts && tsx test/session.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",
