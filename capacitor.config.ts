@@ -27,6 +27,11 @@ const PATH_B = process.env.CAP_PATH_B === "1";
 // sets this so what it tests is what's in the working tree.
 const NO_OTA = process.env.CAP_NO_OTA === "1";
 
+// Where the app looks for OTA updates — our Railway host, which also serves the
+// bundle zips as static files from public/ota/. Overridable so a staging build can
+// point somewhere else without editing this file.
+const OTA_ORIGIN = process.env.OTA_ORIGIN ?? "https://amatri-production.up.railway.app";
+
 const config: CapacitorConfig = {
   // Bundle identifier — locked to the App Store record; do not change.
   appId: "app.trifecta.mobile",
@@ -44,9 +49,25 @@ const config: CapacitorConfig = {
           // The WebView hangs on cross-origin fetches from capacitor://localhost; native
           // HTTP has no CORS/preflight and no such stall.
           CapacitorHttp: { enabled: true },
-          // Capgo OTA: auto-download a new JS/HTML/CSS bundle and apply it on the next
+          // OTA: auto-download a new JS/HTML/CSS bundle and apply it on the next
           // launch. lib/ota.ts calls notifyAppReady() so a good bundle isn't rolled back.
-          CapacitorUpdater: { autoUpdate: !NO_OTA },
+          //
+          // The PLUGIN is @capgo/capacitor-updater (MPL-2.0, free) but the SERVICE is
+          // ours: updateUrl points at our own /api/ota, so there is no subscription and
+          // no third party in the update path. `statsUrl: ""` is not cosmetic — by
+          // default this plugin ships crash reports, JS errors, memory warnings and
+          // WebView health signals to plugin.capgo.app, which for a health app is a
+          // GDPR surface we never agreed to. channelUrl is pointed at our own host too
+          // so nothing can reach capgo.app even if setChannel() is ever called.
+          //
+          // These URLs are baked into the native binary at `cap sync`, NOT shipped in
+          // the web bundle — so changing them requires an App Store submission.
+          CapacitorUpdater: {
+            autoUpdate: !NO_OTA,
+            updateUrl: `${OTA_ORIGIN}/api/ota`,
+            channelUrl: `${OTA_ORIGIN}/api/ota/channel`,
+            statsUrl: "",
+          },
         },
       }
     : {

@@ -1,0 +1,12 @@
+{
+  "latest": "1.0.3",
+  "bundles": [
+    {
+      "version": "1.0.3",
+      "sha256": "399dbb45dc98c934f7cd5d2995655ee919d9270301a67e97478e48c164531a21",
+      "size": 1111509,
+      "createdAtISO": "2026-08-05T19:36:07.720Z",
+      "comment": "tickets 107-110, self-hosted OTA"
+    }
+  ]
+}
