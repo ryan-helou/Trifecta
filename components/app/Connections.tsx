@@ -210,33 +210,23 @@ function AppleHealthCard() {
       <div className="mb-2 font-mono text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted">Apple Health</div>
       <div className="card overflow-hidden">
         <div className="px-4 py-3.5">
+          {/* Deliberately terse. This used to be a paragraph plus two ticked bullets
+              explaining read-only and on-device — true, but nobody reads a sales pitch
+              on their own Profile every time they visit.
+              What CANNOT go: the "Apple Health" heading above and a visible connect
+              action. Build 8 was rejected under guideline 2.5.1 for shipping the
+              HealthKit entitlement without "clearly identifying the HealthKit
+              functionality in the app's user interface", and maestro/health.yaml gates
+              on exactly that. The privacy detail lives in the privacy policy. */}
           <div className="flex items-start gap-2.5">
             <HealthMark />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold">Auto-complete from Apple Health</div>
-              <p className="mt-1 text-sm leading-snug text-muted">
-                Reads your swim, bike, run and strength workouts and checks off the planned session each one matches.
+              <p className="mt-0.5 text-sm leading-snug text-muted">
+                Reads your workouts and ticks off the sessions they match. Read-only, on-device.
               </p>
             </div>
           </div>
-
-          {/* Kept to two short lines on purpose: the button below has to stay above
-              the fold on a 6.9" phone, or the feature reads as text and not a thing
-              you can do. */}
-          <ul className="mt-2.5 space-y-1 text-xs text-muted">
-            <li className="flex gap-2">
-              <Tick />
-              <span>
-                <b className="text-foreground">Read-only</b> — Trifecta never writes to Apple Health.
-              </span>
-            </li>
-            <li className="flex gap-2">
-              <Tick />
-              <span>
-                <b className="text-foreground">Stays on your device</b> — nothing from Health is uploaded.
-              </span>
-            </li>
-          </ul>
 
           {state === "unavailable" ? (
             <p className="mt-3 rounded-xl border border-line px-3 py-2.5 text-xs text-muted">
@@ -385,14 +375,6 @@ function StravaCard({ hideHeader }: { hideHeader?: boolean } = {}) {
         )}
       </div>
     </div>
-  );
-}
-
-function Tick() {
-  return (
-    <svg aria-hidden className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
   );
 }
 
