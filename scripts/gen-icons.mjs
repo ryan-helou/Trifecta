@@ -1,46 +1,37 @@
 import sharp from "sharp";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { trimmedMark, knockout, INK } from "./lib/brand-mark.mjs";
 
 const ICONS = path.join(process.cwd(), "public", "icons");
 const APP = path.join(process.cwd(), "app");
 await mkdir(ICONS, { recursive: true });
 
 // Trifecta app icon — generated from the saved brand logo
-// (public/icons/tri-logo.jpeg): the triathlon course profile — swim waves →
-// bike hills → run ascent → checkered finish flag. We trim the logo down to its
-// artwork, then centre it on a matching paper tile at every icon size (and emit a
-// standalone trimmed mark for the in-app <Reactor>). Re-run with `npm run icons`.
-const SRC = path.join(ICONS, "tri-logo.jpeg");
+// (public/icons/trifecta-logo.jpeg): the monogram "T" built from three blocks —
+// the three disciplines stacked into one letterform. We knock the glyph out of its
+// paper (see lib/brand-mark.mjs) and centre it on a flat paper tile at every icon
+// size, plus a standalone transparent mark. Re-run with `npm run icons`.
 const FRAME = "#e4e4e0"; // --line (hairline edge on light surfaces)
+const BG = "rgb(248,248,248)"; // the logo's own paper ground
 
-// Trim the uniform border down to the artwork's bounding box (landscape).
-// Use the top-left pixel as the reference background with a generous threshold —
-// the cream ground carries JPEG noise, so a tight threshold trims nothing.
-const markObj = await sharp(SRC)
-  .trim({ threshold: 34 })
-  .png()
-  .toBuffer({ resolveWithObject: true });
-const markPNG = markObj.data;
-console.log(`trimmed mark → ${markObj.info.width}×${markObj.info.height}`);
+const mark = await trimmedMark(ICONS);
+// Ink glyph on transparency — no ground of its own, so it composites seamlessly
+// onto the tile instead of leaving the source JPEG's vignetted rectangle behind it.
+const glyph = await knockout(mark, INK);
 
-// Tile colour = the mark's DOMINANT colour (the bright paper fills most of the
-// artwork), so the composited tile blends into the logo's own ground. Sampling a
-// corner instead picks up the vignette and leaves a visible inner rectangle.
-const { dominant } = await sharp(markPNG).stats();
-const { r: br, g: bgc, b: bb } = dominant;
-const BG = `rgb(${br},${bgc},${bb})`;
-
-// Standalone in-app mark (trimmed artwork on its own paper ground) for <Reactor>.
-await sharp(markPNG).toFile(path.join(ICONS, "tri-logo-mark.png"));
-console.log("wrote tri-logo-mark.png");
+// Standalone transparent mark, for anywhere the glyph needs to sit on its own.
+await sharp(glyph).toFile(path.join(ICONS, "trifecta-logo-mark.png"));
+console.log("wrote trifecta-logo-mark.png");
 
 // One square icon: paper tile (optional rounded corners + hairline frame) with the
-// trimmed mark fitted to `content` of the tile and centred.
-async function squareIcon(name, outSize, { content = 0.74, rounded = true, frame = true } = {}) {
+// glyph fitted to `content` of the tile and centred. `content` is tuned for a bold
+// letterform — the old wide illustration needed 0.74 to stay legible, but a glyph
+// at that size crowds the tile's rounded corners.
+async function squareIcon(name, outSize, { content = 0.58, rounded = true, frame = true } = {}) {
   const W = 512;
   const box = Math.round(W * content);
-  const fitted = await sharp(markPNG).resize({ width: box, height: box, fit: "inside" }).toBuffer();
+  const fitted = await sharp(glyph).resize({ width: box, height: box, fit: "inside" }).toBuffer();
   const frameSVG = frame
     ? `<rect x="4" y="4" width="${W - 8}" height="${W - 8}" rx="112" fill="none" stroke="${FRAME}" stroke-width="4"/>`
     : "";
@@ -56,7 +47,10 @@ async function squareIcon(name, outSize, { content = 0.74, rounded = true, frame
 await squareIcon("icon-192.png", 192);
 await squareIcon("icon-512.png", 512);
 await squareIcon("apple-icon.png", 180);
-await squareIcon("maskable-512.png", 512, { content: 0.6, rounded: false, frame: false });
+// Maskable: the launcher may crop to a circle of 80% diameter, so the glyph has to
+// fit that circle — at 0.6 its diagonal reaches 0.82 of the tile and the block
+// corners clip. 0.52 keeps the whole mark inside the safe zone (diagonal 0.71).
+await squareIcon("maskable-512.png", 512, { content: 0.52, rounded: false, frame: false });
 
 // Wrap PNG entries in an ICO container (ICO supports embedded PNG data).
 function ico(entries) {
@@ -78,10 +72,11 @@ function ico(entries) {
   return Buffer.concat([header, dir, ...entries.map((e) => e.buf)]);
 }
 
-// favicon.ico — from a lightly-padded square, packed at 16/32/48.
+// favicon.ico — from a lightly-padded square, packed at 16/32/48. Runs the glyph
+// larger than the app tiles: at 16px the mark needs the extra weight to read at all.
 const favBase = await (async () => {
   const W = 256;
-  const fitted = await sharp(markPNG).resize({ width: Math.round(W * 0.82), height: Math.round(W * 0.82), fit: "inside" }).toBuffer();
+  const fitted = await sharp(glyph).resize({ width: Math.round(W * 0.72), height: Math.round(W * 0.72), fit: "inside" }).toBuffer();
   const tile = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${W}"><rect width="${W}" height="${W}" rx="44" fill="${BG}"/></svg>`;
   const base = await sharp(Buffer.from(tile)).resize(W, W).png().toBuffer();
   return sharp(base).composite([{ input: fitted, gravity: "center" }]).png().toBuffer();
