@@ -9,7 +9,6 @@ import { fmtDistance, fmtDuration } from "@/lib/format";
 import { addDays, dayIndexOf, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
-import { WorkoutPlayer } from "./WorkoutPlayer";
 import { buildWorkoutFit, fitFilename } from "@/lib/fit";
 import { whyForWorkout } from "@/lib/why";
 import { haptic } from "@/lib/haptics";
@@ -133,15 +132,15 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
   const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
   const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
   const [note, setNote] = useState("");
-  const [playing, setPlaying] = useState(false);
   const meta = DISCIPLINE_META[workout.discipline];
   const reps = repsSummary(workout);
   const isRace = workout.id === "w-race-day";
   const done = workout.status === "done";
   const swapped = !!workout.swappedFrom;
-  // guided play + watch export make sense for real endurance sessions
-  const canGuide = !isRace && workout.discipline !== "rest" && workout.segments.length > 0;
-  const canExport = canGuide && workout.discipline !== "strength";
+  // Watch export makes sense for real endurance sessions. (This used to also gate a
+  // "start guided session" in-app player; that's gone — #111.)
+  const canExport =
+    !isRace && workout.discipline !== "rest" && workout.discipline !== "strength" && workout.segments.length > 0;
 
   const exportFit = () => {
     try {
@@ -177,7 +176,6 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
 
   return (
     <>
-    {playing && <WorkoutPlayer workout={workout} plan={plan} onClose={() => setPlaying(false)} />}
     <Sheet onClose={close} label={workout.title}>
       <div className="px-5 pb-8 pt-1">
           {/* header */}
@@ -237,11 +235,13 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
             </div>
           )}
 
-          {/* Session structure — collapsed by default. Duration + Intensity +
-              the Shape bar upstairs give athletes the size of the session; the
-              full interval breakdown is a power-user detail that intimidates
-              beginners staring at a chart of Zone bands. Anyone who wants it
-              is one tap away, and the guided player renders it live anyway. */}
+          {/* Session structure — still collapsed by default. Part of the original
+              reasoning was "the guided player renders it live anyway", which stopped
+              being true when that player was removed (#111); the rest still holds and
+              is why this stays shut: Duration + Intensity + the Shape bar upstairs
+              already give the size and feel of the session, and the full interval
+              breakdown is a power-user detail that intimidates a beginner. One tap
+              away, and now the only place to read it. */}
           {sections.length > 0 && (
             <SessionStructure sections={sections} paces={plan.paces} unit={unit} />
           )}
@@ -270,14 +270,6 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           {/* actions */}
           {!isRace ? (
             <div className="space-y-2">
-              {canGuide && !done && (
-                <button
-                  onClick={() => { haptic("medium"); setPlaying(true); }}
-                  className="btn accent-gradient w-full py-3.5 text-base font-semibold text-on-accent"
-                >
-                  ▶ Start guided session
-                </button>
-              )}
               <button
                 onClick={() => {
                   if (done) { haptic("light"); actions.toggleDone(workout.id); }

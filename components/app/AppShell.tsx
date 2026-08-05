@@ -34,6 +34,7 @@ import {
 import { logReadiness, readinessScore, READY_LOW } from "@/lib/readiness";
 import { track } from "@/lib/analytics";
 import { calibratePaces } from "@/lib/calibrate";
+import { observeHr } from "@/lib/hr";
 import { derivePaces } from "@/lib/paces";
 import { loadNotifPrefs, refreshReminders } from "@/lib/notify";
 
@@ -209,8 +210,28 @@ function AppShellInner() {
     },
     recalibrate: () => {
       const res = calibratePaces(plan, today);
-      if (res && res.changed) {
-        const nextProfile = { ...plan.profile, calibration: res.calibration };
+      // Re-read the HR anchors off real sessions at the same time (#112). This rides
+      // along with calibration rather than getting its own trigger because it wants the
+      // same cadence and the same "we learned something from your training" moment —
+      // and because both write the profile, so doing them separately would race.
+      const hr = observeHr(plan);
+      const prev = plan.profile.hrObserved;
+      const hrMoved = hr.maxHR !== prev?.maxHR || hr.lthr !== prev?.lthr;
+      if ((res && res.changed) || hrMoved) {
+        const nextProfile = {
+          ...plan.profile,
+          ...(res && res.changed ? { calibration: res.calibration } : {}),
+          ...(hrMoved
+            ? {
+                hrObserved: {
+                  maxHR: hr.maxHR ?? undefined,
+                  lthr: hr.lthr ?? undefined,
+                  samples: hr.samples,
+                  asOfISO: hr.lastSeenISO ?? undefined,
+                },
+              }
+            : {}),
+        };
         applyPlanAndProfile({ ...plan, profile: nextProfile, paces: derivePaces(nextProfile) }, nextProfile);
       }
       return res;

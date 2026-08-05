@@ -21,6 +21,7 @@ export interface Activity {
   durationSec: number;
   distanceM?: number;
   avgHr?: number;
+  maxHr?: number;
   avgWatts?: number;
   name?: string;
 }
@@ -82,6 +83,7 @@ export function actualsFromActivity(a: Activity): WorkoutActuals {
     distanceM: a.distanceM != null ? Math.round(a.distanceM) : undefined,
     durationSec: a.durationSec,
     avgHr: a.avgHr != null ? Math.round(a.avgHr) : undefined,
+    maxHr: a.maxHr != null ? Math.round(a.maxHr) : undefined,
     avgWatts: a.avgWatts != null ? Math.round(a.avgWatts) : undefined,
     startedAtISO: a.startISO,
   };

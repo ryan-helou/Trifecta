@@ -113,6 +113,9 @@ export interface WorkoutActuals {
   distanceM?: number;
   durationSec?: number;
   avgHr?: number;
+  /** peak HR for the session. Strava reports it per activity; it's the only honest
+   *  read we get on true max HR, which otherwise has to be guessed from age. */
+  maxHr?: number;
   /** average power (watts) — bike sessions with a power meter; drives FTP calibration */
   avgWatts?: number;
   startedAtISO?: string;
@@ -306,6 +309,10 @@ export interface Profile {
   intakeNotes?: string; // free-text "anything else" the athlete told us
   /** auto-tuned pace adjustments from real performance (see lib/calibrate.ts) */
   calibration?: PaceCalibration;
+  /** heart-rate anchors read off the athlete's own synced sessions (see lib/hr.ts).
+   *  Never overrides `maxHR`/`thresholdHr` the athlete typed in — it fills the gap
+   *  where those are blank, so the zones stop being a 0.9×maxHR guess (#112). */
+  hrObserved?: { maxHR?: number; lthr?: number; samples: number; asOfISO?: string };
   createdAtISO: string;
 }
 
@@ -329,7 +336,10 @@ export interface PaceModel {
   hr: {
     maxHR: number | null;
     lthr: number | null; // lactate-threshold HR the zones are built from
-    lthrSource: "measured" | "estimated" | null; // "estimated" = derived from maxHR (≈0.9×), "measured" = athlete-entered
+    /** where the LTHR the zones are built from came from. "measured" = the athlete
+     *  typed it, "observed" = read off their own synced sessions, "estimated" = the
+     *  0.9×maxHR rule of thumb. Shown to the athlete, so it must stay honest. */
+    lthrSource: "measured" | "observed" | "estimated" | null;
     // loPct/hiPct are % of LTHR (Friel), not %HRmax
     zones: Record<Zone, { loPct: number; hiPct: number; loBpm?: number; hiBpm?: number }>;
   };
