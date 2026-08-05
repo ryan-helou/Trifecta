@@ -216,11 +216,16 @@ export function Sheet({
           ref={panelRef}
           className={`animate-sheet-up pointer-events-auto relative flex max-h-[92vh] flex-col overflow-hidden rounded-t-[26px] border border-line bg-surface shadow-2xl safe-b ${panelClassName}`}
         >
+          {/* The grab area is deliberately much taller than the bar you can see. It's the
+              ONE target that dismisses at any scroll position (everything else requires
+              being at the top of the content), and it was a ~20px strip — well under
+              Apple's 44pt minimum, on a sheet whose buttons are at the bottom so you're
+              never scrolled to the top when you want out. */}
           <div
             data-sheet-handle
-            className="flex flex-shrink-0 cursor-grab touch-none justify-center pb-1 pt-2.5 active:cursor-grabbing"
+            className="flex min-h-[44px] flex-shrink-0 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
           >
-            <span aria-hidden className="h-1.5 w-10 rounded-full bg-line-soft" />
+            <span aria-hidden className="h-1.5 w-12 rounded-full bg-line-soft" />
           </div>
           {header && <div className="flex-shrink-0">{header}</div>}
           <div ref={scrollRef} className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">

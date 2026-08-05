@@ -27,7 +27,11 @@ export function workoutsOn(plan: Plan, iso: string): Workout[] {
  *  peek so the home screen answers "what's coming?", not just "what's today". */
 export function upcomingAfter(plan: Plan, iso: string, n = 1): Workout[] {
   return Object.values(plan.workouts)
-    .filter((w) => w.date > iso && w.discipline !== "rest" && w.status !== "skipped")
+    // `status === "planned"`, not just "not skipped". A session you've already ticked
+    // off is not "up next" — Today was showing tomorrow's ride under the Up next
+    // heading with a COMPLETED badge on it, which answers the opposite of the question
+    // the card exists to answer.
+    .filter((w) => w.date > iso && w.discipline !== "rest" && w.status === "planned")
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : b.estDurationSec - a.estDurationSec))
     .slice(0, n);
 }

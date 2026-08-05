@@ -1005,15 +1005,20 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
     else if (phase === "peak") { idxInPhase = i - buildEnd; phaseLen = peakWeeks; }
     else if (phase === "taper") { idxInPhase = i - peakEnd; phaseLen = taperWeeks; }
 
+    // Plain "Week N", not "Base 2" / "Build 1" (#114). The phase still drives the
+    // physiology and is still SHOWN where it earns its place — it just isn't the
+    // athlete's name for the week any more. The old scheme also restarted numbering
+    // inside each phase, so the same week read "Week 9" on Plan and "Build 1" on
+    // Today. Race week keeps its name because that one means something to everyone.
     const label = isRaceWeek
       ? "Race Week"
       : phase === "base"
-      ? `Base ${idxInPhase + 1}${isRecovery ? " · Recovery" : ""}`
+      ? `Week ${i + 1}${isRecovery ? " · Recovery" : ""}`
       : phase === "build"
-      ? `Build ${idxInPhase + 1}${isRecovery ? " · Recovery" : ""}`
+      ? `Week ${i + 1}${isRecovery ? " · Recovery" : ""}`
       : phase === "peak"
-      ? `Peak ${idxInPhase + 1}`
-      : `Taper ${idxInPhase + 1}`;
+      ? `Week ${i + 1}`
+      : `Week ${i + 1}`;
 
     const frac = baseFraction(phase, idxInPhase, phaseLen, phase === "taper" ? idxInPhase : 0, taperWeeks);
     let targetHours = peakHours * frac * (isRecovery ? 0.62 : 1);
@@ -1105,7 +1110,7 @@ function generateFitnessPlan(profile: Profile, anchorISO?: string): Plan {
     const isRecovery = (i + 1) % cycleLen === 0 && i > 0;
     const idxInPhase = phase === "base" ? i : i - baseWeeks;
     const phaseLen = phase === "base" ? baseWeeks : buildWeeks;
-    const label = `${phase === "base" ? "Base" : "Build"} ${idxInPhase + 1}${isRecovery ? " · Recovery" : ""}`;
+    const label = `Week ${i + 1}${isRecovery ? " · Recovery" : ""}`; // plain, not "Base 2" (#114)
 
     const frac = baseFraction(phase, idxInPhase, phaseLen, 0, 0);
     let targetHours = peakHours * frac * (isRecovery ? 0.62 : 1);

@@ -38,7 +38,10 @@ export interface UIActions {
   adapt(suggestion: AdaptationSuggestion): void;
 }
 
-export type TabKey = "today" | "plan" | "progress" | "league" | "profile";
+// "league" became "friends" (#115) — Ryan: "Make it a friends tab or whatever instead".
+// The league SUBSYSTEM is untouched (lib/league, app/api/league, LeagueTab.tsx); it is
+// simply no longer in the nav, so putting it back is a one-line change.
+export type TabKey = "today" | "plan" | "progress" | "friends" | "profile";
 
 export interface UICtxValue {
   today: string;
