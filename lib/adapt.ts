@@ -408,10 +408,39 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
     // (weeks/easedWeeks regenerate, so the why-line gates on both)
     readiness: plan.readiness,
     adaptations: plan.adaptations,
+    // Everything still "planned" before today is now absorbed history. Stamping the
+    // date is what lets `missedSince` stop counting it — without this an automatic
+    // realign would see the same misses forever and never converge.
+    realignedAtISO: todayISO,
     notice: "Plan rebuilt around today — you're realigned to hit race day.",
   };
   reindexWeeks(merged);
   return merged;
+}
+
+/**
+ * The sessions the athlete has genuinely fallen behind on: still `planned`, already
+ * in the past, and not already absorbed by an earlier realign.
+ *
+ * Two floors matter, and both are load-bearing:
+ *  • `createdAtISO` — a plan built on a Thursday back-dates to Monday, so the days
+ *    before it existed were never the athlete's to miss. (A plan minutes old used to
+ *    open with "You've missed 8 sessions.")
+ *  • `realignedAtISO` — after a realign, the old misses survive as `kept-` history and
+ *    stay `planned` forever. Counting them again is what made automatic realignment
+ *    unsafe: it would re-trigger on every render and never settle.
+ */
+export function missedSince(plan: Plan, todayISO: string): Workout[] {
+  const created = plan.profile.createdAtISO?.slice(0, 10);
+  // whichever floor is later — the plan's birth, or the last time we realigned it
+  const floor = [created, plan.realignedAtISO].filter(Boolean).sort().pop();
+  return Object.values(plan.workouts).filter(
+    (w) =>
+      w.discipline !== "rest" &&
+      w.status === "planned" &&
+      w.date < todayISO &&
+      (!floor || w.date >= floor),
+  );
 }
 
 /** Which trigger eased a session — the why must distinguish "missed because life"
@@ -464,8 +493,12 @@ const isDoneW = (w: Workout) => w.status === "done" || w.status === "swapped";
 const zoneRpeMid = (z: Zone) => (ZONES[z].rpe[0] + ZONES[z].rpe[1]) / 2;
 const FEEL_STRAIN = { rough: 2, ok: 0, great: -1.5 } as const;
 
+/** Above this, a single session felt materially harder than it was prescribed to —
+ *  enough to offer an ease on the spot rather than waiting for a two-week trend. */
+export const STRAIN_OFFER_EASE = 1.5;
+
 /** How hard a completed session felt vs. what its zone prescribed (RPE units). */
-function sessionStrain(w: Workout): number | null {
+export function sessionStrain(w: Workout): number | null {
   const parts: number[] = [];
   if (typeof w.rpe === "number") parts.push(w.rpe - zoneRpeMid(w.primaryZone));
   if (w.feel) parts.push(FEEL_STRAIN[w.feel]);

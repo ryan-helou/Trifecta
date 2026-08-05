@@ -164,6 +164,16 @@ function newInjuries(parsed: ParsedInjury[]): Injury[] {
 const DEFAULT_DRAFT: Draft = {
   custom: { swimM: 1500, bikeM: 40000, runM: 10000, name: "My Race" },
   perSport: { swim: 2, bike: 2, run: 2 },
+  // Start in auto. The flat 2/2/2 above is only a seed for the manual steppers — as the
+  // opening ANSWER it's worse than what we can infer, because `suggestFrequency` already
+  // knows an intermediate doing a 70.3 wants roughly 2 swim / 4 bike / 3 run. This used
+  // to be switched on only by the "build it now" shortcut, so the athletes who took the
+  // *thorough* path were the ones shown the dumb default (#107).
+  autoFrequency: true,
+  // The tailoring steps are ON by default now, which also makes the progress bar honest:
+  // it reads "Step 1 of 9" from the first screen instead of promising 5 and then growing
+  // to 9 the moment you continue past Experience.
+  personalize: true,
   strength: { enabled: false, daysPerWeek: 2, split: "full" },
   equipment: { pool: true, trainer: true, gym: true },
   blackouts: [],
@@ -228,7 +238,12 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   // the server, so reading it in a lazy initialiser would make the first client paint
   // disagree with the prerendered HTML. A ref (not state) carries the "have we loaded
   // yet" flag so it can't itself cause a render.
-  const [restored, setRestored] = useState(false);
+  // The step we resumed ONTO, or null if this is a clean start. The banner is tied to
+  // this exact step: "picked up where you left off" is only true at the moment of
+  // landing. It used to be a sticky flag, so it kept insisting the app had restored
+  // your progress on every subsequent step you answered yourself — and it showed over a
+  // blank step 1 when the saved draft had nothing in it (#107).
+  const [resumedAt, setResumedAt] = useState<number | null>(null);
   const loadedRef = useRef(false);
   useEffect(() => {
     const saved = loadDraft();
@@ -238,7 +253,7 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
     if (saved) {
       setDraft({ ...DEFAULT_DRAFT, ...saved.draft });
       setIdx(saved.idx);
-      setRestored(true);
+      if (saved.idx > 0) setResumedAt(saved.idx);
     }
     /* eslint-enable react-hooks/set-state-in-effect */
     loadedRef.current = true;
@@ -341,19 +356,15 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   const next = () => setIdx((i) => skip(1, i));
   const back = () => setIdx((i) => skip(-1, i));
 
-  // The fast-path fork, offered on the Experience step (the last required question for a
-  // raced athlete). "Build now" defaults everything and jumps past the refinement steps
-  // to the injuries health-screen; "fine-tune first" opens them. We set the index
-  // explicitly rather than calling next(), because next()'s skip() would read a stale
-  // `personalize` from this render's closure.
+  // The escape hatch, offered on the Experience step (the last question the plan can't
+  // be built without). Tailoring is the default path now; this skips past it, defaulting
+  // the four refinement steps and landing on the injuries health-screen — which everyone
+  // answers, fast path or not. We set the index explicitly rather than calling next(),
+  // because next()'s skip() would read a stale `personalize` from this render's closure.
   const buildNow = () => {
     // level-aware defaults beat the flat 2/2/2: an advanced athlete gets the advanced mix.
     setDraft((d) => ({ ...d, personalize: false, autoFrequency: true }));
     setIdx(STEPS.indexOf("injuries"));
-  };
-  const fineTune = () => {
-    setDraft((d) => ({ ...d, personalize: true }));
-    setIdx(STEPS.indexOf("frequency"));
   };
 
   // Almost every question is skippable, and Continue stays available for those. The
@@ -373,6 +384,11 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
         return draft.custom.swimM > 0 && draft.custom.bikeM > 0 && draft.custom.runM > 0;
       case "date":
         return draft.raceDateUnknown || (!!draft.raceDateISO && draft.raceDateISO > todayISO());
+      case "level":
+        // Experience drives volume, intensity and ramp rate — i.e. most of the plan.
+        // Advancing blank used to silently assume "intermediate", which is how a
+        // beginner ended up with an intermediate's week and no idea why (#107).
+        return !!draft.level;
       case "prs":
         // a benchmark outside human range would silently mis-set four months of
         // targets; blank is always fine, absurd is not
@@ -391,6 +407,8 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
         return "Enter a distance for all three sports.";
       case "date":
         return "Pick a date in the future, or tell us you don't know it yet.";
+      case "level":
+        return "Pick the one that sounds most like you — it sets how much and how hard you train.";
       case "prs": {
         const bad = BENCHMARKS.find((b) => !inRange(draft[b.key], b));
         return bad ? `${bad.label} looks off — ${bad.typical.toLowerCase()}. Fix it or clear the field.` : null;
@@ -497,7 +515,7 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
           <span className="eyebrow text-[0.66rem] text-muted">
             Step {visibleIdx + 1} of {visibleCount} · {STEP_LABELS[step]}
           </span>
-          {restored && (
+          {resumedAt === idx && (
             <span className="eyebrow text-[0.66rem] text-muted">Picked up where you left off</span>
           )}
         </div>
@@ -554,22 +572,20 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
                 <button onClick={() => setGenerating(true)} disabled={!finalProfile} className="btn btn-primary flex-1 py-3.5 text-base">
                   Build my plan
                 </button>
-              ) : step === "level" ? (
-                // The fast-path fork: everything the plan needs is answered — build now,
-                // or open the optional refinements. "Build" is primary so the median
-                // athlete reaches a plan in a handful of taps.
-                <button onClick={buildNow} className="btn btn-primary flex-1 py-3.5 text-base">
-                  Build my plan →
-                </button>
               ) : (
                 <button onClick={next} disabled={!canNext} className="btn btn-primary flex-1 py-3.5 text-base">
                   Continue
                 </button>
               )}
             </div>
-            {step === "level" && (
-              <button onClick={fineTune} className="btn btn-ghost w-full py-2.5 text-sm text-muted">
-                Fine-tune first — sessions, strength &amp; benchmarks
+            {/* The fork, inverted. "Build my plan" used to be the PRIMARY button here and
+                the four tailoring questions an opt-in afterthought, so most athletes got a
+                plan derived from three answers and then wondered why it didn't fit their
+                week. More questions is the point (#107) — Continue now walks them, and
+                skipping is the deliberate, clearly-labelled choice. */}
+            {step === "level" && canNext && (
+              <button onClick={buildNow} className="btn btn-ghost w-full py-2.5 text-sm text-muted">
+                In a hurry? Build it now with sensible defaults
               </button>
             )}
           </div>
@@ -935,15 +951,28 @@ function Head({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
+// The option card used to signal "chosen" with a tint and a 1px ring and nothing else:
+// no checkmark, and — because it's a plain <button> — nothing a screen reader announces
+// as selected either. On these steps the whole question is "which one did I pick?", so
+// the state gets a real mark and a real aria-pressed (#107).
 function Card({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-2xl border p-4 text-left transition ${
+      aria-pressed={active}
+      className={`relative w-full rounded-2xl border p-4 pr-11 text-left transition ${
         active ? "border-accent bg-accent/10 ring-1 ring-accent" : "border-line bg-surface-2 hover:bg-surface-3"
       }`}
     >
       {children}
+      {active && (
+        <span
+          aria-hidden
+          className="absolute right-3.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full bg-accent text-on-accent"
+        >
+          <Icon name="check" size={14} />
+        </span>
+      )}
     </button>
   );
 }
@@ -1262,7 +1291,11 @@ function FrequencyStep({ draft, set, total }: StepProps & { total: number }) {
         ] as const).map(([val, label]) => (
           <button
             key={label}
-            onClick={() => set((d) => ({ ...d, autoFrequency: val }))}
+            // Switching to "I'll choose" hands over the mix we were ALREADY suggesting,
+            // so the steppers start from a sensible week and the athlete edits it —
+            // rather than snapping back to the flat 2/2/2 seed and making them rebuild
+            // their week from scratch to change one number.
+            onClick={() => set((d) => ({ ...d, autoFrequency: val, perSport: val ? d.perSport : resolvePerSport(d) }))}
             className={`rounded-full py-2.5 text-center font-display text-sm font-semibold transition ${
               auto === val ? "accent-gradient text-on-accent" : "border border-line bg-surface-2 text-muted"
             }`}

@@ -358,6 +358,11 @@ export interface Plan {
   readiness?: Record<string, ReadinessEntry>;
   /** week indices already auto-eased by adaptation, so the banner doesn't re-nag */
   easedWeeks?: number[];
+  /** the day the plan was last realigned around "today" (manual or automatic).
+   *  Misses BEFORE this date have already been absorbed into `kept-` history, so
+   *  counting them again would make an automatic realign re-fire forever — see
+   *  `missedSince` in lib/adapt.ts. */
+  realignedAtISO?: string;
   /** why each eased week was softened — the applied suggestion's trigger + numbers (survives rebuilds) */
   adaptations?: { weekIndex: number; cause: "missed" | "strain" | "form"; reason: string; missed: number; scheduled: number }[];
 }

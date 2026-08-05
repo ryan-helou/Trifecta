@@ -13,6 +13,13 @@
 // shadow tree and support for ::before on them is inconsistent), so the placeholder
 // is a real, aria-hidden sibling shown only while the value is empty. The native
 // picker still does all the work.
+//
+// The catch, and the second bug: browsers that DO render something for an empty date
+// input (Chrome/Android show "mm/dd/yyyy" or "yyyy-mm-dd") then draw it UNDERNEATH our
+// overlay, so the race-date field read as two strings stacked on top of each other —
+// "Pick your race date" and "yyyy-mm-dd" overlapping, illegible. While the value is
+// empty the input's own text is therefore transparent; the overlay is the only text.
+// It goes back to inherit the moment there's a real date to show.
 // ---------------------------------------------------------------------------
 
 export function DateField({
@@ -41,6 +48,10 @@ export function DateField({
         max={max}
         value={value}
         aria-label={ariaLabel ?? placeholder}
+        /* Inline, not a `text-transparent` utility: `.input` is a component-layer class
+           and wins the cascade against it. `-webkit-text-fill-color` is the one WebKit
+           actually honours inside the date field's shadow tree. */
+        style={value ? undefined : { color: "transparent", WebkitTextFillColor: "transparent" }}
         onChange={(e) => onChange(e.target.value)}
       />
       {!value && (

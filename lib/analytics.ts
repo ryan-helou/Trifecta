@@ -41,7 +41,8 @@ export const EVENTS = [
   "readiness_logged", // { score, eased }
   "adaptation_offered", // { cause (enum) }
   "adaptation_applied", // { cause (enum) }
-  "plan_realigned", // { missed }
+  "plan_realigned", // { missed, auto } — auto:true is the self-realign (#109)
+  "session_feedback", // { verdict (enum), discipline (enum) } — the one-tap "how did that feel"
   "form_opened", // { band (enum) }
   "coach_opened",
   "device_connect_started", // { source (enum) }
