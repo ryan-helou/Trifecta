@@ -130,6 +130,12 @@ platform :ios do
     #
     # Waiting costs a few minutes per ship and buys a build a human can actually install
     # — which is the entire point of uploading to TestFlight.
+    # beta_app_description / beta_app_feedback_email are NOT optional decoration.
+    # Passing `groups:` makes fastlane post a beta review submission, and Apple now
+    # rejects that with "Beta App Description is required to submit a build for
+    # external testing" when the app has no betaAppLocalization — which killed the
+    # ship on build 16 AFTER the binary had already uploaded fine. Setting them here
+    # creates the localization, so the upload and the distribution both complete.
     upload_to_testflight(
       api_key: asc_key,
       ipa: "build/Trifecta.ipa",
@@ -137,6 +143,8 @@ platform :ios do
       distribute_external: false,
       groups: ["Me"],
       changelog: "Internal build — see the commit log on main.",
+      beta_app_description: "Trifecta builds an adaptive swim/bike/run plan for a triathlon and reshapes it around how your training actually goes.",
+      beta_app_feedback_email: "ryan.helou@gmail.com",
       notify_external_testers: false
     )
   end

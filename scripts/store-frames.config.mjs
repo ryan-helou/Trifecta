@@ -21,8 +21,12 @@ export const FRAMES = [
     out: "frame-1-today.png",
     theme: "ink",
     eyebrow: "Swim · Bike · Run",
-    headline: ["One plan that points at", "<em>race day</em>"],
-    sub: "Your countdown, your projected finish, and the three legs that get you there.",
+    // Rewritten when Today was rebuilt around a single hero session: the countdown and
+    // projected finish moved into a tap-through, so a headline selling them as the first
+    // thing you see was describing a screen that no longer exists. Screenshot copy has to
+    // track the screenshot.
+    headline: ["Open it. Do <em>today</em>.", "That's the whole app."],
+    sub: "One session, front and centre, with the shape of it and why it's there. Everything else waits its turn.",
   },
   {
     src: "store-2-session.png",
