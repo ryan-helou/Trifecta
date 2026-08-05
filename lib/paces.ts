@@ -101,10 +101,24 @@ export function derivePaces(p: Profile): PaceModel {
   // Anchored to lactate-threshold HR — the HR analog of FTP/threshold pace.
   // Prefer a measured LTHR; otherwise estimate it from max HR (LTHR ≈ 0.9×HRmax,
   // a standard rough default). Flat %HRmax is deliberately not used.
-  const maxHR = p.maxHR && p.maxHR > 0 ? p.maxHR : null;
+  // Precedence, strongest evidence first (#112):
+  //   1. what the athlete typed        — they know their own body; never overridden
+  //   2. what their sessions show      — real HR off synced activities (lib/hr.ts)
+  //   3. the 0.9×maxHR rule of thumb   — a guess, and labelled as one
+  // Before this, 2 didn't exist: an athlete who had never typed a threshold HR got
+  // zones built on a guess-on-top-of-a-guess, or no bpm at all.
+  const obs = p.hrObserved;
+  const maxHR = p.maxHR && p.maxHR > 0 ? p.maxHR : obs?.maxHR && obs.maxHR > 0 ? obs.maxHR : null;
   const measuredLthr = p.thresholdHr && p.thresholdHr > 0 ? p.thresholdHr : null;
-  const lthr = measuredLthr ?? (maxHR ? Math.round(maxHR * 0.9) : null);
-  const lthrSource: PaceModel["hr"]["lthrSource"] = measuredLthr ? "measured" : lthr ? "estimated" : null;
+  const observedLthr = obs?.lthr && obs.lthr > 0 ? obs.lthr : null;
+  const lthr = measuredLthr ?? observedLthr ?? (maxHR ? Math.round(maxHR * 0.9) : null);
+  const lthrSource: PaceModel["hr"]["lthrSource"] = measuredLthr
+    ? "measured"
+    : observedLthr
+    ? "observed"
+    : lthr
+    ? "estimated"
+    : null;
   const hrZones = {} as PaceModel["hr"]["zones"];
   ([1, 2, 3, 4, 5] as Zone[]).forEach((z) => {
     const [lo, hi] = ZONES[z].lthrPct;

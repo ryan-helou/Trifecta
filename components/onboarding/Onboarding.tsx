@@ -5,7 +5,7 @@ import { DateField } from "@/components/app/DateField";
 import { useApp } from "../AppProvider";
 import { LoadingAnimation } from "../LoadingAnimation";
 import { Wordmark } from "../Wordmark";
-import { AiHealthConsent, DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit, Unit } from "@/lib/types";
+import { AiHealthConsent, DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit, Unit, Zone } from "@/lib/types";
 import { detectRedFlags, redFlagConstraints, RED_FLAG_DISCLAIMER, type RedFlagMatch } from "@/lib/redFlags";
 import { generatePlan } from "@/lib/planEngine";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
@@ -15,7 +15,7 @@ import { apiIntake, apiPlanSummary, ParsedInjury } from "@/lib/api";
 import { RUN_PR_OPTIONS, SWIM_PR_OPTIONS, BIKE_PR_OPTIONS, prLabel } from "@/lib/paces";
 import { projectRace } from "@/lib/predict";
 import { Icon, IconName, DisciplineIcon } from "../app/icons";
-import { DISCIPLINE_META } from "@/lib/zones";
+import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { fmtClock, fmtDuration } from "@/lib/format";
 import { todayISO, addDays, fmtFullDate } from "@/lib/dates";
 import { legalHref } from "@/lib/runtime";
@@ -1810,6 +1810,11 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
         />
       </div>
 
+      {/* Type a number, see your zones (#112). Entering a threshold HR used to change
+          nothing you could see, so there was no reason to bother — and the zones stayed
+          a guess. Showing the five bands live makes the payoff of answering obvious. */}
+      <HrZonePreview thresholdHr={draft.thresholdHr} maxHR={draft.maxHR} />
+
       <div className="mt-3 space-y-2 rounded-2xl border border-line bg-surface-2 p-4 text-xs leading-relaxed text-muted">
         <p>
           <span className="font-semibold text-foreground">Bike FTP</span> — functional threshold power: roughly the
@@ -1820,13 +1825,18 @@ function PRStep({ draft, set, parseTime }: StepProps & { parseTime: (s: string) 
           We&apos;ll pace your rides by heart rate and perceived effort instead, and you can add it later.
         </p>
         <p>
-          <span className="font-semibold text-foreground">Threshold HR</span> — your average heart rate over a hard,
+          <span className="font-semibold text-foreground">Threshold HR</span>{" — "}your average heart rate over a hard,
           steady 20–30 min effort. It sets your heart-rate zones the way FTP sets bike zones. Blank is fine; we&apos;ll
           estimate from your max HR.
         </p>
         <p>
-          <span className="font-semibold text-foreground">Max HR</span> — the highest number you&apos;ve genuinely seen
-          on a watch. Blank is fine; we&apos;ll estimate it from your age bracket.
+          {/* This used to claim we estimate max HR "from your age bracket". We don't —
+              there is no age-based fallback anywhere in the engine, so with both fields
+              blank the HR zones simply carry no bpm. Now it says the true thing, and the
+              true thing is also more reassuring, because Strava fills the gap. */}
+          <span className="font-semibold text-foreground">Max HR</span>{" — "}the highest number you&apos;ve genuinely seen
+          on a watch. Blank is fine: once you connect Strava we read your real heart rate from your sessions and set
+          these zones from that instead.
         </p>
       </div>
     </div>
@@ -2183,6 +2193,53 @@ function ReviewStep({ draft, total, profile }: { draft: Draft; total: number; pr
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** The five HR bands the entered numbers actually produce (#112).
+ *
+ *  Mirrors `derivePaces`' precedence exactly — a typed threshold wins, else 0.9×maxHR —
+ *  so what the athlete previews here is what the plan will use. Renders nothing when
+ *  there's nothing to build from, rather than showing five empty rows. */
+function HrZonePreview({ thresholdHr, maxHR }: { thresholdHr?: number; maxHR?: number }) {
+  const lthr =
+    thresholdHr && thresholdHr > 0 ? thresholdHr : maxHR && maxHR > 0 ? Math.round(maxHR * 0.9) : null;
+  if (!lthr) return null;
+  const estimated = !(thresholdHr && thresholdHr > 0);
+
+  return (
+    <div className="mt-3 rounded-2xl border border-line bg-surface-2 p-4">
+      <div className="mb-2.5 flex items-baseline justify-between gap-2">
+        <span className="eyebrow text-[0.7rem]">Your heart-rate zones</span>
+        <span className="text-[0.7rem] text-muted">
+          {estimated ? `estimated from ${maxHR} bpm max` : `from ${lthr} bpm threshold`}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {([1, 2, 3, 4, 5] as Zone[]).map((z) => {
+          const [lo, hi] = ZONES[z].lthrPct;
+          return (
+            <div key={z} className="flex items-center gap-2.5">
+              <span
+                className="w-7 flex-shrink-0 rounded-md px-1 py-0.5 text-center text-[0.66rem] font-semibold"
+                style={{ background: `var(--z${z})`, color: z >= 3 ? "#fff" : "#0f0f0f" }}
+              >
+                Z{z}
+              </span>
+              <span className="flex-1 text-xs text-muted">{ZONES[z].name}</span>
+              <span className="text-xs font-semibold tabular-nums">
+                {Math.round((lthr * lo) / 100)}–{Math.round((lthr * hi) / 100)} bpm
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {estimated && (
+        <p className="mt-2.5 text-[0.7rem] leading-relaxed text-muted">
+          Add your threshold HR above to sharpen these — or leave it and we&apos;ll learn it from your synced sessions.
+        </p>
+      )}
     </div>
   );
 }

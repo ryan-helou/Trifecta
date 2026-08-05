@@ -232,7 +232,21 @@ function PacesSection({ paces, unit }: { paces: NonNullable<ReturnType<typeof us
           <Row k="Run threshold" v={fmtPace(paces.run.thresholdSecPerKm, unit)} first />
           <Row k="Swim CSS" v={fmtPace100(paces.swim.cssSecPer100)} />
           <Row k="Bike FTP" v={paces.bike.ftp ? `${paces.bike.ftp} W` : "Zone / RPE based"} />
-          {paces.hr.lthr ? <Row k="Threshold HR" v={`${paces.hr.lthr} bpm${paces.hr.lthrSource === "estimated" ? " · est." : ""}`} /> : null}
+          {/* Say where the number came from. "from your sessions" is the one worth
+              naming — it tells the athlete the app is reading their real heart rate
+              rather than guessing, and that entering nothing is now a real option. */}
+          {paces.hr.lthr ? (
+            <Row
+              k="Threshold HR"
+              v={`${paces.hr.lthr} bpm${
+                paces.hr.lthrSource === "estimated"
+                  ? " · est."
+                  : paces.hr.lthrSource === "observed"
+                  ? " · from your sessions"
+                  : ""
+              }`}
+            />
+          ) : null}
           {paces.hr.maxHR ? <Row k="Max HR" v={`${paces.hr.maxHR} bpm`} /> : null}
           <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
             {paces.run.source === "pr" ? "Dialed in from your PRs." : "Estimated from your level — add PRs to sharpen them."}
