@@ -57,14 +57,12 @@ export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
     { label: "Run", v: fmtDistance(dist.run, unit), c: "var(--run)", align: "text-right" },
   ];
 
-  const raceName = plan.profile.raceName;
   return (
     <div className="card-glass relative overflow-hidden p-5">
       <div className="flex items-baseline justify-between gap-2">
         <div className="eyebrow text-[0.72rem]">{raceCategoryName(plan.profile)} · Race day</div>
         <div className="eyebrow text-[0.72rem] text-muted">{fmtShortDate(plan.raceDateISO)}</div>
       </div>
-      {raceName && <div className="mt-1 truncate font-display text-[0.98rem] font-semibold leading-tight">{raceName}</div>}
 
       <div className="mt-4 flex items-end justify-between gap-4">
         <div className="flex items-baseline gap-3">
