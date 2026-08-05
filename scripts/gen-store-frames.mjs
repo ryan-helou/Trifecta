@@ -157,9 +157,10 @@ body{
 /* ---- header: wordmark, hairline, eyebrow, headline, sub ---- */
 .pad{padding:92px 96px 0}
 
-/* Wordmark only. The app icon is a wide illustration inside a lot of white margin —
-   at header size it collapses into an unreadable smudge, and a smudge next to good
-   type looks like a mistake. Fraunces alone is the more confident mark anyway. */
+/* Wordmark only. This predates the block-monogram logo — the old icon was a wide
+   illustration inside a lot of white margin, which collapsed into a smudge at header
+   size. The current mark would survive here, but Fraunces alone still reads as the
+   more confident lockup, so pairing the two is a design call, not a fix. */
 .mark{
   font-family:"Fraunces",Georgia,serif;
   font-size:44px;font-weight:600;letter-spacing:-.015em;
