@@ -57,11 +57,33 @@ plain Select; the Notion API cannot edit status-TYPE option lists, hence Select.
 - **Schema drifts** (the user edits properties between runs). ALWAYS `notion-fetch`
   the collection id first and adapt to whatever properties exist now.
 
-Load the Notion tools in one ToolSearch call:
+Load the Notion tools with a KEYWORD ToolSearch, not a `select:` by name:
 
 ```
-select:mcp__claude_ai_Notion__notion-search,mcp__claude_ai_Notion__notion-fetch,mcp__claude_ai_Notion__notion-update-page,mcp__claude_ai_Notion__notion-create-pages,mcp__claude_ai_Notion__notion-update-data-source
+ToolSearch: notion page database update properties
 ```
+
+**Do not hardcode the server prefix.** It used to say
+`select:mcp__claude_ai_Notion__notion-*`, which silently matched nothing once the
+connector was reattached under a different id (`mcp__<uuid>__notion-*`, 2026-08-05) —
+the skill then looked like Notion was simply unavailable. Search by keyword and use
+whatever prefix comes back.
+
+**Prefer SQL over reading the board.** `notion-query-data-sources` runs SQLite against
+`collection://84cb0acc-…`, which is the only way to see the WHOLE board — the web UI
+virtualizes rows, so scraping it silently truncates at ~24 and hides tickets:
+
+```sql
+SELECT "Ticket", "Status", "Name" FROM "collection://84cb0acc-76ad-4628-9b51-edc197d70def"
+WHERE "Status" IS NULL OR "Status" != 'Done' ORDER BY "Ticket" DESC
+```
+
+Set fields with `notion-update-page` / `command: update_properties`. A brand-new ticket
+has `Status: null` (not "Not started"), so filter for both.
+
+**If no Notion tool exists at all**, fall back to driving the board in the browser — see
+the `notion-edit-via-browser` memory, which documents the exact click sequence and the
+ways it silently reports success while writing nothing.
 
 ---
 
