@@ -1,5 +1,5 @@
 {
-  "latest": "1.0.3",
+  "latest": "1.0.4",
   "bundles": [
     {
       "version": "1.0.3",
@@ -7,6 +7,13 @@
       "size": 1111509,
       "createdAtISO": "2026-08-05T19:36:07.720Z",
       "comment": "tickets 107-110, self-hosted OTA"
+    },
+    {
+      "version": "1.0.4",
+      "sha256": "e32de15e2600d6af980acebc6ae88e1e8ebbec1e321450d2144330b9035c03cd",
+      "size": 766534,
+      "createdAtISO": "2026-08-05T23:18:04.602Z",
+      "comment": "text-selection fix, sheet dismiss, plain week labels, Friends tab, brand mark"
     }
   ]
 }
