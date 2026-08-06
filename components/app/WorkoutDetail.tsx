@@ -5,25 +5,16 @@ import { Discipline, Plan, Segment, Unit, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 import { targetView } from "@/lib/targets";
-import { fmtDistance, fmtDuration } from "@/lib/format";
+import { fmtDistance, fmtDuration, repsSummary } from "@/lib/format";
 import { addDays, dayIndexOf, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
 import { buildWorkoutFit, fitFilename } from "@/lib/fit";
-import { whyForWorkout } from "@/lib/why";
+import { whyAddsContext, whyForWorkout } from "@/lib/why";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
 import { renderShareCard, shareCard, shareCardFilename } from "@/lib/shareCard";
-
-/** A short "8 × 100" / "6 × 3′" summary of a session's main repeat set. */
-function repsSummary(w: Workout): string | null {
-  const rep = w.segments.find((s) => (s.repeat ?? 1) > 1 && s.children && s.children.length);
-  if (!rep || !rep.repeat) return null;
-  const child = rep.children!.find((c) => c.kind !== "rest") ?? rep.children![0];
-  const u = child.distanceM ? `${child.distanceM}m` : child.durationSec ? `${Math.round(child.durationSec / 60)}′` : "";
-  return u ? `${rep.repeat} × ${u}` : `${rep.repeat}×`;
-}
 
 function RepeatGlyph() {
   return (
@@ -206,6 +197,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
     sections[sections.length - 1].segs.push(s);
   }
 
+  const why = whyForWorkout(workout, plan);
   const close = () => openWorkout(null);
 
   return (
@@ -242,10 +234,13 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           <div className="mb-4 rounded-2xl border border-accent/25 bg-accent/5 p-3.5">
             <div className="eyebrow mb-1 text-[0.72rem] text-accent">Why it matters</div>
             <p className="text-sm leading-relaxed">{workout.purpose}</p>
-            {/* purpose is what the session does; this is why it's on YOUR plan today */}
-            <p className="mt-1.5 border-t border-accent/15 pt-1.5 text-xs leading-relaxed text-muted">
-              {whyForWorkout(workout, plan).text}
-            </p>
+            {/* purpose is what the session does; this is why it's on YOUR plan today.
+                Only when it actually differs — see whyAddsContext. The generic phase
+                fallback paraphrases purpose, which on device read as the card saying
+                the same thing twice in a row. */}
+            {whyAddsContext(why) && (
+              <p className="mt-1.5 border-t border-accent/15 pt-1.5 text-xs leading-relaxed text-muted">{why.text}</p>
+            )}
           </div>
 
           {workout.note && (

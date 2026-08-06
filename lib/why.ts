@@ -36,6 +36,23 @@ export type WhyKind =
 export interface WhyLine {
   kind: WhyKind;
   text: string;
+  /** true when a personal modifier (moved day, named limiter, compressed build) was
+   *  appended — i.e. the line says something about THIS athlete, not just the block. */
+  personal: boolean;
+}
+
+/** Does this line earn its place beside the session's own `purpose`?
+ *
+ *  The workout sheet stacks the two: `purpose` is what the session does, the why-line
+ *  is why it's on your plan today. Every specific reason — a readiness score, an
+ *  injury, a swap, a taper — genuinely adds. The generic `phase` fallback doesn't: it
+ *  is derived from the same phase and session type `purpose` is, so a threshold swim
+ *  reads "the pace you can hold without blowing up" and then, directly underneath,
+ *  "the pace you can hold before you blow up". The week's Focus banner on the Plan tab
+ *  is a third telling of the same thing. A personal modifier rescues it — that part
+ *  `purpose` can't know. */
+export function whyAddsContext(line: WhyLine): boolean {
+  return line.kind !== "phase" || line.personal;
 }
 
 const SPORT_VERB: Record<string, string> = { swim: "swim", bike: "ride", run: "run" };
@@ -97,14 +114,14 @@ export function whyForWorkout(w: Workout, plan: Plan): WhyLine {
   const racing = !isFitnessGoal(profile);
   const done = (text: string, kind: WhyKind): WhyLine => {
     const extra = suffixes(w, plan, profile);
-    return { kind, text: extra.length ? `${text} ${extra.join(" ")}` : text };
+    return { kind, text: extra.length ? `${text} ${extra.join(" ")}` : text, personal: extra.length > 0 };
   };
 
   if (w.id === "w-race-day") {
-    return { kind: "raceday", text: "Race day. Everything in this plan was pointed here — trust the work and race your effort." };
+    return { kind: "raceday", text: "Race day. Everything in this plan was pointed here — trust the work and race your effort.", personal: false };
   }
   if (w.discipline === "rest") {
-    return { kind: "recovery", text: "A full day off is a training session — adaptation happens while you rest, not while you work." };
+    return { kind: "recovery", text: "A full day off is a training session — adaptation happens while you rest, not while you work.", personal: false };
   }
   if (w.type === "race_prep" && week?.isRaceWeek) {
     return done("Race week: short efforts keep you primed without spending anything you'll need on the day.", "opener");

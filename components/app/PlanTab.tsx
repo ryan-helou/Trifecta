@@ -10,6 +10,7 @@ import { addDays, weekdayShort, fmtDayMonth } from "@/lib/dates";
 import { haptic } from "@/lib/haptics";
 import { isFitnessGoal } from "@/lib/planEngine";
 import { Plan, Week } from "@/lib/types";
+import { ZONES } from "@/lib/zones";
 import { Icon } from "./icons";
 
 export function PlanTab() {
@@ -104,11 +105,17 @@ export function PlanTab() {
               This week
             </button>
           )}
+          {/* "1/6" on its own is a riddle — it was a bare fraction in a pill with no
+              label, and VoiceOver read it as "one slash six". One word fixes both. */}
           <span
-            className="rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold tabular-nums text-accent"
+            className="rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold text-accent"
             style={{ borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)" }}
+            aria-label={`${prog.done} of ${prog.total} sessions done`}
           >
-            {prog.done}/{prog.total}
+            <span className="tabular-nums">
+              {prog.done}/{prog.total}
+            </span>{" "}
+            done
           </span>
         </div>
       </div>
@@ -117,8 +124,14 @@ export function PlanTab() {
         <DayStrip week={week} today={today} plan={plan} />
       </div>
 
+      {/* The focus strings are written in the coach's imperative — "Add race-specific
+          intensity", "Build the aerobic engine", "Taper — cut volume". Behind a bare ◆
+          in a bordered card that reads as a to-do list item aimed at the athlete, as if
+          they're the one meant to go add the intensity. It's a description of what the
+          week is for. Naming it costs no vertical space and removes the ambiguity. */}
       <p className="mt-3.5 rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm leading-snug text-muted">
-        <span className="text-accent">◆</span> {week.focus}
+        <span className="eyebrow mr-1.5 text-[0.68rem] text-accent">Focus</span>
+        {week.focus}
       </p>
 
       {/* agenda */}
@@ -165,9 +178,21 @@ function DayStrip({ week, today, plan }: { week: Week; today: string; plan: Plan
         const iso = addDays(week.startDate, day);
         const items = week.workoutIds.map((id) => plan.workouts[id]).filter((w) => w && w.dayIndex === day);
         const isToday = iso === today;
+        // The dots are zone colours (--z1..--z5) and nothing on screen says so, which
+        // left the strip decorative to sighted users and completely silent to VoiceOver
+        // — it read "M 3" and stopped, so an assistive-tech user got a week overview
+        // with the week's content removed. Spelling it out here explains the colours on
+        // long-press and gives the cell a real accessible name, at zero pixels.
+        const summary = items.length
+          ? items
+              .map((w) => `${w.title} (${ZONES[w.primaryZone].name}${w.status === "skipped" ? ", skipped" : ""})`)
+              .join(", ")
+          : "Rest day";
         return (
           <div
             key={day}
+            title={summary}
+            aria-label={`${fmtDayMonth(iso)}${isToday ? ", today" : ""} — ${summary}`}
             className={`flex flex-1 flex-col items-center gap-0.5 rounded-[14px] border py-2 ${
               isToday ? "border-accent/60 bg-accent/10" : "border-line bg-surface-2"
             }`}

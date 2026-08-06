@@ -13,7 +13,7 @@
 import { generatePlan } from "../lib/planEngine";
 import { easeUpcoming, applyAdaptation, rebuildFromToday, type AdaptationSuggestion } from "../lib/adapt";
 import { logReadiness } from "../lib/readiness";
-import { whyForWorkout } from "../lib/why";
+import { whyAddsContext, whyForWorkout } from "../lib/why";
 import type { Plan, Profile, Workout } from "../lib/types";
 
 let checks = 0;
@@ -191,6 +191,41 @@ section("personal modifiers are appended honestly");
   const unfocused = plan();
   const bike2 = firstOf(unfocused, (w) => w.discipline === "bike");
   if (bike2) ok(!/limiter/.test(whyForWorkout(bike2, unfocused).text), "no limiter claim without a focus discipline");
+}
+
+// --- does the line earn its place next to `purpose`? -------------------------
+// The detail sheet stacks two paragraphs: the session's own `purpose` ("what this
+// does") and the why-line ("why it's on YOUR plan today"). Every reason that names
+// something specific — a readiness score, an injury, a swap, a taper — genuinely
+// adds. The generic `phase` fallback does not: it's derived from the same phase and
+// session type `purpose` is, so a threshold swim gets "the pace you can hold without
+// blowing up" followed by "the pace you can hold before you blow up". Observed on
+// device. `whyAddsContext` is the rule the sheet uses to drop the repeat.
+section("whyAddsContext keeps the specific reasons and drops the generic phase line");
+{
+  const p1 = plan();
+  const anyW = firstOf(p1, (w) => w.discipline !== "rest");
+  if (anyW) {
+    const line = whyForWorkout(anyW, p1);
+    if (line.kind === "phase" && !line.personal) {
+      ok(!whyAddsContext(line), "a bare phase line adds nothing beyond purpose");
+    }
+  }
+  // a personal modifier makes even a phase line worth showing
+  const focused = plan({ focusDiscipline: "bike" });
+  const bike = firstOf(focused, (w) => w.discipline === "bike" && w.status === "planned");
+  if (bike) {
+    const line = whyForWorkout(bike, focused);
+    ok(line.personal, "a named limiter marks the line as personal");
+    ok(whyAddsContext(line), "a personal line is always worth showing");
+  }
+  // every non-phase reason is specific by construction, so it always shows
+  for (const w of Object.values(p1.workouts)) {
+    const line = whyForWorkout(w, p1);
+    if (line.kind !== "phase") ok(whyAddsContext(line), `${line.kind} lines always show`);
+  }
+  ok(!whyAddsContext({ kind: "phase", text: "x", personal: false }), "explicit generic phase line is dropped");
+  ok(whyAddsContext({ kind: "phase", text: "x", personal: true }), "explicit personal phase line is kept");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
