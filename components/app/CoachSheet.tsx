@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plan } from "@/lib/types";
 import { apiCoach } from "@/lib/api";
 import { summarizeForCoach } from "@/lib/adapt";
+import { proposeFromText, type ActionPreview } from "@/lib/coachActions";
 import { CoachMsg } from "./ui";
 import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
@@ -18,6 +19,7 @@ export function CoachSheet({
   messages,
   setMessages,
   onClose,
+  onApply,
 }: {
   plan: Plan;
   today: string;
@@ -25,9 +27,14 @@ export function CoachSheet({
   messages: CoachMsg[];
   setMessages: React.Dispatch<React.SetStateAction<CoachMsg[]>>;
   onClose: () => void;
+  /** apply a change the athlete accepted from the chat */
+  onApply: (p: ActionPreview) => void;
 }) {
   const [input, setInput] = useState(prefill ?? "");
   const [busy, setBusy] = useState(false);
+  // A change the athlete asked for in words, waiting on their confirmation. The
+  // Coach proposes; it never applies on its own.
+  const [proposal, setProposal] = useState<ActionPreview | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -42,6 +49,9 @@ export function CoachSheet({
     setInput("");
     setMessages((m) => [...m, { role: "you", text: q }]);
     setBusy(true);
+    // Matched locally and deterministically — the model never touches the plan.
+    // null is the common answer, and then the Coach just talks, as before.
+    setProposal(proposeFromText(q, plan, today));
     try {
       // fail closed: nothing about the athlete's body unless they opted in
       const ctx = summarizeForCoach(plan, today, {
@@ -138,6 +148,31 @@ export function CoachSheet({
         {busy && (
           <div className="flex justify-start">
             <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-sm text-muted">Thinking…</div>
+          </div>
+        )}
+        {/* The Coach's hands. It says what it will do, in one sentence, BEFORE
+            doing it — the athlete taps, or doesn't. Nothing here is applied by
+            the model, and nothing is applied without this tap. */}
+        {proposal && !busy && (
+          <div className="rounded-2xl border border-accent/35 bg-accent/5 p-3.5">
+            <div className="eyebrow mb-1 text-[0.7rem] text-accent">I can do that</div>
+            <p className="text-sm leading-snug">{proposal.summary}</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  haptic("success");
+                  onApply(proposal);
+                  setMessages((m) => [...m, { role: "coach", text: `Done — ${proposal.summary.replace(/\.$/, "")}. You can undo that from the toast.` }]);
+                  setProposal(null);
+                }}
+                className="btn btn-primary flex-1 py-2.5 text-sm"
+              >
+                Do it
+              </button>
+              <button onClick={() => setProposal(null)} className="btn btn-ghost flex-1 py-2.5 text-sm">
+                Leave it
+              </button>
+            </div>
           </div>
         )}
         <div ref={endRef} />

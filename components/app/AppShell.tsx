@@ -326,6 +326,18 @@ function AppShellInner() {
           messages={coachMsgs}
           setMessages={setCoachMsgs}
           onClose={() => setCoach({ open: false })}
+          onApply={(preview) => {
+            const prev = plan;
+            track("coach_action_applied", { action: preview.action.kind, changed: preview.changedIds.length });
+            applyPlan(preview.plan);
+            toast({
+              text: preview.summary,
+              tone: "success",
+              actionLabel: "Undo",
+              onAction: () => applyPlan(prev),
+              duration: 9000,
+            });
+          }}
         />
       )}
     </UICtx.Provider>
