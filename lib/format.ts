@@ -1,6 +1,6 @@
 // Small pure formatters shared across the UI.
 
-import { Unit } from "./types";
+import { Segment, Unit, Workout } from "./types";
 
 const M_PER_MILE = 1609.34;
 
@@ -106,4 +106,30 @@ export function fmtPace100Range(lo: number, hi: number): string {
   const fa = fmtPace100(a).replace("/100m", "");
   const fb = fmtPace100(b);
   return `${fa}–${fb}`;
+}
+
+/** A short "6 × 200m" / "5 × 3′" summary of a session's defining repeat set —
+ *  the line under a workout's title.
+ *
+ *  Prefers a repeat from the MAIN set. It used to take the first repeating
+ *  segment in the session, which in a swim is almost always the warm-up build:
+ *  the sheet for a "CSS Threshold Set" (44 min, 2.1 km, main set 6 × 200m) read
+ *  "Swim · Threshold · 4 × 50m" — advertising the part before the session
+ *  starts as the session itself. Warm-up/cool-down repeats are still used when
+ *  they're the only ones there are, so a session that's all drills isn't left
+ *  with a blank subtitle. */
+export function repsSummary(w: Workout): string | null {
+  const repeats = (w.segments ?? []).filter((s) => (s.repeat ?? 1) > 1 && !!s.children?.length);
+  if (!repeats.length) return null;
+  const isMain = (s: Segment) => s.kind !== "warmup" && s.kind !== "cooldown";
+  const rep = repeats.find(isMain) ?? repeats[0];
+  // describe the effort, not the recovery between efforts
+  const child = rep.children!.find((c) => c.kind !== "rest") ?? rep.children![0];
+  // Minutes-rounding alone turns a 20s stride into "0′" — the old summary for
+  // "Run Threshold 5×1km" literally read "4 × 0′". Anything under two minutes, or
+  // that isn't a whole number of them, stays in seconds.
+  const sec = child.durationSec ?? 0;
+  const time = sec < 120 || sec % 60 !== 0 ? `${sec}s` : `${sec / 60}′`;
+  const u = child.distanceM ? `${child.distanceM}m` : sec > 0 ? time : "";
+  return u ? `${rep.repeat} × ${u}` : `${rep.repeat}×`;
 }

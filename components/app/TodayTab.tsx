@@ -452,8 +452,12 @@ function PromptCard({
 
   if (prompt.kind === "nudge") {
     const w = prompt.workout;
+    // Session titles carry acronyms — CSS, VO2, FTP. Lowercasing them to fit the
+    // sentence turned "CSS Threshold Set" into "css threshold set" on this card, and
+    // "Run VO2 6×3" into "run vo2 6×3". Title case mid-sentence reads better than a
+    // mangled acronym.
     return (
-      <Card onDismiss={onDismiss} eyebrow="Quick check" title={`Nailed today's ${w.title.toLowerCase()}?`} body="One tap to check it off.">
+      <Card onDismiss={onDismiss} eyebrow="Quick check" title={`Nailed today's ${w.title}?`} body="One tap to check it off.">
         <div className="mt-3 flex gap-2">
           <button
             onClick={() => {
