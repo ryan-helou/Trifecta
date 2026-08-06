@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.8",
+  "latest": "1.0.9",
   "bundles": [
-    {
-      "version": "1.0.6",
-      "sha256": "21dbfd67a9ca90c99d33e1bc9912f0b47c2f031284af89aee9be80dc1cd330c3",
-      "size": 767840,
-      "createdAtISO": "2026-08-06T00:46:46.863Z",
-      "comment": "main-set subtitles, no duplicated why-copy, labelled counters and day strip"
-    },
     {
       "version": "1.0.7",
       "sha256": "11c012e463d0bc86e4dccec5945d58dacfc23d91d7dad7744cec14d69f6b1b0a",
@@ -21,6 +14,13 @@
       "size": 771585,
       "createdAtISO": "2026-08-06T20:30:17.684Z",
       "comment": "#119 — the coach input stays above the keyboard (all sheets)"
+    },
+    {
+      "version": "1.0.9",
+      "sha256": "723ade5121a377013df1fa921a428abe73883100fb5bfa9acdcd56c30d1e4c71",
+      "size": 771708,
+      "createdAtISO": "2026-08-06T22:10:53.300Z",
+      "comment": "#120 — the plan eases itself, and Today reports what you actually did"
     }
   ]
 }
