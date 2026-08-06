@@ -107,6 +107,9 @@ export interface Workout {
    *  converge on a fraction of the design instead of ratcheting the session
    *  down a little more every time the athlete logs something. */
   prescribed?: { estDurationSec: number; estDistanceM?: number; segments: Segment[] };
+  /** set when a swap had to be shortened to keep the receiving sport's volume
+   *  ramping safely — carries the sentence explaining what was capped and why */
+  impactCapped?: string;
   /** filled when a connected device (Strava) auto-completed this session */
   actuals?: WorkoutActuals;
 }

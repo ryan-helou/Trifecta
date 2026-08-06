@@ -7,6 +7,7 @@ import { ZONES } from "./zones";
 import { fmtDuration } from "./format";
 import { creditedDiscipline, creditedSeconds } from "./credit";
 import { formDeviation, FORM_DEBT_EASE_PCT } from "./load";
+import { swapAllowance } from "./mechanical";
 
 // re-exported so existing importers keep working; the definitions live in credit.ts
 export { creditedDiscipline, creditedSeconds };
@@ -305,13 +306,24 @@ function replacementDraft(ctx: BuildCtx, discipline: Discipline, minutes: number
   }
 }
 
-/** Swap a session for an easy session of a different discipline (keeps the day & id, so it's undoable). */
+/** Swap a session for an easy session of a different discipline (keeps the day & id, so it's undoable).
+ *
+ *  The swapped session is sized to what the week can absorb on the MECHANICAL
+ *  axis, not just handed the outgoing session's duration. Rebuilding at the same
+ *  length is how a single tap used to add 75% to an athlete's weekly run volume:
+ *  a 90-minute ride becomes a 90-minute run, the metabolic ledger doesn't move
+ *  because the two cost the same sRPE, and nothing notices (doc 02 §4 #13).
+ *  The swap itself is never refused — everything stays switchable, and it's the
+ *  duration that gets fitted (doc 03 §4 F: never ramp the substitute sport
+ *  faster than you'd ramp it fresh). */
 export function swapDiscipline(plan: Plan, id: string, discipline: Discipline): Plan {
   const p = clonePlan(plan);
   const w = p.workouts[id];
   if (!w) return p;
   const ctx: BuildCtx = { paces: p.paces, level: p.profile.level };
-  const draft = replacementDraft(ctx, discipline, (w.estDurationSec || 2400) / 60);
+  const requestedSec = w.estDurationSec || 2400;
+  const allowance = swapAllowance(p, w, discipline, requestedSec);
+  const draft = replacementDraft(ctx, discipline, Math.max(20 * 60, allowance.maxSec) / 60);
   // preserve the pre-swap session (or the earliest one, if already swapped) so it can be restored
   const original = w.swappedFrom ?? {
     discipline: w.discipline,
@@ -334,8 +346,9 @@ export function swapDiscipline(plan: Plan, id: string, discipline: Discipline): 
     estDistanceM: draft.estDistanceM,
     primaryZone: draft.primaryZone,
     status: "planned",
-    note: `Swapped from ${original.discipline}`,
+    note: allowance.capped ? `Swapped from ${original.discipline} · kept short` : `Swapped from ${original.discipline}`,
     swappedFrom: original,
+    impactCapped: allowance.capped ? allowance.reason ?? undefined : undefined,
   };
   return p; // same id / date / week — no reindex needed
 }
