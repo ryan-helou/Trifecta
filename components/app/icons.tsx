@@ -13,7 +13,7 @@ export type IconName =
   | "smile" | "neutral" | "frown"
   | "flame" | "medal" | "calendar" | "stopwatch" | "chat" | "flag" | "trophy"
   | "search" | "heart" | "target" | "signal" | "bell" | "install" | "bolt"
-  | "dumbbell" | "check" | "skip"
+  | "dumbbell" | "check" | "skip" | "share"
   // league — badge tiers and the podium tab mark
   | "crown" | "compass" | "shield" | "star" | "rings" | "mountain" | "wave" | "podium";
 
@@ -311,6 +311,18 @@ export function Icon({
         <svg {...p}>{t}
           <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" />
           <path d="M12 8v6M9.5 11.5 12 14l2.5-2.5" />
+        </svg>
+      );
+    // The iOS share glyph — a box with an arrow leaving the top. Distinct from
+    // "install" (a phone with an arrow going IN): the two sat next to each other on
+    // the session sheet, both rendering the same download mark, so "Share" and
+    // "Export to watch" read as the same action.
+    case "share":
+      return (
+        <svg {...p}>{t}
+          <path d="M12 3v12" />
+          <path d="M8.5 6.5 12 3l3.5 3.5" />
+          <path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 18.5 11h-1" />
         </svg>
       );
     case "check":

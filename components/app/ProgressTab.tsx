@@ -119,8 +119,13 @@ export function ProgressTab() {
             const isCur = i === curWeek;
             return (
               <div key={i} className="relative flex flex-1 items-end self-stretch" title={`${w.label}: ${w.targetHours}h target`}>
+                {/* `justify-end` is load-bearing: the completed fill has to grow from the
+                    BOTTOM of the target bar. In normal flow it sat at the top, so a
+                    part-finished week rendered as a block floating above the baseline with
+                    a gap under it — most visible on the current week, which read as a
+                    rendering glitch rather than as progress. */}
                 <div
-                  className="w-full overflow-hidden rounded-[3px] bg-surface-3"
+                  className="flex w-full flex-col justify-end overflow-hidden rounded-[3px] bg-surface-3"
                   style={{
                     height: mounted ? `${th}%` : "0%",
                     transition: "height .6s cubic-bezier(.22,.8,.28,1)",
@@ -140,6 +145,9 @@ export function ProgressTab() {
         <div className="eyebrow mt-3 flex items-center gap-4 text-[0.66rem]">
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-[3px] bg-surface-3" /> Target</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-[3px]" style={{ background: "var(--z2)" }} /> Completed</span>
+          {/* the current week is drawn in ink with a dot over it; unlabelled, that dot
+              read as an artefact rather than as "you are here" */}
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-[3px] bg-accent" /> This week</span>
         </div>
       </div>
 
