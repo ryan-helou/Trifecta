@@ -19,6 +19,7 @@ import { LogWorkoutSheet } from "./LogWorkoutSheet";
 import { useAppleHealthAutoSync } from "./useAppleHealthAutoSync";
 import { todayISO } from "@/lib/dates";
 import {
+  assessAdaptation,
   applyAdaptation,
   easeUpcoming,
   logCheckin,
@@ -27,7 +28,9 @@ import {
   missedSince,
   moveWorkout,
   rebuildFromToday,
+  sessionStrain,
   setStatus,
+  STRAIN_OFFER_EASE,
   swapDiscipline,
   unswapDiscipline,
 } from "@/lib/adapt";
@@ -174,6 +177,46 @@ function AppShellInner() {
     realign("auto");
   }, [plan, today, realign]);
 
+  // #120 — the plan EASES itself. This used to be a card on Today asking "you've
+  // missed a lot, soften next week?", which is the plan asking the athlete to do the
+  // plan's job, and it flatly contradicted the promise that the plan adapts itself.
+  //
+  // Safe to automate because easing is the PROTECTIVE direction: doc 03 §4 C prices
+  // the asymmetry — protect fast, add slow — and doc 02 §4 #8 keeps the sessions and
+  // only gates their intensity. The debounce a confirmation step was standing in for
+  // already exists inside assessAdaptation: a two-week window, and a 40% miss rate or
+  // three strained sessions or real form debt before it fires at all. Convergence is
+  // the same trick as the realign: applyAdaptation records the week in `easedWeeks`,
+  // which assessAdaptation checks, so it eases a given week exactly once.
+  //
+  // The "ahead" branch is deliberately NOT auto-applied — it adds no load by design
+  // (doc 02 §4 #9) and stays a card on Today, because it isn't a change, it's a
+  // good word.
+  const autoEasedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!plan) return;
+    const s = assessAdaptation(plan, today);
+    if (!s || s.kind !== "ease") return;
+    const key = `${plan.id}·${s.weekIndex}·${s.cause}`;
+    if (autoEasedRef.current === key) return;
+    autoEasedRef.current = key;
+    const prev = plan;
+    track("adaptation_applied", { cause: s.cause });
+    // Drop the plan's own `notice`, exactly as the realign does. applyAdaptation
+    // writes one, and Today renders a notice as a card — so keeping it would swap
+    // the "soften next week?" card for a "we softened next week" card and say the
+    // same sentence again in the toast. Trading one card for another is not what
+    // #120 asked for.
+    applyPlan({ ...applyAdaptation(plan, s), notice: undefined });
+    toast({
+      text: `${s.reason} I've softened ${s.weekLabel} — you can put it back.`,
+      tone: "success",
+      actionLabel: "Undo",
+      onAction: () => applyPlan(prev),
+      duration: 9000,
+    });
+  }, [plan, today, applyPlan, toast]);
+
   if (!plan) return null;
 
   const unit = profile?.unitPreference ?? "metric";
@@ -199,7 +242,38 @@ function AppShellInner() {
       const w = plan.workouts[id];
       track("checkin_logged", { rpe: entry.rpe, feel: entry.feel });
       if (w && w.status !== "done") track("session_completed", { weekIndex: w.weekIndex, discipline: w.discipline, viaCheckin: true });
-      respond(logCheckin(plan, id, entry), { kind: "logged", workoutId: id });
+
+      // Saying a session was much harder than prescribed eases the next few days —
+      // immediately, not as a question (#120). This has to happen HERE rather than in
+      // CheckinSheet: two actions fired back-to-back from the sheet would both close
+      // over the SAME `plan`, so the ease would be computed from the pre-check-in plan
+      // and overwrite the RPE just saved. (It was safe while it lived behind a toast
+      // button, which runs a tick later against a fresh plan.) Chaining off `logged`
+      // keeps every step on the plan the step before it produced.
+      let next = logCheckin(plan, id, entry);
+      const after = next.workouts[id];
+      const strain = after ? sessionStrain(after) : null;
+      if (strain !== null && strain >= STRAIN_OFFER_EASE) {
+        const eased = easeUpcoming(next, today, 7, "strain");
+        // easeUpcoming only touches HARD sessions, so an already-easy week comes back
+        // identical — count what actually moved and say the true thing, or nothing.
+        const softened = Object.values(eased.workouts).filter(
+          (x) => x.easedCause && next.workouts[x.id]?.easedCause !== x.easedCause,
+        ).length;
+        if (softened > 0) {
+          const prev = plan;
+          track("adaptation_applied", { cause: "strain" });
+          next = eased;
+          toast({
+            text: `That was harder than it was meant to be — I've dialled back ${softened} ${softened === 1 ? "session" : "sessions"} over the next few days.`,
+            tone: "success",
+            actionLabel: "Undo",
+            onAction: () => applyPlan(prev),
+            duration: 9000,
+          });
+        }
+      }
+      respond(next, { kind: "logged", workoutId: id });
     },
     logWorkout: (input) => {
       const res = logWorkout(plan, input);
@@ -212,8 +286,8 @@ function AppShellInner() {
     // only ever rendered on Today. Tapping it looked like a dead button (#108). Now it
     // says what it did, offers an undo, and takes you to the plan it just rewrote.
     rebuild: () => realign("manual"),
-    ease: (days) => {
-      const next = easeUpcoming(plan, today, days);
+    ease: (days, cause = "manual") => {
+      const next = easeUpcoming(plan, today, days, cause);
       // `easeUpcoming` only downgrades HARD sessions, so an easy base week has nothing
       // to soften and the plan comes back identical. Applying that silently is the same
       // dead-button feeling as #108 — count what actually moved and say the true thing.

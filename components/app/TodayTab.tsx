@@ -21,6 +21,7 @@ import { computeStreak } from "@/lib/stats";
 import { formStateFor } from "@/lib/load";
 import { DISCIPLINE_META } from "@/lib/zones";
 import { fmtDuration, fmtDistance } from "@/lib/format";
+import { creditedSeconds } from "@/lib/credit";
 import { track } from "@/lib/analytics";
 import { daysBetween, addDays, dayIndexOf, fmtDayMonth, weekdayLong } from "@/lib/dates";
 
@@ -255,7 +256,7 @@ function TodayHero({ workout }: { workout: Workout }) {
       <span aria-hidden className="absolute inset-x-0 top-0 h-[3px]" style={{ background: dc }} />
 
       <div className="flex items-center justify-between gap-2">
-        <div className="eyebrow text-[0.72rem]">Today</div>
+        <div className="eyebrow text-[0.72rem]">{done ? "Done today" : "Today"}</div>
         {workout.easedCause && (
           <span
             className="rounded-full px-2 py-[1px] text-[0.66rem] font-semibold"
@@ -281,19 +282,45 @@ function TodayHero({ workout }: { workout: Workout }) {
             <DisciplineIcon discipline={workout.discipline} size={24} />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className={`font-display text-[1.5rem] font-semibold leading-tight tracking-tight ${done ? "line-through opacity-60" : ""}`}>
+            {/* Once it's done, this card's job flips: it stops being the instruction
+                and becomes the record. It used to keep showing the PRESCRIPTION with a
+                line through it — so after an hour's ride the screen still read "1h 10m"
+                because that's what was asked for, not what happened, and struck through
+                as if the session had been cancelled rather than earned (#120). Finished
+                sessions now report the credited actuals. */}
+            <h1 className={`font-display text-[1.5rem] font-semibold leading-tight tracking-tight ${skipped ? "line-through opacity-60" : ""}`}>
               {workout.title}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-              <span className="tabular-nums">{workout.estDurationSec > 0 ? fmtDuration(workout.estDurationSec) : "—"}</span>
-              {workout.estDistanceM ? (
+              {done ? (
                 <>
-                  <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
-                  <span className="tabular-nums">{fmtDistance(workout.estDistanceM, unit)}</span>
+                  <span className="tabular-nums">{fmtDuration(creditedSeconds(workout))}</span>
+                  {(workout.actualDistanceM ?? workout.estDistanceM) ? (
+                    <>
+                      <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
+                      <span className="tabular-nums">{fmtDistance((workout.actualDistanceM ?? workout.estDistanceM)!, unit)}</span>
+                    </>
+                  ) : null}
+                  {workout.rpe != null && (
+                    <>
+                      <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
+                      <span className="tabular-nums">RPE {workout.rpe}</span>
+                    </>
+                  )}
                 </>
-              ) : null}
-              <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
-              <span>Zone {workout.primaryZone}</span>
+              ) : (
+                <>
+                  <span className="tabular-nums">{workout.estDurationSec > 0 ? fmtDuration(workout.estDurationSec) : "—"}</span>
+                  {workout.estDistanceM ? (
+                    <>
+                      <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
+                      <span className="tabular-nums">{fmtDistance(workout.estDistanceM, unit)}</span>
+                    </>
+                  ) : null}
+                  <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
+                  <span>Zone {workout.primaryZone}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -396,11 +423,16 @@ function pickPrompt(ctx: {
     }
   }
 
-  // 3. The plan wants to adapt (missed a lot / consistently hard). No `easedWeeks`
-  //    check here — `assessAdaptation` already owns that gate, and re-applying it
-  //    would also swallow the "ahead" case, which isn't about easing at all.
+  // 3. Only the "ahead" case reaches the screen now. Easing used to ask permission
+  //    here — "you've missed a lot, soften next week?" — which is the plan asking the
+  //    athlete to do the plan's job, and it contradicted the promise that the plan
+  //    adapts itself (#120). Easing is the PROTECTIVE direction, and doc 03 §4 C says
+  //    protect fast; assessAdaptation already debounces it over a 2-week window, so
+  //    there is nothing left for a confirmation step to add. AppShell applies it
+  //    automatically now, with an Undo. "Ahead" stays a card because it is not a
+  //    change at all — it adds no load (doc 02 §4 #9), it's just a good word.
   const suggestion = assessAdaptation(plan, today);
-  if (suggestion) {
+  if (suggestion && suggestion.kind === "ahead") {
     const p = live({ key: `adapt:${suggestion.weekIndex}:${suggestion.cause}`, kind: "adapt", suggestion });
     if (p) return p;
   }
@@ -477,21 +509,13 @@ function PromptCard({
     );
   }
 
+  // Only "ahead" reaches this card — pickPrompt filters on it, because easing now
+  // applies itself in AppShell (#120). No button here on purpose: being ahead is not
+  // a change to accept, and deliberately adds no load (doc 02 §4 #9).
   if (prompt.kind === "adapt") {
     const s = prompt.suggestion;
-    if (s.kind === "ahead") {
-      return (
-        <Card onDismiss={onDismiss} eyebrow="Ahead of plan" title="You're ahead of the plan" body={`${s.reason} We're holding the progression steady — consistency now pays off on race day.`} />
-      );
-    }
     return (
-      <Card onDismiss={onDismiss} eyebrow="Time to ease off?" title={`Soften ${s.weekLabel}?`} body={`${s.reason} We can soften it so you absorb the work and stay healthy.`}>
-        <div className="mt-3">
-          <button onClick={() => { actions.adapt(s); onDismiss(); }} className="btn btn-primary w-full py-2.5 text-sm">
-            Ease {s.weekLabel}
-          </button>
-        </div>
-      </Card>
+      <Card onDismiss={onDismiss} eyebrow="Ahead of plan" title="You're ahead of the plan" body={`${s.reason} We're holding the progression steady — consistency now pays off on race day.`} />
     );
   }
 
