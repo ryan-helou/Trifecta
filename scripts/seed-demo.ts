@@ -5,15 +5,22 @@
  */
 import { generatePlan } from "../lib/planEngine";
 import type { Profile } from "../lib/types";
+import { toISO } from "../lib/dates";
 
 const API = process.env.NEXT_PUBLIC_API_BASE || "https://amatri-production.up.railway.app";
 const USER = "trifectademo";
 const PASS = "demopass123";
 
+// Dates here MUST agree with the app's, and the app builds them from LOCAL calendar
+// parts (lib/dates.toISO uses getFullYear/getMonth/getDate). `toISOString().slice(0,10)`
+// is UTC, so from ~8pm Eastern onward it returns tomorrow — and every "before today"
+// comparison below then swallows the athlete's actual current day. That is exactly how
+// the demo account ended up presenting today's session, and one still in the future, as
+// already completed. Same helper as the app, no second definition of "today".
 function weeksFromToday(w: number): string {
   const d = new Date();
   d.setDate(d.getDate() + w * 7);
-  return d.toISOString().slice(0, 10);
+  return toISO(d);
 }
 
 // The demo athlete is ~8 weeks INTO the plan (not on day one), so the app looks like a
@@ -78,7 +85,7 @@ async function main() {
   // useless for the two things the App Store screenshots exist to show: a Today screen
   // with work still ahead of you, and the guided player — a finished session has no
   // "Start guided session" to tap. It also just reads better; nobody markets a rest state.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toISO(new Date()); // LOCAL, to match the app — see weeksFromToday
   let done = 0;
   for (const w of Object.values(plan.workouts)) {
     if (w.date < today && w.discipline !== "rest") {

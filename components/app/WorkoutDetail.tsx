@@ -337,7 +337,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                   trained yet is a claim, not a result. */}
               {done && (
                 <button onClick={share} disabled={sharing} className="btn btn-ghost w-full py-2.5 text-sm">
-                  <Icon name="install" size={16} /> {sharing ? "Making your card…" : "Share this session"}
+                  <Icon name="share" size={16} /> {sharing ? "Making your card…" : "Share this session"}
                 </button>
               )}
               {canExport && (

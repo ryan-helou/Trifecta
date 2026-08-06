@@ -7,7 +7,7 @@ import { summarizeForCoach } from "@/lib/adapt";
 import { CoachMsg } from "./ui";
 import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
-import { Reactor } from "../Reactor";
+import { LogoMark } from "../Logo";
 import { Wordmark } from "../Wordmark";
 import { workoutsOn } from "./widgets";
 
@@ -77,8 +77,11 @@ export function CoachSheet({
       label="Trifecta coach chat"
       panelClassName="h-[82vh]"
       header={
-        <div className="flex items-center gap-2 border-b border-line px-5 py-3">
-          <Reactor size={30} spinning={false} />
+        <div className="flex items-center gap-2.5 border-b border-line px-5 py-3">
+          {/* The vector mark, not the app-icon tile. The tile is baked light, so on the
+              dark theme it rendered as a white chip — the brightest thing on the sheet,
+              pulling the eye away from the conversation it labels. This inherits ink. */}
+          <LogoMark size={22} />
           <div className="flex-1">
             <div className="font-display font-bold"><Wordmark /> Coach</div>
             {/* Reported by the server, not hard-coded. This line read "Powered by

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist } from "next/font/google";
 import "./globals.css";
 import { ServiceWorker } from "@/components/ServiceWorker";
+import { StatusScrim } from "@/components/StatusScrim";
 
 // Fraunces — an editorial high-contrast serif with optical sizing. It carries the
 // "chronograph" identity: dial numerals, headlines, the wordmark. Used with
@@ -88,8 +89,10 @@ export default function RootLayout({
       className={`${display.variable} ${body.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {/* masks the notch inset so scrolling content never collides with the clock */}
-        <div className="status-scrim" aria-hidden />
+        {/* masks the notch inset so scrolling content never collides with the clock.
+            A component, not a bare div: it has to track the visual viewport, which iOS
+            moves out from under fixed elements whenever the keyboard opens. */}
+        <StatusScrim />
         {children}
         <ServiceWorker />
       </body>
