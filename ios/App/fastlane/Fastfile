@@ -437,6 +437,30 @@ platform :ios do
     )
   end
 
+  desc "Read-only: what is actually LIVE on the App Store right now — version, state, build, upload date."
+  # The repo's version numbers say nothing about what the public has. This asks Apple.
+  # Use it before claiming a fix "shipped": a native fix only reaches users in a build
+  # that is READY_FOR_SALE, and the build number tells you which commit it came from.
+  lane :store_live do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    live = app.get_live_app_store_version
+    if live.nil?
+      UI.important("nothing is live — this app has never been released")
+    else
+      UI.header("LIVE: #{live.version_string}  (#{live.app_store_state})")
+      b = live.build
+      UI.message("build #{b&.version}  uploaded #{b&.uploaded_date}  processing=#{b&.processing_state}")
+      UI.message("release type: #{live.release_type}")
+    end
+    edit = app.get_edit_app_store_version
+    UI.message(edit.nil? ? "no version in preparation" : "in preparation: #{edit.version_string} (#{edit.app_store_state})")
+    # every build Apple has, newest first — shows anything uploaded but never shipped
+    Spaceship::ConnectAPI::Build.all(app_id: app.id, sort: "-uploadedDate", limit: 8).each do |bd|
+      UI.message("  build #{bd.app_version} (#{bd.version})  #{bd.uploaded_date}  #{bd.processing_state}")
+    end
+  end
+
   desc "Read-only: dump every screenshot set on the editable version — display type, count, order, upload state."
   # Exists because the live 1.0.3 listing shipped 10 screenshots from a 6-frame set:
   # frames 1-4 appeared TWICE. deliver's `overwrite_screenshots` deletes the assets it
