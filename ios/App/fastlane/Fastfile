@@ -437,6 +437,29 @@ platform :ios do
     )
   end
 
+  desc "Read-only: dump every screenshot set on the editable version — display type, count, order, upload state."
+  # Exists because the live 1.0.3 listing shipped 10 screenshots from a 6-frame set:
+  # frames 1-4 appeared TWICE. deliver's `overwrite_screenshots` deletes the assets it
+  # can see, and anything left in a half-finished upload state survives the sweep and
+  # gets re-uploaded alongside the new copy. Count the sets before shipping, not after.
+  lane :store_shots_audit do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    version = app.get_edit_app_store_version || app.get_live_app_store_version
+    UI.user_error!("no version to inspect") if version.nil?
+    UI.header("version #{version.version_string}")
+    version.get_app_store_version_localizations.each do |loc|
+      loc.get_app_screenshot_sets(includes: "appScreenshots").each do |set|
+        shots = set.app_screenshots || []
+        UI.message("#{loc.locale} / #{set.screenshot_display_type}: #{shots.size} screenshot(s)")
+        shots.each do |s|
+          state = (s.asset_delivery_state && s.asset_delivery_state["state"]) rescue "?"
+          UI.message("    #{s.file_name}  #{s.id}  state=#{state}")
+        end
+      end
+    end
+  end
+
   desc "Upload the App Store listing (metadata + screenshots). Does NOT submit. Idempotent."
   lane :store_meta do
     deliver(
