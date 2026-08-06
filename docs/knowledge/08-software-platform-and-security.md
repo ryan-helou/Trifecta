@@ -330,7 +330,7 @@ restore.** Snapshot-only, single-instance Postgres is a *development* database.
 ### 3.8 The LLM path — what's actually happening (and the doc mismatch)
 - **README/package advertise "Claude Haiku 4.5" via `@anthropic-ai/sdk`. Reality:
   `lib/ai.ts` uses the `openai` SDK pointed at Google Gemini's OpenAI-compatible
-  endpoint (`gemini-3.5-flash-lite`) by default; the Anthropic SDK is never
+  endpoint (`gemini-3.1-flash-lite`) by default; the Anthropic SDK is never
   imported.** So the coach and intake actually call **Google**. Fix the docs to
   match reality, then make a deliberate provider choice — because the provider's
   data-use terms are a compliance question (§4.7), not a detail.
