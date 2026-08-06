@@ -1,12 +1,19 @@
 // Provider-agnostic AI client, spoken over the OpenAI-compatible protocol.
 //
 // Defaults to Google Gemini's OpenAI-compatible endpoint with the cheap
-// gemini-3.5-flash-lite model, but ANY OpenAI-compatible provider (OpenAI,
+// gemini-3.1-flash-lite model, but ANY OpenAI-compatible provider (OpenAI,
 // OpenRouter, DeepSeek, Groq…) works by overriding three env vars — no code
 // change:
 //   GEMINI_API_KEY (or AI_API_KEY)  — the key; its presence switches AI on
 //   AI_BASE_URL                     — default: Gemini's OpenAI endpoint
-//   AI_MODEL                        — default: gemini-3.5-flash-lite
+//   AI_MODEL                        — default: gemini-3.1-flash-lite
+//
+// "No code change" holds only for providers that honour `max_tokens` and return
+// the answer in `content`. Reasoning-first models break both halves of that and
+// are NOT drop-in: OpenAI's GPT-5 tier rejects `max_tokens` outright (it wants
+// `max_completion_tokens`), and DeepSeek's V4 models enable thinking by default,
+// which spends the cap on hidden reasoning and can strand JSON in
+// `reasoning_content` where aiJSON() will never see it.
 //
 // Everything here is optional. No key ⇒ aiEnabled() is false and every AI
 // feature degrades to "off"; the app runs entirely on its deterministic engine.
@@ -14,9 +21,12 @@
 import type OpenAI from "openai";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
-// flash-lite: cheapest Gemini tier, and (unlike the thinking "flash" tiers) it
-// respects a tight max_tokens instead of spending the budget on hidden reasoning.
-const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+// 3.1-flash-lite over 3.5-flash-lite: cheaper on both axes ($0.25/$1.50 per 1M
+// vs $0.30/$2.50), and output is where this app's spend actually sits. Gemini 3
+// Flash tiers can't switch thinking fully off, but flash-lite defaults to
+// thinking_level MINIMAL, so a tight max_tokens still buys answer rather than
+// hidden reasoning. (2.5-flash-lite is cheaper again but retires 2026-10-16.)
+const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 
 export function aiKey(): string | undefined {
   return process.env.GEMINI_API_KEY || process.env.AI_API_KEY || undefined;
@@ -83,18 +93,54 @@ async function makeClient(): Promise<OpenAI> {
   });
 }
 
+/** Why a provider call failed — and what it cost when it didn't.
+ *
+ *  Every caller swallows provider errors into a friendly sentence, which is right for
+ *  the athlete and useless for us: a rejected key, an unknown model and a timeout all
+ *  surfaced as the same "coach is catching its breath" with nothing in the logs to tell
+ *  them apart. These two log the SHAPE of the call — status, provider error code, token
+ *  counts — and never the prompt or the completion, because on the coach and intake
+ *  paths those carry Article-9 health text that has no business in a log aggregator. */
+function logAiFailure(where: string, e: unknown): void {
+  const err = e as { status?: number; code?: string; message?: string; error?: { message?: string } };
+  console.error(
+    `[ai:${where}] provider call failed ` +
+      JSON.stringify({
+        model: aiModel(),
+        status: err?.status ?? null,
+        code: err?.code ?? null,
+        message: err?.error?.message ?? err?.message ?? String(e),
+      }),
+  );
+}
+
+function logAiUsage(where: string, usage: unknown): void {
+  const u = usage as { prompt_tokens?: number; completion_tokens?: number } | undefined;
+  if (!u) return;
+  console.log(
+    `[ai:${where}] ok ` +
+      JSON.stringify({ model: aiModel(), in: u.prompt_tokens ?? null, out: u.completion_tokens ?? null }),
+  );
+}
+
 /** One chat completion → trimmed text. */
 export async function aiText(system: string, user: string, maxTokens = 512): Promise<string> {
   const client = await makeClient();
-  const res = await client.chat.completions.create({
-    model: aiModel(),
-    max_tokens: maxTokens,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-  });
-  return (res.choices?.[0]?.message?.content ?? "").trim();
+  try {
+    const res = await client.chat.completions.create({
+      model: aiModel(),
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    });
+    logAiUsage("text", res.usage);
+    return (res.choices?.[0]?.message?.content ?? "").trim();
+  } catch (e) {
+    logAiFailure("text", e);
+    throw e;
+  }
 }
 
 /** One chat completion constrained to a JSON object → parsed (or null on garbage). */
@@ -104,15 +150,22 @@ export async function aiJSON<T = Record<string, unknown>>(
   maxTokens = 800,
 ): Promise<T | null> {
   const client = await makeClient();
-  const res = await client.chat.completions.create({
-    model: aiModel(),
-    max_tokens: maxTokens,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-  });
+  let res;
+  try {
+    res = await client.chat.completions.create({
+      model: aiModel(),
+      max_tokens: maxTokens,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    });
+    logAiUsage("json", res.usage);
+  } catch (e) {
+    logAiFailure("json", e);
+    throw e;
+  }
   const txt = res.choices?.[0]?.message?.content ?? "";
   try {
     return JSON.parse(txt) as T;
