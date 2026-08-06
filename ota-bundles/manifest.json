@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.7",
+  "latest": "1.0.8",
   "bundles": [
-    {
-      "version": "1.0.5",
-      "sha256": "170251e207f77c891300edd42f78496c57ee4ee0244912f077c1b2e580e28916",
-      "size": 767583,
-      "createdAtISO": "2026-08-06T00:24:13.459Z",
-      "comment": "onboarding calendar affordance, unclipped race list, six simulator-audit fixes"
-    },
     {
       "version": "1.0.6",
       "sha256": "21dbfd67a9ca90c99d33e1bc9912f0b47c2f031284af89aee9be80dc1cd330c3",
@@ -21,6 +14,13 @@
       "size": 771374,
       "createdAtISO": "2026-08-06T18:51:23.166Z",
       "comment": "the plan adapts to what you actually did: safety rails, load feedback, mechanical-load guard, and a coach that can act"
+    },
+    {
+      "version": "1.0.8",
+      "sha256": "de461d054ccc276a4e75b9594d2b9276672b5a39dea70ebc2f81c2007c6159af",
+      "size": 771585,
+      "createdAtISO": "2026-08-06T20:30:17.684Z",
+      "comment": "#119 — the coach input stays above the keyboard (all sheets)"
     }
   ]
 }
