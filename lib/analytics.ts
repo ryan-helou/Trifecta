@@ -43,6 +43,7 @@ export const EVENTS = [
   "adaptation_applied", // { cause (enum) }
   "plan_realigned", // { missed, auto } — auto:true is the self-realign (#109)
   "plan_represcribed", // { changed, event } — the ledger resized the next sessions
+  "coach_action_applied", // { action, changed } — a change the athlete accepted from the chat
   "session_feedback", // { verdict (enum), discipline (enum) } — the one-tap "how did that feel"
   "form_opened", // { band (enum) }
   "coach_opened",
