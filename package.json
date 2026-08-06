@@ -18,7 +18,7 @@
     "store:frames": "node scripts/gen-store-frames.mjs",
     "store:shots": "npm run store:capture && npm run store:frames",
     "ota": "node scripts/ota-release.mjs",
-    "test": "tsx test/format.test.ts && tsx test/ota.test.ts && tsx test/hr.test.ts && tsx test/engine.test.ts && tsx test/load.test.ts && tsx test/realign.test.ts && tsx test/why.test.ts && tsx test/redflags.test.ts && tsx test/analytics.test.ts && tsx test/shareCard.test.ts && tsx test/auth.test.ts && tsx test/health-privacy.test.ts && tsx scripts/test-strava-match.ts && tsx test/league.test.ts && tsx test/session.test.ts",
+    "test": "tsx test/format.test.ts && tsx test/ota.test.ts && tsx test/hr.test.ts && tsx test/rails.test.ts && tsx test/engine.test.ts && tsx test/load.test.ts && tsx test/realign.test.ts && tsx test/why.test.ts && tsx test/redflags.test.ts && tsx test/analytics.test.ts && tsx test/shareCard.test.ts && tsx test/auth.test.ts && tsx test/health-privacy.test.ts && tsx scripts/test-strava-match.ts && tsx test/league.test.ts && tsx test/session.test.ts",
     "og": "node scripts/gen-og.mjs"
   },
   "dependencies": {
