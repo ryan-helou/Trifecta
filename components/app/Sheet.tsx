@@ -64,6 +64,7 @@ export function Sheet({
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const closingRef = useRef(false);
   const stackToken = useRef<object>({}); // this instance's identity in sheetStack
   const [closing, setClosing] = useState(false);
@@ -96,6 +97,45 @@ export function Sheet({
       const i = sheetStack.indexOf(token);
       if (i !== -1) sheetStack.splice(i, 1);
       unlockBodyScroll();
+    };
+  }, []);
+
+  // Keep the sheet inside the VISIBLE viewport, not the layout one.
+  //
+  // `position: fixed` is pinned to the LAYOUT viewport, and iOS does not shrink
+  // that when the software keyboard opens — it shrinks the VISUAL viewport. So a
+  // bottom-anchored sheet keeps measuring itself against the full screen height
+  // and its footer ends up underneath the keyboard. On the coach sheet that meant
+  // the text field and Send button were simply gone the moment you started
+  // typing: you could not see a word you were writing (#119). Every sheet with an
+  // input has the same defect, which is why the fix lives here and not in one of
+  // them. Same reasoning as components/StatusScrim.tsx.
+  //
+  // Browsers without VisualViewport (and every desktop case) fall through to
+  // plain `inset-0`, which is correct there — no keyboard ever displaces anything.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = frameRef.current;
+    if (!vv || !el) return;
+
+    let frame = 0;
+    const sync = () => {
+      // rAF-coalesced: visualViewport fires continuously while the keyboard
+      // animates, and a style write per event thrashes layout on a mid-range phone.
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        el.style.height = `${vv.height}px`;
+        el.style.transform = vv.offsetTop ? `translate3d(0, ${vv.offsetTop}px, 0)` : "";
+      });
+    };
+
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      cancelAnimationFrame(frame);
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
     };
   }, []);
 
@@ -199,7 +239,7 @@ export function Sheet({
   }, [dismiss]);
 
   const sheet = (
-    <div className="fixed inset-0 z-50 flex justify-center" role="dialog" aria-modal="true" aria-label={label}>
+    <div ref={frameRef} className="fixed inset-0 z-50 flex justify-center overflow-hidden" role="dialog" aria-modal="true" aria-label={label}>
       <div
         className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${
           closing ? "opacity-0" : "animate-backdrop-in"
@@ -214,7 +254,10 @@ export function Sheet({
       <div className="pointer-events-none relative flex w-full max-w-md flex-col justify-end">
         <div
           ref={panelRef}
-          className={`animate-sheet-up pointer-events-auto relative flex max-h-[92vh] flex-col overflow-hidden rounded-t-[26px] border border-line bg-surface shadow-2xl safe-b ${panelClassName}`}
+          // max-h in PERCENT, not vh: vh is the layout viewport, which doesn't shrink for
+          // the keyboard, so a vh cap lets the panel outgrow the visible frame and pushes
+          // the footer back under the keyboard — the bug this component just fixed.
+          className={`animate-sheet-up pointer-events-auto relative flex max-h-[92%] flex-col overflow-hidden rounded-t-[26px] border border-line bg-surface shadow-2xl safe-b ${panelClassName}`}
         >
           {/* The grab area is deliberately much taller than the bar you can see. It's the
               ONE target that dismisses at any scroll position (everything else requires
