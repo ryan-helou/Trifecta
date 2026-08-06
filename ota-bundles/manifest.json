@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.5",
+  "latest": "1.0.6",
   "bundles": [
-    {
-      "version": "1.0.3",
-      "sha256": "399dbb45dc98c934f7cd5d2995655ee919d9270301a67e97478e48c164531a21",
-      "size": 1111509,
-      "createdAtISO": "2026-08-05T19:36:07.720Z",
-      "comment": "tickets 107-110, self-hosted OTA"
-    },
     {
       "version": "1.0.4",
       "sha256": "e32de15e2600d6af980acebc6ae88e1e8ebbec1e321450d2144330b9035c03cd",
@@ -21,6 +14,13 @@
       "size": 767583,
       "createdAtISO": "2026-08-06T00:24:13.459Z",
       "comment": "onboarding calendar affordance, unclipped race list, six simulator-audit fixes"
+    },
+    {
+      "version": "1.0.6",
+      "sha256": "21dbfd67a9ca90c99d33e1bc9912f0b47c2f031284af89aee9be80dc1cd330c3",
+      "size": 767840,
+      "createdAtISO": "2026-08-06T00:46:46.863Z",
+      "comment": "main-set subtitles, no duplicated why-copy, labelled counters and day strip"
     }
   ]
 }
