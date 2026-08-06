@@ -31,6 +31,8 @@ import {
   swapDiscipline,
   unswapDiscipline,
 } from "@/lib/adapt";
+import { respondTo, type AthleteEvent } from "@/lib/respond";
+import type { Plan } from "@/lib/types";
 import { logReadiness, readinessScore, READY_LOW } from "@/lib/readiness";
 import { track } from "@/lib/analytics";
 import { calibratePaces } from "@/lib/calibrate";
@@ -125,6 +127,36 @@ function AppShellInner() {
     [plan, today, applyPlan, toast],
   );
 
+  // Every athlete action routes through here, so "the plan responds to what you
+  // actually did" is one path rather than a rule each call site has to remember.
+  // The response is deliberately small — the next session or three — and silent
+  // when the honest answer is nothing (respondTo returns null far more often
+  // than not). Always undoable: an adaptation the athlete can't reverse is one
+  // they have to fight.
+  const respond = useCallback(
+    (next: Plan, event: AthleteEvent) => {
+      const res = respondTo(next, today, event);
+      if (!res) {
+        applyPlan(next);
+        return;
+      }
+      const prev = next;
+      applyPlan(res.plan);
+      for (const warning of res.warnings) toast({ text: warning, tone: "warning", duration: 9000 });
+      if (res.changedIds.length) {
+        track("plan_represcribed", { changed: res.changedIds.length, event: event.kind });
+        toast({
+          text: res.headline,
+          tone: "default",
+          actionLabel: "Undo",
+          onAction: () => applyPlan(prev),
+          duration: 9000,
+        });
+      }
+    },
+    [today, applyPlan, toast],
+  );
+
   // #109 — the plan realigns ITSELF. This used to need the athlete to notice a banner
   // and press a button, which is backwards: the people who fall behind are exactly the
   // ones who stopped opening the app, and they came back to a plan full of dead days.
@@ -151,23 +183,23 @@ function AppShellInner() {
       const w = plan.workouts[id];
       const nowDone = w?.status !== "done";
       if (nowDone && w) track("session_completed", { weekIndex: w.weekIndex, discipline: w.discipline, viaCheckin: false });
-      applyPlan(setStatus(plan, id, nowDone ? "done" : "planned"));
+      respond(setStatus(plan, id, nowDone ? "done" : "planned"), { kind: "logged", workoutId: id });
     },
     skip: (id) => {
       const w = plan.workouts[id];
       if (w) track("session_skipped", { weekIndex: w.weekIndex });
-      applyPlan(setStatus(plan, id, "skipped"));
+      respond(setStatus(plan, id, "skipped"), { kind: "skipped", workoutId: id });
     },
     unskip: (id) => applyPlan(setStatus(plan, id, "planned")),
-    move: (id, date) => applyPlan(moveWorkout(plan, id, date)),
-    swap: (id, d) => applyPlan(swapDiscipline(plan, id, d)),
+    move: (id, date) => respond(moveWorkout(plan, id, date), { kind: "moved", workoutId: id }),
+    swap: (id, d) => respond(swapDiscipline(plan, id, d), { kind: "swapped", workoutId: id }),
     unswap: (id) => applyPlan(unswapDiscipline(plan, id)),
-    logInstead: (id, note, opts) => applyPlan(logInstead(plan, id, note, opts)),
+    logInstead: (id, note, opts) => respond(logInstead(plan, id, note, opts), { kind: "logged-other", workoutId: id }),
     logCheckin: (id, entry) => {
       const w = plan.workouts[id];
       track("checkin_logged", { rpe: entry.rpe, feel: entry.feel });
       if (w && w.status !== "done") track("session_completed", { weekIndex: w.weekIndex, discipline: w.discipline, viaCheckin: true });
-      applyPlan(logCheckin(plan, id, entry));
+      respond(logCheckin(plan, id, entry), { kind: "logged", workoutId: id });
     },
     logWorkout: (input) => {
       const res = logWorkout(plan, input);
