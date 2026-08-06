@@ -88,13 +88,17 @@ appId: app.trifecta.mobile
 - tapOn: "Profile"
 - waitForAnimationToEnd:
     timeout: 5000
+# scrollUntilVisible already guarantees the link is on screen. There used to be an
+# extra blind swipe here, from when Profile was a much taller page — the race card
+# carried the event name, location and a swim/bike/run row, and the Apple Health card
+# a paragraph plus two bullets. Both were slimmed down (b67e914), so that extra swipe
+# now scrolls PAST the footer and the tap lands on nothing: "No visible element found:
+# Support". The assertions below are untouched — the link must still exist, open, and
+# show the support address.
 - scrollUntilVisible:
     element: "Support"
     direction: DOWN
     timeout: 20000
-- swipe:
-    start: 50%, 70%
-    end: 50%, 40%
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn: "Support"
