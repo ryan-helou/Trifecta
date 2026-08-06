@@ -101,6 +101,12 @@ export interface Workout {
     estDistanceM?: number;
     primaryZone: Zone;
   };
+  /** The session exactly as the engine first prescribed it, captured the first
+   *  time anything rescales it and never overwritten after. Adaptation always
+   *  computes from here rather than from the current value, so repeated passes
+   *  converge on a fraction of the design instead of ratcheting the session
+   *  down a little more every time the athlete logs something. */
+  prescribed?: { estDurationSec: number; estDistanceM?: number; segments: Segment[] };
   /** filled when a connected device (Strava) auto-completed this session */
   actuals?: WorkoutActuals;
 }
