@@ -1,5 +1,5 @@
 {
-  "latest": "1.0.4",
+  "latest": "1.0.5",
   "bundles": [
     {
       "version": "1.0.3",
@@ -14,6 +14,13 @@
       "size": 766534,
       "createdAtISO": "2026-08-05T23:18:04.602Z",
       "comment": "text-selection fix, sheet dismiss, plain week labels, Friends tab, brand mark"
+    },
+    {
+      "version": "1.0.5",
+      "sha256": "170251e207f77c891300edd42f78496c57ee4ee0244912f077c1b2e580e28916",
+      "size": 767583,
+      "createdAtISO": "2026-08-06T00:24:13.459Z",
+      "comment": "onboarding calendar affordance, unclipped race list, six simulator-audit fixes"
     }
   ]
 }
