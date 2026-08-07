@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.9",
+  "latest": "1.0.10",
   "bundles": [
-    {
-      "version": "1.0.7",
-      "sha256": "11c012e463d0bc86e4dccec5945d58dacfc23d91d7dad7744cec14d69f6b1b0a",
-      "size": 771374,
-      "createdAtISO": "2026-08-06T18:51:23.166Z",
-      "comment": "the plan adapts to what you actually did: safety rails, load feedback, mechanical-load guard, and a coach that can act"
-    },
     {
       "version": "1.0.8",
       "sha256": "de461d054ccc276a4e75b9594d2b9276672b5a39dea70ebc2f81c2007c6159af",
@@ -21,6 +14,13 @@
       "size": 771708,
       "createdAtISO": "2026-08-06T22:10:53.300Z",
       "comment": "#120 — the plan eases itself, and Today reports what you actually did"
+    },
+    {
+      "version": "1.0.10",
+      "sha256": "b639085629c06f4e71bc843afe9088b445b060f2d217a3975a1688acda6c560d",
+      "size": 771727,
+      "createdAtISO": "2026-08-07T04:13:51.721Z",
+      "comment": "#123 duplicate sessions fixed + healed; #121 gym-friendly workout logging"
     }
   ]
 }
