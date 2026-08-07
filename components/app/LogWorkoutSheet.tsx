@@ -229,7 +229,7 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
             <span className="eyebrow text-[0.7rem]">Time{isStrength ? " · optional" : ""}</span>
             <input className="input" inputMode="numeric" placeholder="e.g. 45:00" value={timeStr} onChange={(e) => setTimeStr(e.target.value)} />
             {isStrength && !durationSec && (
-              <span className="text-xs text-muted">No time? We'll count it as {Math.round(DEFAULT_STRENGTH_SEC / 60)} min.</span>
+              <span className="text-xs text-muted">No time? We’ll count it as {Math.round(DEFAULT_STRENGTH_SEC / 60)} min.</span>
             )}
           </label>
           {!isStrength && (

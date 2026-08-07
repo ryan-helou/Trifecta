@@ -244,6 +244,8 @@ function TodayHero({ workout }: { workout: Workout }) {
   const meta = DISCIPLINE_META[workout.discipline];
   const done = workout.status === "done" || workout.status === "swapped";
   const skipped = workout.status === "skipped";
+  // what the athlete actually covered, or nothing — never the prescription
+  const actualDistance = workout.actualDistanceM ?? workout.actuals?.distanceM ?? null;
   const dc = `var(${meta.colorVar})`;
 
   const complete = () => {
@@ -295,10 +297,17 @@ function TodayHero({ workout }: { workout: Workout }) {
               {done ? (
                 <>
                   <span className="tabular-nums">{fmtDuration(creditedSeconds(workout))}</span>
-                  {(workout.actualDistanceM ?? workout.estDistanceM) ? (
+                  {/* Distance is shown ONLY when we actually have one. Falling back to
+                      estDistanceM here stated the PLANNED distance as if it had been
+                      covered: log a gym session against a planned swim and the card read
+                      "45 min · 1.7 km", crediting the athlete with a swim they never
+                      swam. On a finished session the plan's numbers are not evidence —
+                      that was the whole point of #120, and the duration was fixed while
+                      this was left falling through. */}
+                  {actualDistance != null ? (
                     <>
                       <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
-                      <span className="tabular-nums">{fmtDistance((workout.actualDistanceM ?? workout.estDistanceM)!, unit)}</span>
+                      <span className="tabular-nums">{fmtDistance(actualDistance, unit)}</span>
                     </>
                   ) : null}
                   {workout.rpe != null && (
