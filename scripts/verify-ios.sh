@@ -81,8 +81,15 @@ echo "    entitlements wired into both configs ✓"
 # assertVisible passes — so assert it statically. Plugins must be imported at the top
 # level. If you need code-splitting, split something that is not a native bridge.
 echo "==> checking for lazy Capacitor plugin imports"
+# The second grep drops COMMENT lines. The files that document this trap quote the
+# forbidden pattern in order to warn about it — lib/deliverFile.ts says
+# `await import("@capacitor/…")` hangs forever' right above its correct static
+# imports — and the guard was flagging its own documentation and failing the gate.
+# Only the leading-comment case is excluded, so real code is still caught exactly as
+# before; a dynamic import is never the first thing on a `//` line.
 LAZY=$(grep -rnE "await import\(['\"]@(capacitor|capgo|aparajita)" \
-  --include="*.ts" --include="*.tsx" lib/ components/ app/ hooks/ 2>/dev/null || true)
+  --include="*.ts" --include="*.tsx" lib/ components/ app/ hooks/ 2>/dev/null \
+  | grep -vE "^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)" || true)
 if [ -n "$LAZY" ]; then
   echo "!! dynamic import() of a Capacitor plugin — this hangs forever in the WKWebView:"
   echo "$LAZY" | sed 's/^/     /'
