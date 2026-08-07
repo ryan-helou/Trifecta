@@ -41,6 +41,14 @@ const OUTCOME_ICON: Record<LogResult["outcome"], IconName> = {
   bonus: "flame",
 };
 
+/** A gym session with no stopwatch still has to weigh something in the load model.
+ *  45 minutes is an ordinary session and the UI says so rather than assuming silently. */
+const DEFAULT_STRENGTH_SEC = 45 * 60;
+
+/** The split days and muscle groups a lifter would actually name. Split first, since
+ *  that's how most people describe the day they just did. */
+const TRAINED = ["Push", "Pull", "Legs", "Upper", "Lower", "Full body", "Chest", "Back", "Shoulders", "Arms", "Core"];
+
 export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: string; onClose: () => void }) {
   const { actions, openCoach, unit } = useUI();
 
@@ -52,12 +60,22 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
   const [feel, setFeel] = useState<Feel | undefined>(undefined);
   const [result, setResult] = useState<Omit<LogResult, "plan"> | null>(null);
 
+  // What was actually trained, for a gym session. Asking a lifter for distance is
+  // asking the wrong question (#121) — "what muscles I hit or what day of the split"
+  // is the thing they'd actually tell you, and it's the thing worth reading back later.
+  const [trained, setTrained] = useState<string[]>([]);
+
+  const isStrength = discipline === "strength";
   const isSwim = discipline === "swim";
   const distUnit = isSwim ? "m" : unit === "imperial" ? "mi" : "km";
   const toMeters = (v: number) => (isSwim ? v : unit === "imperial" ? v * M_PER_MILE : v * 1000);
 
   const durationSec = parseClock(timeStr); // null when unparseable or zero
-  const canSave = durationSec != null;
+  // A gym session is real training whether or not anyone timed it, so strength can be
+  // logged without a clock — the load model just needs SOME duration, and a stated
+  // assumption is better than blocking the save behind a number nobody recorded.
+  const savedSec = durationSec ?? (isStrength ? DEFAULT_STRENGTH_SEC : null);
+  const canSave = savedSec != null;
 
   const minDate = plan.startDateISO < today ? plan.startDateISO : addDays(today, -30);
 
@@ -65,7 +83,16 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
     if (!canSave) return;
     const distNum = parseFloat(distStr);
     const distanceM = distStr.trim() && !isNaN(distNum) && distNum > 0 ? Math.round(toMeters(distNum)) : undefined;
-    const res = actions.logWorkout({ dateISO, discipline, durationSec: durationSec!, distanceM, rpe, feel });
+    const res = actions.logWorkout({
+      dateISO,
+      discipline,
+      durationSec: savedSec!,
+      // distance is meaningless for a gym session, so it is never sent for one
+      distanceM: isStrength ? undefined : distanceM,
+      rpe,
+      feel,
+      note: trained.length ? trained.join(", ") : undefined,
+    });
     haptic("success");
     setResult(res);
   };
@@ -168,16 +195,49 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
           <p className="mt-1.5 text-xs text-muted">{fmtFullDate(dateISO)}</p>
         </div>
 
-        {/* time + distance */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* What you trained — gym only. Chips rather than a text box: it's one tap,
+            it reads back consistently, and it's the vocabulary a lifter already uses. */}
+        {isStrength && (
+          <div>
+            <div className="mb-2 eyebrow text-[0.7rem]">What did you train? · optional</div>
+            <div className="flex flex-wrap gap-1.5">
+              {TRAINED.map((t) => {
+                const on = trained.includes(t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      haptic("select");
+                      setTrained((cur) => (on ? cur.filter((x) => x !== t) : [...cur, t]));
+                    }}
+                    aria-pressed={on}
+                    className={`chip ${on ? "is-selected" : ""}`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* time + distance. Distance is dropped entirely for strength — there is no
+            honest number to put in it, and asking for one is what made this sheet feel
+            like it wasn't built for the gym (#121). */}
+        <div className={isStrength ? "" : "grid grid-cols-2 gap-3"}>
           <label className="flex flex-col gap-1.5">
-            <span className="eyebrow text-[0.7rem]">Time</span>
+            <span className="eyebrow text-[0.7rem]">Time{isStrength ? " · optional" : ""}</span>
             <input className="input" inputMode="numeric" placeholder="e.g. 45:00" value={timeStr} onChange={(e) => setTimeStr(e.target.value)} />
+            {isStrength && !durationSec && (
+              <span className="text-xs text-muted">No time? We'll count it as {Math.round(DEFAULT_STRENGTH_SEC / 60)} min.</span>
+            )}
           </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="eyebrow text-[0.7rem]">Distance ({distUnit}) · optional</span>
-            <input className="input" inputMode="decimal" placeholder="—" value={distStr} onChange={(e) => setDistStr(e.target.value)} />
-          </label>
+          {!isStrength && (
+            <label className="flex flex-col gap-1.5">
+              <span className="eyebrow text-[0.7rem]">Distance ({distUnit}) · optional</span>
+              <input className="input" inputMode="decimal" placeholder="—" value={distStr} onChange={(e) => setDistStr(e.target.value)} />
+            </label>
+          )}
         </div>
 
         {/* effort */}
