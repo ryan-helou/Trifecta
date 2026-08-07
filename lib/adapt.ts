@@ -181,7 +181,10 @@ function addLoggedWorkout(plan: Plan, input: LoggedWorkout): Plan {
     dayIndex: dayIndexOf(input.dateISO),
     discipline: input.discipline,
     type: input.discipline === "strength" ? "strength" : "endurance",
-    title: `Logged ${input.discipline}`,
+    // Say what it WAS. "Logged strength" tells the athlete nothing they didn't
+    // already know; "Push · strength" is the session they actually did, and it's what
+    // makes the note worth asking for in the first place (#121).
+    title: input.note ? `${input.note} · ${input.discipline}` : `Logged ${input.discipline}`,
     purpose: "A session you logged yourself.",
     segments: [
       { kind: "main", discipline: input.discipline, zone, durationSec: input.durationSec, description: "Logged session" },
