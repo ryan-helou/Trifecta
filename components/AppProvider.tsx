@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Plan, Profile } from "@/lib/types";
 import { profileToPersist, resolveProfile } from "@/lib/session";
+import { dedupeSyncedSessions } from "@/lib/activity";
 import { apiDeleteAccount, apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
 import { clearToken, loadToken, setToken } from "@/lib/tokenStore";
 import { notifyAppReady } from "@/lib/ota";
@@ -165,7 +166,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // top-level profile, which used to render the Profile tab completely blank.
     // The plan's embedded copy recovers it, and the next save writes it back.
     setProfile(resolveProfile(r.profile, r.plan));
-    setPlan(r.plan);
+    // Heal #123 in place. The ingest guard stops NEW duplicates, but athletes already
+    // hit by it are carrying the damage — the one who reported it had a single run
+    // banked four times and a 20 km day he never ran. His ledger stays wrong until the
+    // phantoms go, and the plan now prescribes from that ledger. Repairing on restore
+    // means it fixes itself on next open, and the next ordinary save writes it back.
+    const healed = r.plan ? dedupeSyncedSessions(r.plan) : null;
+    if (healed?.removed) track("duplicates_healed", { removed: healed.removed });
+    setPlan(healed ? healed.plan : r.plan);
   }, []);
 
   const markEngaged = useCallback(() => {

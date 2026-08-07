@@ -2,7 +2,7 @@ import type { Store } from "./db";
 import type { StravaConn } from "./db";
 import type { Discipline, Plan, Workout, WorkoutActuals, Zone } from "./types";
 import { setStatus, reindexWeeks } from "./adapt";
-import { crossSourceDuplicate } from "./activity";
+import { duplicateActivity } from "./activity";
 import { dayIndexOf } from "./dates";
 
 // ---------------------------------------------------------------------------
@@ -346,7 +346,7 @@ export async function applyActivityToUser(store: Store, userId: string, a: Strav
       if (
         disc &&
         day &&
-        crossSourceDuplicate(plan, { source: "strava", discipline: disc, localDay: day, startISO: a.start_date, durationSec: a.moving_time ?? a.elapsed_time ?? 0 })
+        duplicateActivity(plan, { source: "strava", discipline: disc, localDay: day, startISO: a.start_date, durationSec: a.moving_time ?? a.elapsed_time ?? 0 })
       ) {
         return { matched: false };
       }

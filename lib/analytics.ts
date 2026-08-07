@@ -44,6 +44,7 @@ export const EVENTS = [
   "plan_realigned", // { missed, auto } — auto:true is the self-realign (#109)
   "plan_represcribed", // { changed, event } — the ledger resized the next sessions
   "coach_action_applied", // { action, changed } — a change the athlete accepted from the chat
+  "duplicates_healed", // { removed } — phantom synced sessions cleaned up on restore (#123)
   "session_feedback", // { verdict (enum), discipline (enum) } — the one-tap "how did that feel"
   "form_opened", // { band (enum) }
   "coach_opened",
