@@ -43,14 +43,12 @@ export const FRAMES = [
     headline: ["Not just what to do.", "<em>Why.</em>"],
     sub: "Interval shape, targets set from your own threshold, and the reason it earns a place in your week.",
   },
-  {
-    src: "store-3-guided.png",
-    out: "frame-3-guided.png",
-    theme: "ink",
-    eyebrow: "Guided sessions",
-    headline: ["A coach in your ear,", "<em>step by step</em>"],
-    sub: "Live targets and audio cues, so you never have to think about what comes next.",
-  },
+  // REMOVED — the guided-session player was deleted in #111, so this frame was
+  // marketing a feature the app no longer has. That is App Store guideline 2.3.3
+  // ("screenshots should show the app in use"), and it is the kind of mismatch that
+  // gets a build rejected rather than merely flagged. Do not restore it without
+  // restoring the player. Re-capturing was not an option either: maestro/_screenshots.yaml
+  // navigates via the player's own entry point, which no longer exists.
   {
     src: "store-4-plan.png",
     out: "frame-4-plan.png",

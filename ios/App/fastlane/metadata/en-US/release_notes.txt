@@ -1,9 +1,9 @@
-ONE THING AT A TIME — The home screen now opens on today's session, and nothing competes with it. Race countdown, week progress and form move into a single line underneath, and you are asked one question at a time instead of five at once.
+A NEW LOOK — Trifecta has a new mark and app icon, and it now follows your phone's light or dark setting properly, launch screen included.
 
-YOUR PLAN KEEPS UP WITH YOU — Fall behind and the plan realigns itself around today, so you come back to a week you can actually train rather than a fortnight of dead days. It tells you what it did, and you can undo it.
+ASK THE COACH TO CHANGE SOMETHING — "Give me an easier one today" now produces an easier session, not advice about one. The coach shows you exactly what it will do and waits for you to confirm; the plan itself is still changed by the same engine the buttons use.
 
-SAY WHEN A SESSION WAS TOO HARD — Finish a session, mark it rough, and the plan offers to ease the next few days on the spot instead of waiting a fortnight to notice.
+SHARE A SESSION — Finish a session and you can share it as a card. It reports what you actually did, not what was prescribed.
 
-A MORE CAREFUL SETUP — We would rather ask a few more questions and build a plan that actually fits your week. Setup now covers your weekly rhythm, strength work and benchmarks by default, each step says what it changes, and your experience level shapes the plan from the start.
+THE PLAN EASES ITSELF — Mark a session rough and the next few days come down straight away, instead of waiting a fortnight for a trend to notice.
 
-FIXES — "Rebuild plan around today" used to look like it did nothing; it now says what changed and takes you to the new plan. Easing a week with no hard sessions in it says so honestly instead of claiming a change it did not make. The race-date field no longer shows two overlapping labels.
+FIXES — Swiping down on a session sheet dismisses it instead of selecting text. Sessions you have already finished no longer show under "Up next". Weeks are labelled plainly rather than restarting the count inside each phase. A synced activity can no longer be counted four times. The keyboard no longer covers the box you are typing in, and the status bar no longer sits on top of the screen underneath it. Setting a race date now looks tappable, and the last race option is no longer cut off.

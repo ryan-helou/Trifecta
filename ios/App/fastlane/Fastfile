@@ -237,16 +237,13 @@ platform :ios do
     Tap "Profile" in the bottom tab bar. The section headed "APPLE HEALTH" is visible there without scrolling. It reads:
 
       Auto-complete from Apple Health
-      Reads your swim, bike, run and strength workouts and checks off the planned session each one matches.
-      • Read-only — Trifecta never writes to Apple Health.
-      • Stays on your device — nothing from Health is uploaded.
+      Reads your workouts and ticks off the sessions they match. Read-only, on-device.
       [ Sync with Apple Health ]
+      iOS will ask your permission the first time.
 
     Tapping "Sync with Apple Health" triggers the HealthKit read-authorization prompt, then reads recent workouts and marks the matching planned sessions done.
 
-    In the previously reviewed build this section was rendered inside the Strava card and could fail to appear. That is fixed in this build, and an automated UI test now asserts the section is present on the Profile tab.
-
-    The attached screenshot "profile-apple-health.png" shows this screen. It is captured on an iOS Simulator (iPhone 17) rather than a physical device, which we note for transparency.
+    An automated UI test asserts this section renders on the Profile tab, and it runs on every build.
 
     SCOPE OF HEALTHKIT USE
 
@@ -482,6 +479,63 @@ platform :ios do
         end
       end
     end
+  end
+
+  desc "Delete EVERY screenshot on the editable version, so the next upload starts from empty."
+  # The companion to store_shots_audit, and the fix for what that lane was written to
+  # detect. `deliver(overwrite_screenshots: true)` does not reliably replace: it deletes
+  # only the assets it can see, so anything mid-upload survives and the fresh copy lands
+  # NEXT TO it. Two runs took a 5-frame set to 7 and then to 10 — Apple's per-set cap —
+  # with every frame duplicated.
+  #
+  # Deleting the whole set first makes the upload deterministic: clear, upload once,
+  # audit. Never re-run store_shots to "fix" a duplicate; it doubles it again.
+  lane :store_shots_clear do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    version = app.get_edit_app_store_version
+    UI.user_error!("no editable version — run store_version first") if version.nil?
+    removed = 0
+    version.get_app_store_version_localizations.each do |loc|
+      loc.get_app_screenshot_sets(includes: "appScreenshots").each do |set|
+        (set.app_screenshots || []).each do |s|
+          s.delete!
+          removed += 1
+        end
+      end
+    end
+    UI.success("deleted #{removed} screenshot(s) from version #{version.version_string}")
+  end
+
+  desc "Keep ONE copy of each screenshot filename on the editable version; delete the rest."
+  # deliver uploads this frame set TWICE — 5 files in, 10 assets out — even into a set
+  # that was just emptied, because both device sizes it infers map to the same display
+  # type (APP_IPHONE_67). That is how the live 1.0.3 listing ended up showing every
+  # frame twice. Clearing first does not help; the doubling happens within one run.
+  #
+  # So the reliable sequence is: store_shots_clear -> store_shots -> store_shots_dedupe
+  # -> store_shots_audit. Dedupe keeps the FIRST asset per filename, which preserves the
+  # upload order the listing displays in.
+  lane :store_shots_dedupe do
+    asc_key
+    app = Spaceship::ConnectAPI::App.find("app.trifecta.mobile")
+    version = app.get_edit_app_store_version
+    UI.user_error!("no editable version") if version.nil?
+    removed = 0
+    version.get_app_store_version_localizations.each do |loc|
+      loc.get_app_screenshot_sets(includes: "appScreenshots").each do |set|
+        seen = {}
+        (set.app_screenshots || []).each do |s|
+          if seen[s.file_name]
+            s.delete!
+            removed += 1
+          else
+            seen[s.file_name] = true
+          end
+        end
+      end
+    end
+    UI.success("removed #{removed} duplicate screenshot(s)")
   end
 
   desc "Upload the App Store listing (metadata + screenshots). Does NOT submit. Idempotent."
