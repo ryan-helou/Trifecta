@@ -67,14 +67,21 @@ export function Icon({
         </svg>
       );
     case "run":
+      // Redrawn (#180). The old figure crammed six strokes into a torso 2.4 units
+      // long, so at 22px it read as someone hunched or sitting rather than running,
+      // and its trailing arm was a bare stub with no elbow while the leading arm had
+      // one — the asymmetry is a lot of why it looked broken. This one earns the
+      // silhouette instead: a longer leaning torso, a driving front knee with the
+      // shin planted, a trailing leg kicking up behind (the pose that reads as RUN
+      // and not WALK at a glance), and both arms bent.
       return (
         <svg {...p}>{t}
-          <circle cx="14.5" cy="4.5" r="2" />
-          <path d="M13.6 6.9 11.2 11" />
-          <path d="M11.2 11 14.6 12.8 13.2 18.5" />
-          <path d="M11.2 11 7.8 13 9 17.5" />
-          <path d="M12.8 7.9 16 9.4 15.4 12.3" />
-          <path d="M13 7.6 9.8 8.9" />
+          <circle cx="15.6" cy="3.8" r="2" />
+          <path d="M14.4 6 11 12" />
+          <path d="M11 12 15.2 13.6 13.6 19.4" />
+          <path d="M11 12 7.2 14.8 4.4 12.8" />
+          <path d="M13.8 7.4 17 9.2 15 11.6" />
+          <path d="M13.4 7.7 9.4 8.6 8.2 5.8" />
         </svg>
       );
     case "strength":
