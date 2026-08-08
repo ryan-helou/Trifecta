@@ -68,6 +68,25 @@ export function WelcomeScreen({ onCreatePlan, onSignIn }: { onCreatePlan: () => 
           >
             Already have an account? <span className="font-semibold text-foreground">Sign in</span>
           </button>
+
+          {/* Strava's mark belongs on the PUBLIC surface, not only behind the login.
+              Two documented capacity rejections turned on exactly this: a reviewer
+              opens the marketing page, finds no Connect button and no "Compatible
+              with Strava", and marks the app non-compliant with the brand guidelines
+              without ever signing in. This is the only page a logged-out reviewer
+              sees, so the mark has to live here.
+
+              Guidelines followed to the letter: the supplied asset is used unmodified,
+              "Compatible with Strava" is one of the two permitted phrasings, and it
+              sits below and visibly smaller than our own wordmark so it can't read as
+              a Strava product or imply they sponsored us. */}
+          <div className="mt-5 flex items-center justify-center gap-2 opacity-80">
+            <img
+              src="/brand/strava/api_logo_cptblWith_strava_stack_orange.svg"
+              alt="Compatible with Strava"
+              className="h-7 w-auto"
+            />
+          </div>
         </div>
       </div>
     </div>

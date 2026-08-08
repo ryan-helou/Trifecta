@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   const myKey = raceKeyOf(me.data?.profile as Profile | undefined);
 
   const base = (u: UserLite, isSelf: boolean): FeedCard => {
-    const c = publicCard(u.username, u.data, today);
+    const c = publicCard(u.username, u.data, today, isSelf);
     return {
       username: c.username,
       isSelf,

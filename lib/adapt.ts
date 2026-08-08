@@ -1,3 +1,4 @@
+import { coachSafeTitle } from "./stravaPrivacy";
 import { Discipline, Feel, Plan, Week, Workout, Zone } from "./types";
 import { addDays, dayIndexOf, fromISO, mondayOf } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
@@ -727,7 +728,7 @@ export function summarizeForCoach(
   if (today.length) {
     lines.push(
       `Today's sessions: ${today
-        .map((w) => `${w.title} (${w.discipline}, ${fmtDuration(w.estDurationSec)})`)
+        .map((w) => `${coachSafeTitle(w)} (${w.discipline}, ${fmtDuration(w.estDurationSec)})`)
         .join("; ")}`,
     );
   } else {
