@@ -73,8 +73,6 @@ export interface Standing {
   rank: number;
   /** Fraction of the weekly goal reached — only meaningful for the week view. */
   goalProgress: number;
-  /** Sessions that came in from Strava rather than being typed by hand. */
-  stravaSessions: number;
   /** Gym workouts in this window that were past the daily cap and scored nothing. */
   unscoredSessions: number;
 }
@@ -111,7 +109,6 @@ export function standingsForRange(
       kmBySport: emptySportMap(),
       rank: 0,
       goalProgress: 0,
-      stravaSessions: 0,
       unscoredSessions: 0,
     });
   }
@@ -129,7 +126,6 @@ export function standingsForRange(
     if (!inRange(a.occurredOn, [from, range[1]])) continue;
     const row = rows.get(a.userId);
     if (!row) continue; // an ex-member's activities stop scoring the moment they leave
-    if (a.source === "strava") row.stravaSessions += 1;
     if (unscored.has(a.id)) {
       // Still a session that happened — it just contributes no points or volume.
       row.sessions += 1;

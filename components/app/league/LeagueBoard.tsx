@@ -110,11 +110,6 @@ function StandingRow({
           <div className="mt-1.5 flex items-center gap-2 text-[0.7rem] text-muted">
             <span className="tnum">{s.sessions} sessions</span>
             {s.km > 0 && <span className="tnum">{fmtKm(s.km)} km</span>}
-            {s.stravaSessions > 0 && (
-              <span className="inline-flex items-center gap-1">
-                <Icon name="signal" size={11} /> {s.stravaSessions}
-              </span>
-            )}
             {s.unscoredSessions > 0 && (
               <span title="Past the daily gym cap — logged, but not scored.">
                 {s.unscoredSessions} over cap
