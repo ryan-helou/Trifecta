@@ -95,7 +95,7 @@ export function CoachSheet({
     <Sheet
       onClose={onClose}
       label="Trifecta coach chat"
-      panelClassName="h-[82%]"
+      panelClassName="h-[82vh]"
       header={
         <div className="flex items-center gap-2.5 border-b border-line px-5 py-3">
           {/* The vector mark, not the app-icon tile. The tile is baked light, so on the
