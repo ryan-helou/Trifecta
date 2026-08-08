@@ -236,7 +236,26 @@ function AppShellInner() {
     },
     unskip: (id) => applyPlan(setStatus(plan, id, "planned")),
     move: (id, date) => respond(moveWorkout(plan, id, date), { kind: "moved", workoutId: id }),
-    swap: (id, d) => respond(swapDiscipline(plan, id, d), { kind: "swapped", workoutId: id }),
+    // #146 — a swap used to happen in total silence. The mechanical guard already
+    // shortens the replacement so the receiving sport doesn't spike (and records WHY on
+    // the session), but none of that reached the athlete: they tapped "Swap sport",
+    // got a session quietly shorter than the one they gave up, and had no way back.
+    // Say what happened, name the reason when it was capped, and always offer the undo.
+    swap: (id, d) => {
+      const prev = plan;
+      const next = swapDiscipline(plan, id, d);
+      const after = next.workouts[id];
+      respond(next, { kind: "swapped", workoutId: id });
+      toast({
+        text:
+          after?.impactCapped ??
+          `Swapped to a ${d} — ${Math.round((after?.estDurationSec ?? 0) / 60)} min.`,
+        tone: after?.impactCapped ? "warning" : "success",
+        actionLabel: "Undo",
+        onAction: () => applyPlan(prev),
+        duration: after?.impactCapped ? 10000 : 7000,
+      });
+    },
     unswap: (id) => applyPlan(unswapDiscipline(plan, id)),
     logInstead: (id, note, opts) => respond(logInstead(plan, id, note, opts), { kind: "logged-other", workoutId: id }),
     logCheckin: (id, entry) => {

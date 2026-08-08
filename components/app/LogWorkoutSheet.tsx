@@ -227,7 +227,15 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
         <div className={isStrength ? "" : "grid grid-cols-2 gap-3"}>
           <label className="flex flex-col gap-1.5">
             <span className="eyebrow text-[0.7rem]">Time{isStrength ? " · optional" : ""}</span>
-            <input className="input" inputMode="numeric" placeholder="e.g. 45:00" value={timeStr} onChange={(e) => setTimeStr(e.target.value)} />
+            {/* "45:00" was an instruction the keyboard couldn't follow — inputMode
+                numeric has no colon key, so the placeholder demonstrated a format the
+                athlete physically could not type (#151). parseClock already accepts
+                bare digits (45 = 45 min, 4230 = 42:30); the placeholder now shows the
+                form that actually works, and the hint covers the longer one. */}
+            <input className="input" inputMode="numeric" placeholder="e.g. 45" value={timeStr} onChange={(e) => setTimeStr(e.target.value)} />
+            {!isStrength && !timeStr.trim() && (
+              <span className="text-xs text-muted">Minutes — or 4230 for 42:30.</span>
+            )}
             {isStrength && !durationSec && (
               <span className="text-xs text-muted">No time? We’ll count it as {Math.round(DEFAULT_STRENGTH_SEC / 60)} min.</span>
             )}
