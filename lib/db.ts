@@ -1,3 +1,4 @@
+import { decryptToken, encryptToken } from "./tokenCrypto";
 import type { Pool as PgPool } from "pg";
 import type {
   League,
@@ -417,8 +418,9 @@ class PgStore implements Store {
     return {
       userId: row.user_id as string,
       athleteId: Number(row.athlete_id),
-      accessToken: row.access_token as string,
-      refreshToken: row.refresh_token as string,
+      // stored encrypted (lib/tokenCrypto.ts); legacy plaintext rows pass through
+      accessToken: decryptToken(row.access_token as string),
+      refreshToken: decryptToken(row.refresh_token as string),
       expiresAt: Number(row.expires_at),
       scope: (row.scope as string) ?? undefined,
       lastSyncAtISO: row.last_sync_at ? new Date(row.last_sync_at as string).toISOString() : undefined,
@@ -448,7 +450,7 @@ class PgStore implements Store {
          refresh_token = EXCLUDED.refresh_token,
          expires_at = EXCLUDED.expires_at,
          scope = EXCLUDED.scope`,
-      [c.userId, c.athleteId, c.accessToken, c.refreshToken, c.expiresAt, c.scope ?? null],
+      [c.userId, c.athleteId, encryptToken(c.accessToken), encryptToken(c.refreshToken), c.expiresAt, c.scope ?? null],
     );
   }
 
@@ -456,7 +458,7 @@ class PgStore implements Store {
     await this.init();
     await this.pool.query(
       "UPDATE strava_connections SET access_token = $1, refresh_token = $2, expires_at = $3 WHERE user_id = $4",
-      [t.accessToken, t.refreshToken, t.expiresAt, userId],
+      [encryptToken(t.accessToken), encryptToken(t.refreshToken), t.expiresAt, userId],
     );
   }
 

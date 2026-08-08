@@ -1,6 +1,7 @@
 import { Plan, Profile } from "./types";
 import { computeStreak } from "./stats";
 import { addDays, daysBetween } from "./dates";
+import { withoutStravaSourced } from "./stravaPrivacy";
 import { isFitnessGoal, raceCategoryName } from "./planEngine";
 
 // ---------------------------------------------------------------------------
@@ -45,9 +46,20 @@ export function raceKeyOf(p?: Profile | null): string | null {
   return `${p.raceType}:${p.raceDateISO}`;
 }
 
-export function publicCard(username: string, data: { profile?: unknown; plan?: unknown } | undefined, todayISO: string): PublicCard {
+/** @param isSelf true only when the card is being built for its own owner. For
+ *  anyone else the plan is stripped of Strava-completed sessions first: API Policy
+ *  §2.3 forbids showing one athlete's Strava data to another, and §5.4 extends that
+ *  to anything "derived from" it — which a streak, a session count or a latest
+ *  workout title (the Strava activity's own name, for a synced session) all are. */
+export function publicCard(
+  username: string,
+  data: { profile?: unknown; plan?: unknown } | undefined,
+  todayISO: string,
+  isSelf = false,
+): PublicCard {
   const profile = data?.profile as Profile | undefined;
-  const plan = data?.plan as Plan | undefined;
+  const raw = data?.plan as Plan | undefined;
+  const plan = raw && !isSelf ? withoutStravaSourced(raw) : raw;
   const card: PublicCard = { username, streak: 0, weekDone: 0 };
 
   if (profile) {

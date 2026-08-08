@@ -1,3 +1,6 @@
+import { purgeExpiredStravaData } from "@/lib/stravaPrivacy";
+import { todayISO } from "@/lib/dates";
+import type { Plan } from "@/lib/types";
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
 import { getUserIdFromRequest } from "@/lib/auth-server";
@@ -31,7 +34,14 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "State is too large to save." }, { status: 413 });
   }
   const store = getStore();
-  const next = { profile, plan, updatedAtISO: new Date().toISOString() };
+  // Enforce the Strava cache window on the way in (API Policy §6.2: Strava Data may
+  // not be retained beyond seven days). Doing it here rather than on a schedule
+  // means the stored copy is never out of compliance, and it needs no cron: the app
+  // saves on every meaningful change, so a plan that is being used is a plan that is
+  // being swept. A dormant account writes nothing, but it also isn't accruing new
+  // Strava data. Pure and cheap — returns the same object when nothing has expired.
+  const swept = plan ? purgeExpiredStravaData(plan as Plan, todayISO()) : plan;
+  const next = { profile, plan: swept, updatedAtISO: new Date().toISOString() };
   // baseVersion rides in the body (NOT a header — proxy.ts CORS only allows
   // Content-Type/Authorization). When present, write only if the client's copy
   // is current; on conflict return the server copy so the client can merge.
