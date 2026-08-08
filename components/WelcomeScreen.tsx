@@ -36,7 +36,10 @@ export function WelcomeScreen({ onCreatePlan, onSignIn }: { onCreatePlan: () => 
           >
             Every stroke,
             <br />
-            pedal, and stride —
+            {/* non-breaking space: the em dash was wrapping onto a line of its own on
+                narrow screens, leaving a stranded "—" under the headline (#177). It is
+                punctuation attached to "stride", so it must break with it or not at all. */}
+            pedal, and stride&nbsp;—
             <br />
             <span className="italic text-accent">planned.</span>
           </h1>

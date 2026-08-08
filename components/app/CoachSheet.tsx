@@ -12,6 +12,16 @@ import { LogoMark } from "../Logo";
 import { Wordmark } from "../Wordmark";
 import { workoutsOn } from "./widgets";
 
+/** The company, not the build. The server reports something like
+ *  "Google (Gemini) · gemini-3.5-flash-lite", and the whole string was being printed
+ *  under the coach's name — an athlete has no use for a model id, and it dates the
+ *  product every time the model is swapped (#138). The company still has to be named:
+ *  this line exists because their question leaves the device, and guideline 5.1.2(i)
+ *  wants the recipient stated. So keep the who, drop the build number. */
+function providerName(raw: string): string {
+  return raw.split(/[·|]/)[0].trim() || raw;
+}
+
 export function CoachSheet({
   plan,
   today,
@@ -100,7 +110,7 @@ export function CoachSheet({
                 goes (guideline 5.1.2(i)). Until the first reply tells us, say what is
                 true of every case: it leaves the device. */}
             <div className="text-xs text-muted">
-              {provider ? `Powered by ${provider}` : "AI coach — your question is sent to our AI provider"}
+              {provider ? `Powered by ${providerName(provider)}` : "AI coach — your question is sent to our AI provider"}
             </div>
           </div>
           <button onClick={onClose} aria-label="Close coach" className="text-muted hover:text-foreground">✕</button>
