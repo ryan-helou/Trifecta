@@ -35,6 +35,7 @@ import {
   unswapDiscipline,
 } from "@/lib/adapt";
 import { respondTo, type AthleteEvent } from "@/lib/respond";
+import { adjustSession } from "@/lib/prescribe";
 import type { Plan } from "@/lib/types";
 import { logReadiness, readinessScore, READY_LOW } from "@/lib/readiness";
 import { track } from "@/lib/analytics";
@@ -285,6 +286,28 @@ function AppShellInner() {
     // tab — where the button lives — nothing on screen moved, because the confirmation
     // only ever rendered on Today. Tapping it looked like a dead button (#108). Now it
     // says what it did, offers an undo, and takes you to the plan it just rewrote.
+    // The athlete resizing a session themselves. Routed through `respond` like every
+    // other change so the ledger still gets a say afterwards, and undoable — an
+    // adjustment you can't reverse is one you have to fight. adjustSession returns
+    // null when nothing would move, so no toast ever claims a change that didn't
+    // happen (#108).
+    adjust: (id, targetSec) => {
+      const res = adjustSession(plan, id, targetSec);
+      if (!res) {
+        toast({ text: "That session is already as close to that as it can get.", tone: "default" });
+        return;
+      }
+      const prev = plan;
+      track("session_adjusted", { targetSec });
+      respond(res.plan, { kind: "logged", workoutId: id });
+      toast({
+        text: res.summary,
+        tone: "success",
+        actionLabel: "Undo",
+        onAction: () => applyPlan(prev),
+        duration: 8000,
+      });
+    },
     rebuild: () => realign("manual"),
     ease: (days, cause = "manual") => {
       const next = easeUpcoming(plan, today, days, cause);

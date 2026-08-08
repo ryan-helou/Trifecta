@@ -26,9 +26,13 @@ import { logCheckin } from "../lib/adapt";
 import { FORM_DEBT_EASE_PCT } from "../lib/load";
 import {
   DEADBAND_PCT,
+  MAX_STRETCH,
+  adjustChoices,
+  adjustSession,
   FULL_CUT_PCT,
   HORIZON_SESSIONS,
   MAX_CUT,
+  MIN_SESSION_SEC,
   loadFactor,
   represcribe,
   retitleMinutes,
@@ -220,6 +224,62 @@ section("represcribe: quiet when it should be, and bounded when it acts");
       }
     }
   }
+}
+
+// --- 6b. the athlete adjusting a session by hand -----------------------------
+// The deliberate-choice counterpart to represcribe. It MAY lengthen, which the
+// automatic path may never do — a person choosing to train more is not the system
+// piling load on them — but it is still bounded and still rails-gated.
+section("adjustSession: the athlete's own change, honest and still bounded");
+{
+  const plan = generatePlan(profile(), ANCHOR);
+  const w = Object.values(plan.workouts).find((x) => x.discipline !== "rest" && x.segments?.length && scaleWorkout(x, 0.7))!;
+  ok(!!w, "found an adjustable session");
+
+  const choices = adjustChoices(w);
+  ok(choices.length > 1, `offers real options (${choices.map((c) => Math.round(c / 60) + "m").join(", ")})`);
+  ok(choices.includes(Math.round((w.estDurationSec / 300)) * 300) || choices.some((c) => Math.abs(c - w.estDurationSec) <= 300), "the original duration is among them, so putting it back is one tap");
+  ok(choices.every((c) => c >= MIN_SESSION_SEC), "never offers something too short to be training");
+  ok(choices.every((c) => c <= w.estDurationSec * MAX_STRETCH + 300), `never offers more than ${MAX_STRETCH}× the prescription`);
+  ok(choices.every((c, i) => i === 0 || c > choices[i - 1]), "options are sorted and de-duplicated");
+
+  // shorter
+  const shorter = adjustSession(plan, w.id, Math.round(w.estDurationSec * 0.6));
+  ok(!!shorter, "an athlete can shorten a session");
+  if (shorter) {
+    ok(shorter.workout.estDurationSec < w.estDurationSec, "and it really is shorter");
+    ok(shorter.workout.estDurationSec === workoutSeconds(shorter.workout), "header still equals the structure");
+    ok(shorter.summary.length > 0, "and it says what it did");
+  }
+
+  // longer — allowed HERE, and only here
+  const longer = adjustSession(plan, w.id, Math.round(w.estDurationSec * 1.3));
+  if (longer) {
+    ok(longer.workout.estDurationSec > w.estDurationSec, "an athlete can also lengthen a session");
+    ok(longer.workout.estDurationSec === workoutSeconds(longer.workout), "and the header still equals the structure");
+  }
+
+  // the automatic path is UNCHANGED — it still may never add
+  const auto = scaleWorkout(w, 1.3);
+  ok(auto === null || auto.estDurationSec <= w.estDurationSec, "scaleWorkout without allowLonger still never lengthens");
+
+  // bounded: asking for triple is clamped, never honoured
+  const absurd = adjustSession(plan, w.id, w.estDurationSec * 3);
+  ok(
+    absurd === null || absurd.workout.estDurationSec <= Math.ceil(w.estDurationSec * MAX_STRETCH) + 1,
+    `asking for 3× is capped at ${MAX_STRETCH}× (got ${absurd ? absurd.workout.estDurationSec : "null"})`,
+  );
+
+  // convergence still holds for the manual path
+  if (shorter) {
+    const again = adjustSession(shorter.plan, w.id, Math.round(w.estDurationSec * 0.6));
+    ok(!again || again.workout.estDurationSec === shorter.workout.estDurationSec, "adjusting twice to the same target changes nothing further");
+    const restored = adjustSession(shorter.plan, w.id, w.estDurationSec);
+    ok(!!restored && restored.workout.estDurationSec === w.estDurationSec, "and the original is always reachable again");
+  }
+
+  ok(adjustSession(plan, "nope", 1800) === null, "an unknown id adjusts nothing");
+  ok(adjustSession(plan, w.id, 0) === null, "a zero target is refused");
 }
 
 // --- 7. degenerate input -----------------------------------------------------
