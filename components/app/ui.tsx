@@ -30,6 +30,8 @@ export interface UIActions {
   logWorkout(input: LoggedWorkout): Omit<LogResult, "plan">;
   rebuild(): void;
   ease(days: number, cause?: "strain" | "manual"): void;
+  /** resize one session to a target duration, because the athlete asked */
+  adjust(id: string, targetSec: number): void;
   /** record today's morning readiness (eases the day if low) */
   logReadiness(dateISO: string, input: ReadinessInput): void;
   /** re-tune pace targets from recent sessions; returns what moved, or null */

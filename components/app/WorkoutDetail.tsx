@@ -11,6 +11,7 @@ import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
 import { buildWorkoutFit, fitFilename } from "@/lib/fit";
 import { whyAddsContext, whyForWorkout } from "@/lib/why";
+import { adjustChoices } from "@/lib/prescribe";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
@@ -65,6 +66,52 @@ function RepBlock({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; un
           <Step key={i} seg={c} paces={paces} unit={unit} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Resize this session. Options are TIMES, not percentages — the real thought is
+ *  "I've only got forty minutes", and nobody reasons about their own training in
+ *  percentages. The current length is marked so putting it back is one tap, and the
+ *  list comes from the session's ORIGINAL prescription, so repeatedly shortening
+ *  never walks the options down with it. */
+function AdjustPanel({
+  workout,
+  onPick,
+  onCancel,
+}: {
+  workout: Workout;
+  onPick: (sec: number) => void;
+  onCancel: () => void;
+}) {
+  const choices = adjustChoices(workout);
+  const base = workout.prescribed?.estDurationSec ?? workout.estDurationSec;
+  if (!choices.length) return null;
+  return (
+    <div className="mb-4 rounded-2xl border border-line bg-surface-2 p-3.5">
+      <div className="eyebrow mb-2 text-[0.7rem]">How long have you got?</div>
+      <div className="flex flex-wrap gap-1.5">
+        {choices.map((sec) => {
+          const isNow = Math.abs(sec - workout.estDurationSec) < 60;
+          const isPlanned = Math.abs(sec - base) < 60;
+          return (
+            <button
+              key={sec}
+              onClick={() => { haptic("select"); onPick(sec); }}
+              aria-pressed={isNow}
+              className={`chip ${isNow ? "is-selected" : ""}`}
+            >
+              {fmtDuration(sec)}
+              {isPlanned && !isNow ? " · planned" : ""}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2.5 text-xs leading-snug text-muted">
+        The session keeps its shape — we drop or add whole intervals rather than quietly
+        rewriting what it is.
+      </p>
+      <button onClick={onCancel} className="btn btn-ghost mt-3 w-full py-2.5 text-sm">Cancel</button>
     </div>
   );
 }
@@ -124,7 +171,7 @@ function SessionStructure({ sections, paces, unit }: { sections: { label: string
 export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
   const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
   const toast = useToast();
-  const [mode, setMode] = useState<null | "move" | "swap" | "log">(null);
+  const [mode, setMode] = useState<null | "move" | "swap" | "log" | "adjust">(null);
   const [note, setNote] = useState("");
   const meta = DISCIPLINE_META[workout.discipline];
   const reps = repsSummary(workout);
@@ -282,6 +329,13 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
               onCancel={() => setMode(null)}
             />
           )}
+          {mode === "adjust" && (
+            <AdjustPanel
+              workout={workout}
+              onPick={(sec) => { actions.adjust(workout.id, sec); setMode(null); }}
+              onCancel={() => setMode(null)}
+            />
+          )}
           {mode === "swap" && (
             <SwapPanel current={workout.discipline} onPick={(d) => { actions.swap(workout.id, d); close(); }} onCancel={() => setMode(null)} />
           )}
@@ -314,6 +368,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                 </button>
               )}
               <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setMode(mode === "adjust" ? null : "adjust")} className="btn btn-ghost py-2.5 text-sm">Adjust length</button>
                 <button onClick={() => setMode(mode === "move" ? null : "move")} className="btn btn-ghost py-2.5 text-sm">Move day</button>
                 <button onClick={() => setMode(mode === "swap" ? null : "swap")} className="btn btn-ghost py-2.5 text-sm">Swap sport</button>
                 <button onClick={() => setMode(mode === "log" ? null : "log")} className="btn btn-ghost py-2.5 text-sm">Did something else</button>

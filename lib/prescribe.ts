@@ -56,6 +56,11 @@ export const HORIZON_SESSIONS = 3;
 /** Never cut a session below this many seconds — under it, it isn't training. */
 export const MIN_SESSION_SEC = 15 * 60;
 
+/** The most an athlete may stretch one session beyond its prescription. Half again is
+ *  a generous "I felt good and had the time"; beyond that it stops being the session
+ *  the plan designed and the ramp rails would have to argue about it anyway. */
+export const MAX_STRETCH = 1.5;
+
 /** Total prescribed seconds a segment represents, including its repeats and
  *  children. The header duration must always equal this over the whole session;
  *  a title that disagrees with the structure under it is its own bug class. */
@@ -128,14 +133,19 @@ function baselineOf(w: Workout): Workout {
 /** Rescale a session to `factor` of its ORIGINAL prescription. Returns null when
  *  nothing could be changed honestly, so callers can count real work done rather
  *  than reporting a no-op as a change (the #108 dead-button lesson). */
-export function scaleWorkout(w: Workout, factor: number): Workout | null {
+export function scaleWorkout(w: Workout, factor: number, opts?: { allowLonger?: boolean }): Workout | null {
   if (w.discipline === "rest" || w.status !== "planned") return null;
-  // "Never add load" is clamped HERE, not left to callers. Every path that can
-  // lengthen a session has to be closed at the primitive, or the guarantee is
-  // only as good as the least careful caller — and doc 03 §4 C prices that
-  // mistake as an injury rather than a missed adaptation. Factors above 1 mean
-  // "restore toward the original", which the baseline gives us for free.
-  const f = Math.min(1, factor);
+  // "Never add load" is clamped HERE by DEFAULT, not left to callers. Every path that
+  // can lengthen a session has to be closed at the primitive, or the guarantee is only
+  // as good as the least careful caller — and doc 03 §4 C prices that mistake as an
+  // injury rather than a missed adaptation. Factors above 1 mean "restore toward the
+  // original", which the baseline gives us for free.
+  //
+  // `allowLonger` is the ONE exception, and it is only ever passed by an athlete
+  // deliberately asking for a longer session (adjustSession). A person choosing to do
+  // more is not the system piling load on them — that asymmetry is the whole point of
+  // the rule — and the choice is still bounded and rails-gated where it is made.
+  const f = opts?.allowLonger ? Math.min(MAX_STRETCH, factor) : Math.min(1, factor);
   const base = baselineOf(w);
   const prescribed = w.prescribed ?? {
     estDurationSec: base.estDurationSec,
@@ -237,4 +247,58 @@ export function represcribe(plan: Plan, todayISO: string, horizon = HORIZON_SESS
       `so the next ${changed} ${changed === 1 ? "session is" : "sessions are"} trimmed to ${Math.round(factor * 100)}% — ` +
       `same shape, less of it.`,
   };
+}
+
+/** The durations offered when an athlete adjusts a session, derived from what the plan
+ *  actually asked for rather than a fixed ladder. Real life is "I've only got forty
+ *  minutes", so the options are TIMES, not percentages — nobody thinks in percentages
+ *  about their own training. Sorted, de-duplicated, and always including the original
+ *  so putting it back is one tap. */
+export function adjustChoices(w: Workout): number[] {
+  const base = (w.prescribed?.estDurationSec ?? w.estDurationSec) || 0;
+  if (base <= 0) return [];
+  const round5 = (sec: number) => Math.round(sec / 300) * 300;
+  const out = [0.5, 0.7, 0.85, 1, MAX_STRETCH]
+    .map((f) => round5(base * f))
+    .filter((sec) => sec >= MIN_SESSION_SEC);
+  return [...new Set(out)].sort((a, b) => a - b);
+}
+
+export interface Adjustment {
+  plan: Plan;
+  workout: Workout;
+  /** one sentence, athlete-facing */
+  summary: string;
+}
+
+/** Resize ONE session to a target duration, because the athlete said so.
+ *
+ *  This is the deliberate-choice counterpart to `represcribe`: same honest rescaling
+ *  (segment text rewritten to match, header derived from the structure, computed from
+ *  the stored baseline so it converges), but it may lengthen as well as shorten.
+ *
+ *  Still gated. `railsRegressed` gets the final say, so "I'll do an extra half hour"
+ *  can't quietly blow the week's ramp or tip the block out of its intensity band — the
+ *  athlete's choice is respected right up to the point where it would break the plan
+ *  that makes the choice meaningful. Returns null when nothing would change, so the UI
+ *  never offers a button that does nothing (#108). */
+export function adjustSession(plan: Plan, workoutId: string, targetSec: number): Adjustment | null {
+  const w = plan.workouts[workoutId];
+  if (!w) return null;
+  const base = (w.prescribed?.estDurationSec ?? w.estDurationSec) || 0;
+  if (base <= 0 || targetSec <= 0) return null;
+
+  const scaled = scaleWorkout(w, targetSec / base, { allowLonger: true });
+  if (!scaled) return null;
+
+  const next: Plan = { ...plan, workouts: { ...plan.workouts, [workoutId]: scaled } };
+  if (railsRegressed(plan, next).length) return null;
+
+  const wasSec = w.estDurationSec;
+  const nowSec = scaled.estDurationSec;
+  const back = scaled.prescribed && nowSec === scaled.prescribed.estDurationSec;
+  const summary = back
+    ? `${scaled.title} is back to its full ${Math.round(nowSec / 60)} min.`
+    : `${scaled.title} is now ${Math.round(nowSec / 60)} min${nowSec < wasSec ? "" : ""} — same shape, ${nowSec < wasSec ? "less" : "more"} of it.`;
+  return { plan: next, workout: scaled, summary };
 }
