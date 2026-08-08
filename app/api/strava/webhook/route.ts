@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
 import { applyActivityToUser, fetchActivity, validAccessToken } from "@/lib/strava";
-import { recordStravaActivity, removeStravaActivity } from "@/lib/league/ingest";
+import { removeStravaActivity } from "@/lib/league/ingest";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
@@ -64,9 +64,6 @@ export async function POST(req: NextRequest) {
         const act = await fetchActivity(token, activityId);
         if (act) {
           await applyActivityToUser(store, conn.userId, act);
-          // Same fetched activity, second consumer: league scoring. Independent of
-          // the plan apply above, which no-ops for a user who has no plan.
-          await recordStravaActivity(store, conn.userId, act);
         }
       }
     } else if (body.object_type === "activity" && body.aspect_type === "delete") {

@@ -65,9 +65,6 @@ export function FeedPanel({
                       </span>
                       <SportMark sport={a.sport} size={14} />
                       <span className="truncate text-sm text-muted">{quantityLabel(a.sport, a.km)}</span>
-                      {a.source === "strava" && (
-                        <Icon name="signal" size={11} className="shrink-0 text-faint" title="From Strava" />
-                      )}
                     </div>
                     {a.note && <div className="truncate text-[0.7rem] text-muted">{a.note}</div>}
                   </div>

@@ -1,69 +1,47 @@
-import type { NewActivity, Store } from "../db";
-import { activityLocalDay, disciplineOf, type StravaActivity } from "../strava";
-import { SPORT_UNIT, sportFromDiscipline, type LeagueActivity } from "./types";
+import type { Store } from "../db";
 
 /**
- * The bridge from Trifecta's Strava ingest to league scoring.
+ * Strava does NOT feed league scoring. This file is what's left of the bridge that
+ * used to, plus the cleanup that removes what it already wrote.
  *
- * There is ONE Strava pipeline. The same fetched activity that completes a
- * planned workout also drops a row here, so a league never needs its own OAuth
- * connection, its own tokens, or its own slice of the rate limit — and the ride
- * that ticks off Tuesday's session is by construction the same ride that scores.
+ * Why it went: a league shows every member their rivals' distance and points. When
+ * those numbers came from a Strava activity, that is one athlete's Strava data
+ * displayed to another, which the API Policy prohibits outright:
  *
- * Deliberately NOT folded into applyActivityToUser: that function bails early
- * for a user with no plan (`if (!plan) return`), and league members are not
- * required to follow a training plan. Someone can join a league, connect Strava,
- * and score without ever generating a plan — so scoring has to be independent of
- * whether the plan apply did anything.
+ *   §2.3  "Strava Data provided by a specific Strava user may be displayed or
+ *          disclosed in your Developer Application only to that user. You may not
+ *          display or disclose Strava Data related to other users, even if such
+ *          data is publicly viewable on the Strava Platform."
  *
- * Idempotent through the strava_imports ledger: re-delivery of the same activity
- * (webhook retry, manual sync, connect backfill) inserts nothing the second time.
+ * Aggregating does not launder it. §5.4 closes that door explicitly: the
+ * restrictions "apply to data derived from Strava Data and to output that
+ * incorporates or was generated using Strava Data" — so a points total or a
+ * kilometre count computed from a Strava ride is itself Strava Data.
+ *
+ * This is settled, not a reading. Wandrer proposed the obvious compromise for the
+ * same problem (cross-user maps, opt-in with periodic re-consent) and Strava
+ * refused, leaving them to conclude they would have to limit competitions "to those
+ * whose data comes from sources other than Strava". Apps rejected on this exact
+ * clause include RunningCup (§2.3 quoted back at them verbatim) and Pi Runners — a
+ * private, non-commercial, sixty-person club that was still auto-rejected purely
+ * for having a leaderboard. Trifecta's capacity request was denied 2026-08-07.
+ *
+ * So leagues score only what Trifecta owns: manually logged sessions and Apple
+ * Health workouts. Strava still completes the athlete's OWN planned sessions and is
+ * still shown to them on their own screens — that part is permitted and untouched.
+ * If a Strava-connected athlete wants league points, they log the session by hand
+ * or connect Apple Health, whose data is ours to display.
+ *
+ * Do not reintroduce a Strava path here without re-reading the policy first.
  */
 
-/** What a Strava activity is worth, or null if it isn't a scored sport. Pure. */
-export function scoredActivityFrom(userId: string, a: StravaActivity): NewActivity | null {
-  const sport = sportFromDiscipline(disciplineOf(a) ?? "");
-  if (!sport) return null; // walks, hikes, yoga — not a competition sport
-  const day = activityLocalDay(a);
-  if (!day) return null;
-
-  // Distance sports score on kilometres; gym is flat, so its quantity is always
-  // 1 workout regardless of whether Strava happened to attach a distance.
-  const km = SPORT_UNIT[sport] === "flat" ? 1 : (a.distance ?? 0) / 1000;
-  // A zero-distance ride/run is a session Strava couldn't measure (treadmill with
-  // no sensor, forgotten GPS). It'd score nothing, so don't manufacture a row the
-  // athlete would then have to delete — let them log it by hand with a real number.
-  if (SPORT_UNIT[sport] === "km" && km <= 0) return null;
-
-  return {
-    userId,
-    sport,
-    km: Math.round(km * 1000) / 1000,
-    occurredOn: day,
-    note: a.name?.trim() ? a.name.trim().slice(0, 140) : null,
-  };
-}
-
-/** Record a synced Strava activity for league scoring. Returns the new row, or
- *  null when it isn't scoreable or was already imported. Never throws — a
- *  scoring write must not be able to fail a Strava sync. */
-export async function recordStravaActivity(
-  store: Store,
-  userId: string,
-  a: StravaActivity,
-): Promise<LeagueActivity | null> {
-  try {
-    const input = scoredActivityFrom(userId, a);
-    if (!input) return null;
-    return await store.importStravaActivity(input, a.id);
-  } catch (e) {
-    console.warn(`league: could not record strava activity ${a.id} for ${userId}`, e);
-    return null;
-  }
-}
-
-/** Mirror a Strava deletion into the league log, so points don't survive a
- *  session the athlete removed upstream. */
+/** Purge a Strava-sourced row from the league log.
+ *
+ *  Nothing writes these any more, so this only ever removes legacy rows — but it
+ *  stays wired to the activity-delete webhook and to deauthorisation because we are
+ *  separately obliged to reflect an upstream deletion within 48 hours (§6.3) and to
+ *  delete everything on revocation (§7.4). Cleaning a row that probably no longer
+ *  exists is cheap; failing to clean one is a policy breach. Never throws. */
 export async function removeStravaActivity(store: Store, userId: string, stravaId: number): Promise<void> {
   try {
     await store.deleteStravaActivity(userId, stravaId);

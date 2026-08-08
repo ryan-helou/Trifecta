@@ -299,6 +299,29 @@ class PgStore implements Store {
           ),
         )
         .then(() =>
+          // One-way purge of Strava-sourced league rows.
+          //
+          // Nothing writes these any more (see lib/league/ingest.ts): a league shows
+          // every member their rivals' distance and points, and when those came from
+          // Strava that is one athlete's Strava data displayed to another, which API
+          // Policy §2.3 prohibits — §5.4 extends the ban to anything "derived from
+          // Strava Data", so the totals are caught too. Stopping the writes is not
+          // enough on its own; the rows already in the table are still being rendered
+          // on other people's boards until they are gone.
+          //
+          // Runs on every boot rather than as a one-shot migration, deliberately: it
+          // is a cheap no-op once the table is clean, and if a Strava path is ever
+          // reintroduced by accident this quietly undoes it rather than letting the
+          // data sit there. Deleting the ledger rows too, so nothing is left pointing
+          // at activities we no longer hold.
+          this.pool
+            .query("DELETE FROM athlete_activities WHERE source = 'strava'")
+            .then((r) => {
+              if (r.rowCount) console.warn(`league: purged ${r.rowCount} Strava-sourced rows (API Policy §2.3)`);
+              return this.pool.query("DELETE FROM strava_imports");
+            }),
+        )
+        .then(() =>
           this.pool.query(
             `CREATE TABLE IF NOT EXISTS league_invites (
                id TEXT PRIMARY KEY,

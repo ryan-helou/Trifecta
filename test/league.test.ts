@@ -11,11 +11,11 @@
   If those ever start sharing state, the same run would score identically
   everywhere and the whole per-league settings model would be a lie.
 */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { standingsForRange, totalPoints, unscoredGymIds } from "../lib/league/scoring";
 import { seasonByNumber, seasonChampions } from "../lib/league/season";
-import { scoredActivityFrom } from "../lib/league/ingest";
 import { DEFAULT_SETTINGS, mergeSettings, type LeagueActivity, type LeagueMember, type LeagueSettings } from "../lib/league/types";
-import type { StravaActivity } from "../lib/strava";
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -37,8 +37,8 @@ function gym(id: string, userId: string, day: string, createdAt: string): League
 }
 function run(id: string, userId: string, day: string, km: number): LeagueActivity {
   return {
-    id, userId, sport: "run", km, occurredOn: day, note: null, source: "strava",
-    stravaId: 1, createdAt: "2026-08-10T10:00:00Z",
+    id, userId, sport: "run", km, occurredOn: day, note: null, source: "manual",
+    stravaId: null, createdAt: "2026-08-10T10:00:00Z",
   };
 }
 const member = (userId: string, username: string): LeagueMember => ({
@@ -111,8 +111,6 @@ console.log("\nstandingsForRange applies the cap");
   check("all 5 still counted as sessions", ann.sessions, 5);
   check("3 marked unscored", ann.unscoredSessions, 3);
   check("ann still leads 60 > 50", ann.rank, 1);
-  check("strava session counted for bob", bob.stravaSessions, 1);
-  check("ann has no strava sessions", ann.stravaSessions, 0);
 }
 {
   // The cap must be computed before range filtering, so a week view and a
@@ -205,22 +203,29 @@ console.log("\nseason window starts at kickoff, not the 1st");
   check("and counts only the post-kickoff session", allTime[0].sessions, 1);
 }
 
-console.log("\nStrava → scored activity mapping");
+console.log("\nStrava must never reach league scoring (API Policy §2.3 / §5.4)");
 {
-  const base = { id: 1, start_date_local: "2026-08-10T07:00:00Z" };
-  const from = (a: Partial<StravaActivity>) => scoredActivityFrom("u", { ...base, ...a } as StravaActivity);
+  // A league shows every member their rivals' distance and points. If those came
+  // from a Strava activity, that is one athlete's Strava data displayed to another,
+  // which §2.3 prohibits outright — and §5.4 extends the prohibition to "data
+  // derived from Strava Data", so totalling it changes nothing. Trifecta's capacity
+  // request was denied over this on 2026-08-07.
+  //
+  // Asserted against the SOURCE rather than behaviour on purpose: the failure mode
+  // is someone re-adding the bridge, and a behavioural test can only catch a path
+  // that still exists. This catches the import coming back.
+  const src = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");
 
-  check("a ride maps to bike in km", from({ sport_type: "Ride", distance: 40200 })?.km, 40.2);
-  check("a trail run is still a run", from({ sport_type: "TrailRun", distance: 10000 })?.sport, "run");
-  check("weight training becomes gym", from({ sport_type: "WeightTraining" })?.sport, "gym");
-  check("gym is flat-scored at 1 regardless of distance", from({ sport_type: "WeightTraining", distance: 5000 })?.km, 1);
-  check("a walk isn't a competition sport", from({ sport_type: "Walk", distance: 3000 }), null);
-  check("yoga isn't either", from({ sport_type: "Yoga" }), null);
-  // A ride Strava couldn't measure would score nothing; don't manufacture a row
-  // the athlete then has to delete.
-  check("zero-distance ride is skipped", from({ sport_type: "Ride", distance: 0 }), null);
-  check("the local day is what counts", from({ sport_type: "Run", distance: 5000 })?.occurredOn, "2026-08-10");
-  check("the activity name rides along as the note", from({ sport_type: "Run", distance: 5000, name: "Morning shakeout" })?.note, "Morning shakeout");
+  const ingest = src("lib/league/ingest.ts");
+  check("no Strava→league ingest function", /recordStravaActivity|scoredActivityFrom/.test(ingest), false);
+  // the purge stays: §6.3 gives 48h to reflect an upstream deletion, §7.4 requires
+  // full deletion on deauthorisation, and legacy rows still need removing.
+  check("the purge path is retained", ingest.includes("removeStravaActivity"), true);
+
+  for (const route of ["sync", "callback", "webhook"]) {
+    const r = src(`app/api/strava/${route}/route.ts`);
+    check(`${route} route does not score Strava into the league`, /recordStravaActivity/.test(r), false);
+  }
 }
 
 console.log("\nsettings validation");
