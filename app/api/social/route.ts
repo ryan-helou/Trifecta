@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore, UserLite } from "@/lib/db";
 import { getUserIdFromRequest } from "@/lib/auth-server";
-import { FeedCard, publicCard, raceKeyOf } from "@/lib/social";
+import { FeedCard, FeedItem, feedItemsFor, publicCard, raceKeyOf } from "@/lib/social";
 import { Profile } from "@/lib/types";
 import { todayISO } from "@/lib/dates";
 
@@ -21,7 +21,11 @@ export async function GET(req: NextRequest) {
   if (!me) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   const followingIds = new Set(await store.getFollowingIds(uid));
-  const users = await store.listUsersLite();
+  // A block hides both parties from each other everywhere — suggestions included,
+  // or the person you just blocked reappears as somebody to follow.
+  const blocked = new Set(await store.getBlockEdges(uid));
+  for (const b of blocked) followingIds.delete(b);
+  const users = (await store.listUsersLite()).filter((u) => !blocked.has(u.id));
   const byId = new Map(users.map((u) => [u.id, u]));
   const myKey = raceKeyOf(me.data?.profile as Profile | undefined);
 
@@ -78,5 +82,59 @@ export async function GET(req: NextRequest) {
     : [];
   const cohort = { count: cohortUsers.length, raceName: meCard.race?.name };
 
-  return NextResponse.json({ me: meCard, feed, suggestions, cohort });
+  // ---- the session feed (#183) ------------------------------------------
+  // The card list above answers "who am I following"; this answers "what have
+  // they been doing", which is the thing worth opening the tab for. Chronological
+  // across everyone you follow, full session detail (Ryan's call), each with its
+  // kudos and comments attached.
+  //
+  // Own sessions are included: a feed you never appear in reads like a stranger's.
+  const feedOwners: { id: string; username: string; data: UserLite["data"] }[] = [
+    { id: me.id, username: me.username, data: me.data },
+  ];
+  for (const fid of followingIds) {
+    const u = byId.get(fid) ?? (await store.getUserById(fid).then((r) => (r ? { id: r.id, username: r.username, data: r.data } : null)));
+    if (u) feedOwners.push(u);
+  }
+
+  const items: FeedItem[] = [];
+  for (const owner of feedOwners) {
+    const isSelf = owner.id === uid;
+    const [kudosRows, commentRows] = await Promise.all([
+      store.getKudosForOwner(owner.id),
+      store.getCommentsForOwner(owner.id),
+    ]);
+    // Resolve comment authors once per owner rather than once per comment.
+    const authorIds = [...new Set(commentRows.map((c) => c.fromId))];
+    const authors = new Map<string, string>();
+    for (const id of authorIds) {
+      const u = byId.get(id);
+      if (u) authors.set(id, u.username);
+      else {
+        const row = await store.getUserById(id);
+        if (row) authors.set(id, row.username);
+      }
+    }
+    for (const item of feedItemsFor(owner.username, owner.data, today, 5, isSelf)) {
+      const ks = kudosRows.filter((k) => k.workoutId === item.workoutId);
+      items.push({
+        ...item,
+        isSelf,
+        kudos: ks.length,
+        kudosedByMe: ks.some((k) => k.fromId === uid),
+        comments: commentRows
+          .filter((c) => c.workoutId === item.workoutId && !blocked.has(c.fromId))
+          .map((c) => ({
+            id: c.id,
+            username: authors.get(c.fromId) ?? "",
+            text: c.text,
+            atISO: c.atISO,
+            mine: c.fromId === uid,
+          })),
+      });
+    }
+  }
+  items.sort((a, b) => (b.whenISO === a.whenISO ? b.workoutId.localeCompare(a.workoutId) : b.whenISO.localeCompare(a.whenISO)));
+
+  return NextResponse.json({ me: meCard, feed, items: items.slice(0, 40), suggestions, cohort });
 }

@@ -9,7 +9,7 @@ import {
   purgeExpiredStravaData,
   withoutStravaSourced,
 } from "../lib/stravaPrivacy";
-import { publicCard } from "../lib/social";
+import { feedItemsFor, publicCard } from "../lib/social";
 import { decryptToken, encryptToken } from "../lib/tokenCrypto";
 import type { Plan, Workout } from "../lib/types";
 
@@ -63,6 +63,30 @@ console.log("\n§2.3 — publicCard leaks nothing Strava-derived to others");
   eq("my own week still counts it", mine.weekDone, 1);
   // isSelf defaults to false so a caller that forgets the flag fails closed.
   eq("the default is the safe one", publicCard("ryan", data, TODAY).latest, undefined);
+}
+
+console.log("\n§2.3/§5.4 — the session feed (#183) is the richest way to leak, and doesn't");
+{
+  // Comments and kudos made Friends a real feed carrying full session detail:
+  // distance, pace, the athlete's note. Every one of those is "derived from"
+  // Strava Data for a synced session, so the guard has to hold here or the
+  // richer feed becomes the leak.
+  const data = { profile: { level: "intermediate" }, plan: planOf(
+    w("s", fresh, "strava", "Morning Run"),
+    w("m", fresh, "manual", "Easy Aerobic Run"),
+  ) };
+
+  const theirs = feedItemsFor("ryan", data, TODAY);
+  eq("another athlete sees only the non-Strava session", theirs.map((i) => i.title), ["Easy Aerobic Run"]);
+  eq("no Strava distance reaches them", theirs.some((i) => i.workoutId === "s"), false);
+  eq("...and no pace derived from one", theirs.every((i) => i.workoutId !== "s"), true);
+
+  // isSelf mirrors publicCard: owner-only display is what §2.3 permits, and
+  // without it a Strava athlete's own feed would be empty of their own training.
+  const mine = feedItemsFor("ryan", data, TODAY, 5, true);
+  eq("I still see my own Strava session", mine.some((i) => i.workoutId === "s"), true);
+  // The flag defaults to the SAFE value, so a caller that forgets it fails closed.
+  eq("the default is the safe one", feedItemsFor("ryan", data, TODAY).some((i) => i.workoutId === "s"), false);
 }
 
 console.log("\n§6.2 — Strava measurements expire after 7 days");

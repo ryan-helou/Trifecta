@@ -84,6 +84,18 @@ export interface Store {
   addKudos(fromId: string, ownerId: string, workoutId: string): Promise<void>;
   removeKudos(fromId: string, ownerId: string, workoutId: string): Promise<void>;
   getKudosForOwner(ownerId: string): Promise<KudosRow[]>;
+  // Comments — user-generated content, hence the moderation trio below it.
+  addComment(fromId: string, ownerId: string, workoutId: string, text: string): Promise<CommentRow>;
+  deleteComment(id: string, byId: string): Promise<boolean>;
+  getCommentsForOwner(ownerId: string): Promise<CommentRow[]>;
+  // Moderation. App Review guideline 1.2 requires a way to report objectionable
+  // content AND a way to block the person who posted it, for any app carrying UGC.
+  block(userId: string, blockedId: string): Promise<void>;
+  unblock(userId: string, blockedId: string): Promise<void>;
+  /** ids this user has blocked, UNION ids that have blocked them — a block has to
+   *  cut both ways or the blocked party still sees and comments on their sessions. */
+  getBlockEdges(userId: string): Promise<string[]>;
+  addReport(fromId: string, kind: "comment" | "athlete", targetId: string, reason: string): Promise<void>;
   // ---- leagues (points competitions between users) ----
   createLeague(name: string, ownerId: string, settings: LeagueSettings, inviteCode: string): Promise<League>;
   getLeague(leagueId: string): Promise<League | null>;
@@ -141,6 +153,19 @@ export interface KudosRow {
   fromId: string;
   workoutId: string;
 }
+
+export interface CommentRow {
+  id: string;
+  fromId: string;
+  ownerId: string;
+  workoutId: string;
+  text: string;
+  atISO: string;
+}
+
+/** Longest comment we'll store. Long enough for a real reaction, short enough
+ *  that the feed stays a feed and a single row can't be used as a payload. */
+export const COMMENT_MAX = 500;
 
 function newId(): string {
   return (
@@ -228,6 +253,41 @@ class PgStore implements Store {
                workout_id TEXT NOT NULL,
                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                PRIMARY KEY (from_id, owner_id, workout_id)
+             )`,
+          ),
+        )
+        .then(() =>
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS comments (
+               id TEXT PRIMARY KEY,
+               from_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               workout_id TEXT NOT NULL,
+               text TEXT NOT NULL,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+             )`,
+          ),
+        )
+        .then(() => this.pool.query(`CREATE INDEX IF NOT EXISTS comments_owner_idx ON comments (owner_id)`))
+        .then(() =>
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS blocks (
+               user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+               PRIMARY KEY (user_id, blocked_id)
+             )`,
+          ),
+        )
+        .then(() =>
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS reports (
+               id TEXT PRIMARY KEY,
+               from_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               kind TEXT NOT NULL,
+               target_id TEXT NOT NULL,
+               reason TEXT NOT NULL,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT now()
              )`,
           ),
         )
@@ -412,6 +472,78 @@ class PgStore implements Store {
     await this.init();
     const r = await this.pool.query("SELECT from_id, workout_id FROM kudos WHERE owner_id = $1", [ownerId]);
     return r.rows.map((row) => ({ fromId: row.from_id as string, workoutId: row.workout_id as string }));
+  }
+
+  async addComment(fromId: string, ownerId: string, workoutId: string, text: string): Promise<CommentRow> {
+    await this.init();
+    const id = newId();
+    const r = await this.pool.query(
+      "INSERT INTO comments (id, from_id, owner_id, workout_id, text) VALUES ($1,$2,$3,$4,$5) RETURNING created_at",
+      [id, fromId, ownerId, workoutId, text],
+    );
+    return { id, fromId, ownerId, workoutId, text, atISO: new Date(r.rows[0].created_at as string).toISOString() };
+  }
+
+  /** Deleting is scoped to the AUTHOR or the session's OWNER. Guideline 1.2 wants
+   *  the person whose post attracted the comment to be able to remove it, not only
+   *  the person who wrote it — so ownership of the thread counts too. */
+  async deleteComment(id: string, byId: string): Promise<boolean> {
+    await this.init();
+    const r = await this.pool.query("DELETE FROM comments WHERE id = $1 AND (from_id = $2 OR owner_id = $2)", [id, byId]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async getCommentsForOwner(ownerId: string): Promise<CommentRow[]> {
+    await this.init();
+    const r = await this.pool.query(
+      "SELECT id, from_id, owner_id, workout_id, text, created_at FROM comments WHERE owner_id = $1 ORDER BY created_at ASC",
+      [ownerId],
+    );
+    return r.rows.map((row) => ({
+      id: row.id as string,
+      fromId: row.from_id as string,
+      ownerId: row.owner_id as string,
+      workoutId: row.workout_id as string,
+      text: row.text as string,
+      atISO: new Date(row.created_at as string).toISOString(),
+    }));
+  }
+
+  async block(userId: string, blockedId: string): Promise<void> {
+    await this.init();
+    await this.pool.query("INSERT INTO blocks (user_id, blocked_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [userId, blockedId]);
+    // A block implies you no longer want their sessions in your feed, or yours in
+    // theirs. Leaving the follow edges up would keep both parties visible to each
+    // other everywhere the feed is built from follows.
+    await this.pool.query(
+      "DELETE FROM follows WHERE (follower_id = $1 AND following_id = $2) OR (follower_id = $2 AND following_id = $1)",
+      [userId, blockedId],
+    );
+  }
+
+  async unblock(userId: string, blockedId: string): Promise<void> {
+    await this.init();
+    await this.pool.query("DELETE FROM blocks WHERE user_id = $1 AND blocked_id = $2", [userId, blockedId]);
+  }
+
+  async getBlockEdges(userId: string): Promise<string[]> {
+    await this.init();
+    const r = await this.pool.query(
+      "SELECT blocked_id AS other FROM blocks WHERE user_id = $1 UNION SELECT user_id AS other FROM blocks WHERE blocked_id = $1",
+      [userId],
+    );
+    return r.rows.map((row) => row.other as string);
+  }
+
+  async addReport(fromId: string, kind: "comment" | "athlete", targetId: string, reason: string): Promise<void> {
+    await this.init();
+    await this.pool.query("INSERT INTO reports (id, from_id, kind, target_id, reason) VALUES ($1,$2,$3,$4,$5)", [
+      newId(),
+      fromId,
+      kind,
+      targetId,
+      reason,
+    ]);
   }
 
   private mapStrava(row: Record<string, unknown>): StravaConn {
@@ -1026,6 +1158,14 @@ class MemoryStore implements Store {
       const [from, owner] = k.split("::");
       if (from === userId || owner === userId) this.kudos.delete(k);
     }
+    // Comments and blocks go too — GDPR erasure has to take the athlete's words
+    // with them, not just their plan. Postgres gets this from the FK cascades.
+    for (const [id, c] of this.comments) if (c.fromId === userId || c.ownerId === userId) this.comments.delete(id);
+    for (const b of [...this.blocks]) {
+      const [a, c] = b.split("::");
+      if (a === userId || c === userId) this.blocks.delete(b);
+    }
+    this.reports = this.reports.filter((r) => r.fromId !== userId);
     // league data — mirrors the FK cascades the Postgres store gets for free
     for (const k of [...this.members.keys()]) if (k.endsWith(`::${userId}`)) this.members.delete(k);
     for (const [id, a] of this.activities) if (a.userId === userId) this.activities.delete(id);
@@ -1084,6 +1224,56 @@ class MemoryStore implements Store {
       if (owner === ownerId) out.push({ fromId, workoutId });
     }
     return out;
+  }
+
+  // ---- comments + moderation ----
+
+  private comments = new Map<string, CommentRow>();
+  private blocks = new Set<string>(); // "userId::blockedId"
+  private reports: { fromId: string; kind: string; targetId: string; reason: string; atISO: string }[] = [];
+
+  async addComment(fromId: string, ownerId: string, workoutId: string, text: string): Promise<CommentRow> {
+    const row: CommentRow = { id: newId(), fromId, ownerId, workoutId, text, atISO: new Date().toISOString() };
+    this.comments.set(row.id, row);
+    return row;
+  }
+
+  /** Author OR the owner of the session — see the Pg implementation for why. */
+  async deleteComment(id: string, byId: string): Promise<boolean> {
+    const row = this.comments.get(id);
+    if (!row || (row.fromId !== byId && row.ownerId !== byId)) return false;
+    this.comments.delete(id);
+    return true;
+  }
+
+  async getCommentsForOwner(ownerId: string): Promise<CommentRow[]> {
+    return [...this.comments.values()]
+      .filter((c) => c.ownerId === ownerId)
+      .sort((a, b) => a.atISO.localeCompare(b.atISO));
+  }
+
+  async block(userId: string, blockedId: string): Promise<void> {
+    this.blocks.add(`${userId}::${blockedId}`);
+    this.follows.delete(`${userId}::${blockedId}`);
+    this.follows.delete(`${blockedId}::${userId}`);
+  }
+
+  async unblock(userId: string, blockedId: string): Promise<void> {
+    this.blocks.delete(`${userId}::${blockedId}`);
+  }
+
+  async getBlockEdges(userId: string): Promise<string[]> {
+    const out = new Set<string>();
+    for (const b of this.blocks) {
+      const [a, c] = b.split("::");
+      if (a === userId) out.add(c);
+      if (c === userId) out.add(a);
+    }
+    return [...out];
+  }
+
+  async addReport(fromId: string, kind: "comment" | "athlete", targetId: string, reason: string): Promise<void> {
+    this.reports.push({ fromId, kind, targetId, reason, atISO: new Date().toISOString() });
   }
 
   // ---- leagues ----
