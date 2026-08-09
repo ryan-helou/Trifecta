@@ -6,9 +6,11 @@ import { useUI } from "./ui";
 import { CountUp, useMounted } from "./motion";
 import { weekOfDate } from "./widgets";
 import { computeStreak, trainingStats } from "@/lib/stats";
+import { isFitnessGoal } from "@/lib/planEngine";
+import { daysBetween } from "@/lib/dates";
 import { FormBand, PmcPoint, formStateFor, projectedPmc } from "@/lib/load";
 import { FORM_TINT } from "./FormSheet";
-import { addDays } from "@/lib/dates";
+import { addDays, fmtDayMonth } from "@/lib/dates";
 import { creditedDiscipline, creditedSeconds } from "@/lib/adapt";
 import { fmtDuration } from "@/lib/format";
 import { DISCIPLINE_META } from "@/lib/zones";
@@ -54,6 +56,47 @@ export function ProgressTab() {
 
   const maxTarget = Math.max(...plan.weeks.map((w) => w.targetHours), 1);
 
+  // ── the two questions this tab exists to answer ────────────────────────────
+  // Ryan asked for both: "am I getting fitter?" and "am I on track for race day?".
+  // The chart could already show the first if you knew how to read a PMC; neither was
+  // ever stated in words, which is what made the tab feel like decoration.
+
+  // 1. FITNESS. Compare today's CTL against where this block started. CTL is a load
+  //    trend, not measured fitness (doc 02 §4 #4), so the wording says "training load"
+  //    and never claims a VO2max.
+  const ctlNow = form?.ctl ?? 0;
+  const ctlStart = formArc[0]?.ctl ?? 0;
+  const ctlDelta = ctlStart > 0 ? ((ctlNow - ctlStart) / ctlStart) * 100 : null;
+  const fitnessLine =
+    ctlDelta == null || stats.bankedCount === 0
+      ? "Not enough training logged yet to show a trend."
+      : ctlDelta >= 5
+      ? `Your training load is up ${Math.round(ctlDelta)}% since this block started.`
+      : ctlDelta <= -5
+      ? `Your training load is down ${Math.abs(Math.round(ctlDelta))}% since this block started.`
+      : "Your training load is holding steady.";
+
+  // 2. RACE DAY. Adherence is the honest headline — a prediction built on sessions you
+  //    didn't do is a guess dressed as a number.
+  const racing = !isFitnessGoal(plan.profile);
+  const raceISO = plan.profile.raceDateISO;
+  const daysToRace = racing && raceISO ? daysBetween(today, raceISO) : null;
+  const due = Object.values(plan.workouts).filter(
+    (w) => w.discipline !== "rest" && w.date <= today,
+  ).length;
+  const kept = Object.values(plan.workouts).filter(
+    (w) => w.discipline !== "rest" && w.date <= today && (w.status === "done" || w.status === "swapped"),
+  ).length;
+  const adherence = due > 0 ? Math.round((kept / due) * 100) : null;
+  const onTrack =
+    adherence == null
+      ? "Your plan hasn't asked anything of you yet."
+      : adherence >= 85
+      ? `You've done ${kept} of the ${due} sessions due so far. That's on track.`
+      : adherence >= 60
+      ? `You've done ${kept} of the ${due} sessions due so far — enough to keep building, with room to tighten up.`
+      : `You've done ${kept} of the ${due} sessions due so far. The plan keeps adjusting, but consistency is what moves race day.`;
+
   return (
     <div className="space-y-5 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
       <div className="animate-fade-up">
@@ -61,6 +104,25 @@ export function ProgressTab() {
         <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight">
           Week {curWeek + 1} <span className="text-muted">of {plan.totalWeeks}</span>
         </h1>
+      </div>
+
+      {/* ── the two answers, in words, before any chart ──────────────────────── */}
+      <div className="card animate-fade-up space-y-3 p-4">
+        <div>
+          <div className="eyebrow text-[0.7rem]">Am I getting fitter?</div>
+          <p className="mt-1 text-[0.95rem] leading-snug">{fitnessLine}</p>
+        </div>
+        <div className="border-t border-line pt-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="eyebrow text-[0.7rem]">Am I on track for race day?</div>
+            {daysToRace != null && daysToRace >= 0 && (
+              <span className="eyebrow text-[0.66rem] text-accent">
+                {daysToRace === 0 ? "Race day" : `${daysToRace} ${daysToRace === 1 ? "day" : "days"}`}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[0.95rem] leading-snug">{onTrack}</p>
+        </div>
       </div>
 
       {/* the improvement tiles */}
@@ -89,7 +151,52 @@ export function ProgressTab() {
         </p>
         {formArc.length > 1 ? (
           <>
-            <PmcChart points={formArc} todayIndex={todayIdx} band={form?.band ?? "building"} mounted={mounted} />
+            {/* #145 — the chart had no axes, no dates and no values, so it read as
+                decoration. The scale now sits beside it and the span underneath it,
+                and today's actual numbers are stated rather than left to be inferred
+                from where two lines happen to sit. */}
+            <div className="flex gap-2">
+              <div
+                className="eyebrow flex flex-col justify-between py-px text-right text-[0.6rem] tabular-nums text-faint"
+                aria-hidden
+                style={{ minWidth: "1.6rem" }}
+              >
+                <span>{Math.round(Math.max(1, ...formArc.map((p) => Math.max(p.ctl, p.atl))))}</span>
+                <span>0</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <PmcChart points={formArc} todayIndex={todayIdx} band={form?.band ?? "building"} mounted={mounted} />
+                <div className="eyebrow mt-1 flex justify-between text-[0.6rem] text-faint">
+                  <span>{fmtDayMonth(formArc[0].dateISO)}</span>
+                  <span className="text-muted">today</span>
+                  <span>{fmtDayMonth(formArc[formArc.length - 1].dateISO)}</span>
+                </div>
+              </div>
+            </div>
+            {form && (
+              <div className="mt-2 space-y-0.5">
+                <div className="flex flex-wrap gap-x-4 text-xs text-muted">
+                  <span className="tabular-nums">Fitness <b className="text-foreground">{Math.round(form.ctl)}</b></span>
+                  <span className="tabular-nums">Fatigue <b className="text-foreground">{Math.round(form.atl)}</b></span>
+                  <span className="tabular-nums">
+                    Form <b className="text-foreground">{form.tsb > 0 ? "+" : ""}{Math.round(form.tsb)}</b>
+                  </span>
+                </div>
+                {/* Form is deliberately NOT presented as the difference of the two
+                    numbers beside it, because it isn't one. computePmc records tsb as
+                    the balance the athlete carried INTO the day (the standard PMC lag)
+                    while ctl and atl are that day's updated values, so the three don't
+                    reconcile — fitness 192 next to fatigue 208 next to form +11. That
+                    only became visible once #145 made the chart state its numbers
+                    instead of leaving them to be read off two lines. Labelled here
+                    rather than silently recomputed: which convention is right is a
+                    load-model question (doc 02 §4 #3 states TSB = CTL − ATL flatly),
+                    and it changes everyone's form band, so it is not a display fix. */}
+                <p className="text-[0.68rem] leading-snug text-faint">
+                  Form is the balance you carried into today, so it won&apos;t equal fitness minus fatigue.
+                </p>
+              </div>
+            )}
             <div className="eyebrow mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.66rem]">
               <span className="flex items-center gap-1.5"><span aria-hidden className="h-[2px] w-3.5 rounded-full bg-accent" /> Fitness</span>
               <span className="flex items-center gap-1.5"><span aria-hidden className="h-px w-3.5" style={{ background: "var(--text-faint)" }} /> Fatigue</span>
