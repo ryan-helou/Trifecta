@@ -64,6 +64,7 @@ export function Sheet({
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const closingRef = useRef(false);
   const stackToken = useRef<object>({}); // this instance's identity in sheetStack
   const [closing, setClosing] = useState(false);
@@ -98,6 +99,83 @@ export function Sheet({
       unlockBodyScroll();
     };
   }, []);
+
+  // Keep the DOCUMENT pinned while a sheet is open.
+  //
+  // Focusing an input inside the sheet makes iOS scroll the page to reveal it. The
+  // sheet is `position: fixed`, so it doesn't scroll with content — it just leaves,
+  // taking its header with it. On a fresh coach chat the header and the first
+  // messages ended up above the top of the screen while the footer stayed put.
+  //
+  // body{overflow:hidden} does not stop this — WebKit still scrolls the document to
+  // bring a focused field into view. Putting it back is what actually holds.
+  //
+  // And then RESERVE the keyboard's space, so the footer isn't left under it (#119).
+  // Measured on device rather than reasoned about, after three wrong attempts:
+  //
+  //     keyboard down   inner=874  vv=874  off=0   panel=717@157
+  //     keyboard up     inner=874  vv=471  off=0   panel=717@157
+  //
+  // The layout viewport never shrinks (so `vh`, and `position: fixed`, know nothing
+  // about the keyboard) while the visual viewport does — the gap between them IS the
+  // keyboard, 403pt here. Padding the frame by it means `justify-end` seats the panel
+  // directly on top of the keyboard, and because box-sizing is border-box the panel's
+  // `max-h-full` then resolves against what's actually left rather than the full
+  // screen. Both halves are needed: the pin stops the sheet sliding away, the padding
+  // stops the footer hiding.
+  useEffect(() => {
+    const pin = () => {
+      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0) {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+      }
+    };
+    const vv = window.visualViewport;
+    let frame = 0;
+    const sync = () => {
+      pin();
+      // Read the ref INSIDE sync, and re-run once `mounted` flips. This component
+      // renders null on its first mount and only creates the portal afterwards, so an
+      // effect with [] deps runs while the frame div does not yet exist. Capturing
+      // frameRef.current up here meant `el` was null forever and every correction
+      // below silently did nothing — which is exactly why four different fixes all
+      // appeared to change nothing at all on device.
+      const el = frameRef.current;
+      if (!vv || !el) return;
+      // rAF-coalesced: visualViewport fires continuously while the keyboard animates.
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+        el.style.paddingBottom = kb ? `${kb}px` : "";
+        // Cap the panel from the measured space, in pixels, rather than by adding a
+        // competing utility class. `max-h-[92vh]` and `max-h-full` on the same element
+        // is a cascade fight the arbitrary value wins, so the panel stayed 717pt tall
+        // and kept its footer under the keyboard; and a percentage doesn't resolve here
+        // because the wrapper between frame and panel has no definite height. One
+        // number, set directly, has neither problem.
+        const panel = panelRef.current;
+        if (panel) panel.style.maxHeight = kb ? `${Math.round((vv.height + vv.offsetTop) * 0.92)}px` : "";
+      });
+    };
+    const onFocus = () => {
+      // after WebKit has done its own scrolling, not before
+      requestAnimationFrame(sync);
+      window.setTimeout(sync, 120);
+      window.setTimeout(sync, 350);
+    };
+    sync();
+    window.addEventListener("scroll", pin, { passive: true });
+    document.addEventListener("focusin", onFocus);
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", pin);
+      document.removeEventListener("focusin", onFocus);
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+    };
+  }, [mounted]);
 
   // Escape to close — only when this sheet is the topmost open one
   useEffect(() => {
@@ -199,7 +277,7 @@ export function Sheet({
   }, [dismiss]);
 
   const sheet = (
-    <div className="fixed inset-0 z-50 flex justify-center" role="dialog" aria-modal="true" aria-label={label}>
+    <div ref={frameRef} className="fixed inset-0 z-50 flex justify-center" role="dialog" aria-modal="true" aria-label={label}>
       <div
         className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${
           closing ? "opacity-0" : "animate-backdrop-in"
