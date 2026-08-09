@@ -1,6 +1,7 @@
 import { Level, PaceModel, Profile, Zone } from "./types";
 import { derivePaces } from "./paces";
 import { categoryOf, estimateRaceSeconds, isFitnessGoal, raceDistances } from "./planEngine";
+import { terrainOf } from "./terrain";
 import { todayISO, weeksBetween } from "./dates";
 
 // ---------------------------------------------------------------------------
@@ -69,9 +70,10 @@ export function projectRace(profile: Profile, fromISO: string = todayISO()): Rac
   const paces = derivePaces(profile); // already includes any calibration
   const weeksToRace = Math.max(0, weeksBetween(fromISO, profile.raceDateISO));
 
-  const currentSec = estimateRaceSeconds(paces, profile.level, cat, dist);
+  const course = terrainOf(profile);
+  const currentSec = estimateRaceSeconds(paces, profile.level, cat, dist, course);
   const gainFrac = LEVEL_GAIN[profile.level] * Math.min(weeksToRace, GAIN_WEEKS) / GAIN_WEEKS;
-  const projectedSec = estimateRaceSeconds(sharpen(paces, gainFrac), profile.level, cat, dist);
+  const projectedSec = estimateRaceSeconds(sharpen(paces, gainFrac), profile.level, cat, dist, course);
 
   return {
     currentSec,

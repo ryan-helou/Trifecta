@@ -17,13 +17,13 @@
 // automatically (see RaceCatalogPicker), so stale rows degrade gracefully.
 // Only standard-distance events belong here so the trained distances stay honest.
 
-import { RaceType } from "./types";
+import { RaceType, Terrain } from "./types";
 
 export type RaceCategory = Exclude<RaceType, "custom">; // "olympic" | "half" | "full"
 export type RaceRegion = "North America" | "Europe" | "Asia-Pacific" | "Latin America" | "Middle East & Africa";
 export type RaceSeries = "IRONMAN" | "IRONMAN 70.3" | "Challenge" | "Independent";
 export type SwimType = "lake" | "ocean" | "sea" | "river" | "reservoir";
-export type Terrain = "flat" | "rolling" | "hilly" | "mountainous";
+export type { Terrain }; // defined in ./types — the engine trains off it, so it isn't catalog-owned
 export type RaceTag =
   | "World Championship"
   | "European Championship"

@@ -4,10 +4,12 @@ import {
   Phase,
   Plan,
   Profile,
+  Terrain,
   Week,
   Workout,
   Zone,
 } from "./types";
+import { applyTerrainToWeek, pacingNote, TERRAIN_TIME_FACTOR, terrainOf } from "./terrain";
 import { derivePaces } from "./paces";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
@@ -93,12 +95,17 @@ const RACE_BIKE_KMH: Record<Level, number> = { beginner: 26, intermediate: 30, a
 // scale race speed when the athlete gives their own FTP.
 const TYPICAL_FTP: Record<Level, number> = { beginner: 150, intermediate: 200, advanced: 260, elite: 320 };
 
-/** Rough race-day finish estimate from the athlete's derived paces. */
+/** Rough race-day finish estimate from the athlete's derived paces.
+ *
+ *  `terrain` adjusts the bike and run splits for the course's elevation
+ *  (ticket #85). Omitted ⇒ flat, so every existing caller keeps its exact
+ *  numbers; callers that know the athlete's race pass `terrainOf(profile)`. */
 export function estimateRaceSeconds(
   paces: import("./types").PaceModel,
   level: Level,
   cat: Cat,
   dist: { swim: number; bike: number; run: number },
+  terrain: Terrain = "flat",
 ): number {
   // swim ~ tempo pace (near CSS)
   const swimZ = paces.swim.zones[3];
@@ -119,7 +126,10 @@ export function estimateRaceSeconds(
   const runPace = cat === "full" ? rz.hiSecPerKm : (rz.loSecPerKm + rz.hiSecPerKm) / 2;
   const runSec = (dist.run / 1000) * runPace;
   const transitions = cat === "full" ? 600 : cat === "half" ? 420 : 300;
-  return Math.round(swimSec + bikeSec + runSec + transitions);
+  // The course. Both splits above are flat-course numbers; climbing costs net
+  // time on the bike and the run, and nothing at all in the water.
+  const course = TERRAIN_TIME_FACTOR[terrain];
+  return Math.round(swimSec + bikeSec * course.bike + runSec * course.run + transitions);
 }
 
 export function raceDistances(p: Profile): { swim: number; bike: number; run: number; name: string } {
@@ -1258,6 +1268,13 @@ function buildNormalWeek(
   week.workoutIds.sort(
     (a, b) => out[a].dayIndex - out[b].dayIndex || out[b].estDurationSec - out[a].estDurationSec,
   );
+
+  // Make the week specific to the course being raced (#85). Runs AFTER the sort
+  // so the choice of which sessions become hill work is deterministic, and after
+  // the cap so it can never resurrect a session the hours ceiling dropped. It
+  // rewrites prescriptions only — zone, type and duration are preserved — so
+  // every budget computed above still holds.
+  applyTerrainToWeek(week.workoutIds, out, terrainOf(profile), phase, isRecovery);
 }
 
 function buildRaceWeek(
@@ -1331,9 +1348,20 @@ function buildRaceWeek(
     discipline: "brick",
     type: "race_prep",
     title: `🏁 RACE DAY — ${dist.name}`,
-    purpose: "This is what it was all for. Execute your pacing, fuel early and often, and enjoy every stroke, pedal, and stride.",
+    // The course gets the last word on race day. Riding a climb to your flat power
+    // target is the single most common way a good race falls apart in T2, so the
+    // pacing note leads rather than being buried in a segment cue. Flat courses
+    // get no note — inventing advice there teaches athletes to skip this line on
+    // the courses where it matters (#85).
+    purpose: [
+      "This is what it was all for. Execute your pacing, fuel early and often, and enjoy every stroke, pedal, and stride.",
+      pacingNote(terrainOf(profile)),
+    ]
+      .filter(Boolean)
+      .join(" "),
     primaryZone: 3,
-    estDurationSec: estimateRaceSeconds(ctx.paces, profile.level, cat, dist),
+    terrainFocus: terrainOf(profile),
+    estDurationSec: estimateRaceSeconds(ctx.paces, profile.level, cat, dist, terrainOf(profile)),
     segments: [
       {
         kind: "main",

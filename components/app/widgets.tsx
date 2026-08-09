@@ -4,6 +4,7 @@ import { Phase, Plan, Week, Workout } from "@/lib/types";
 import { daysBetween, fromISO, mondayOf, fmtShortDate } from "@/lib/dates";
 import { fmtClock, fmtDistance } from "@/lib/format";
 import { raceDistances, estimateRaceSeconds, categoryOf, raceCategoryName } from "@/lib/planEngine";
+import { terrainOf } from "@/lib/terrain";
 import { CountUp, useMounted } from "./motion";
 
 export function weekOfDate(plan: Plan, iso: string): Week {
@@ -50,7 +51,7 @@ const PHASE_LABEL: Record<Phase, string> = { base: "Base", build: "Build", peak:
 export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
   const dist = raceDistances(plan.profile);
   const days = Math.max(0, daysBetween(today, plan.raceDateISO));
-  const est = estimateRaceSeconds(plan.paces, plan.profile.level, categoryOf(plan.profile), dist);
+  const est = estimateRaceSeconds(plan.paces, plan.profile.level, categoryOf(plan.profile), dist, terrainOf(plan.profile));
   const totalDays = Math.max(1, daysBetween(plan.startDateISO, plan.raceDateISO));
   const elapsed = Math.max(0, Math.min(totalDays, daysBetween(plan.startDateISO, today)));
   const progress = elapsed / totalDays;

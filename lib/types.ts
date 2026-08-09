@@ -30,6 +30,11 @@ export type SessionType =
 
 export type Zone = 1 | 2 | 3 | 4 | 5;
 
+/** A race course's elevation character. Lives here rather than in raceCatalog
+ *  because the engine trains off it (see lib/terrain.ts) — the catalog is one
+ *  source of the value, not its owner. raceCatalog re-exports it. */
+export type Terrain = "flat" | "rolling" | "hilly" | "mountainous";
+
 // How a finished session actually felt (post-session check-in).
 export type Feel = "great" | "ok" | "rough";
 
@@ -72,6 +77,10 @@ export interface Workout {
   estDistanceM?: number;
   /** dominant intensity zone, for the calendar dot */
   primaryZone: Zone;
+  /** set when this session was made course-specific for the race's terrain
+   *  (lib/terrain.ts). Purely descriptive — zone, type and duration are
+   *  unchanged, so nothing downstream needs to branch on it. */
+  terrainFocus?: Terrain;
   /** completion tracking */
   status: "planned" | "done" | "skipped" | "swapped" | "moved";
   /** if the athlete logged something different */
@@ -283,6 +292,12 @@ export interface Profile {
   raceName?: string; // e.g. "IRONMAN 70.3 Mont-Tremblant"
   raceLocation?: string; // e.g. "Mont-Tremblant, QC, Canada"
   raceId?: string; // catalog id, so the picker can re-highlight the selection
+  /** Course elevation profile. Set automatically from the catalog when a real
+   *  event is picked; editable in Settings. Absent ⇒ DEFAULT_TERRAIN ("rolling"),
+   *  never "flat" — assuming flat would promise a finish time no one can hit on
+   *  an ordinary course. Drives hill work and the course-adjusted estimate
+   *  (lib/terrain.ts, ticket #85). */
+  terrain?: Terrain;
   raceDateISO: string; // yyyy-mm-dd — "" in fitness mode (no target race)
   level: Level;
   // total workouts per week the athlete wants (1–21; the high end stacks doubles)
