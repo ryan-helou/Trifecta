@@ -48,25 +48,40 @@ export function computeStreak(plan: Plan, today: string): StreakInfo {
     (byDate[w.date] ??= []).push(w);
   }
 
+  // Did anything actually get DONE on this day? A rest day, or a day before the plan
+  // had anything scheduled, returns "kept" above — recovery shouldn't break a streak.
+  // But it must not CREATE one either: a brand-new athlete who has trained zero times
+  // was being shown "Streak 1 day" directly above "Total banked 0h · 0 sessions"
+  // (#144). A streak is a run of days you kept; if you have never trained, there is
+  // no run to be on.
+  const trained = (iso: string) => (byDate[iso] ?? []).some(isDone);
+
   // walk backwards from today
   let current = 0;
+  let currentHasSession = false;
   let iso = today;
   while (iso >= start) {
     const st = dayState(byDate, iso, iso === today);
     if (st === "missed") break;
     if (st === "pending") { iso = addDays(iso, -1); continue; } // today not done yet — skip, don't break
     current++;
+    if (trained(iso)) currentHasSession = true;
     iso = addDays(iso, -1);
   }
+  if (!currentHasSession) current = 0; // rest days preserve a streak, they don't start one
 
   // longest run across the plan up to today
   let longest = 0;
   let run = 0;
+  let runHasSession = false;
   let d = start;
   while (d <= today) {
     const st = dayState(byDate, d, d === today);
-    if (st === "kept") { run++; longest = Math.max(longest, run); }
-    else if (st === "missed") { run = 0; }
+    if (st === "kept") {
+      run++;
+      if (trained(d)) runHasSession = true;
+      if (runHasSession) longest = Math.max(longest, run);
+    } else if (st === "missed") { run = 0; runHasSession = false; }
     d = addDays(d, 1);
   }
   return { current, longest: Math.max(longest, current) };
