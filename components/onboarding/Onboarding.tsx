@@ -5,7 +5,7 @@ import { DateField } from "@/components/app/DateField";
 import { useApp } from "../AppProvider";
 import { LoadingAnimation } from "../LoadingAnimation";
 import { Wordmark } from "../Wordmark";
-import { AiHealthConsent, DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit, Unit, Zone } from "@/lib/types";
+import { AiHealthConsent, DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthSplit, Terrain, Unit, Zone } from "@/lib/types";
 import { detectRedFlags, redFlagConstraints, RED_FLAG_DISCLAIMER, type RedFlagMatch } from "@/lib/redFlags";
 import { generatePlan } from "@/lib/planEngine";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
@@ -27,6 +27,8 @@ interface Draft {
   raceName?: string;
   raceLocation?: string;
   raceId?: string;
+  /** the picked event's course profile — carried straight through to the plan (#85) */
+  terrain?: Terrain;
   raceDateISO?: string;
   // explicit "I haven't got a date yet". The race step says the plan counts back from
   // race day, so advancing with the field blank used to build a rolling block without
@@ -306,6 +308,9 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
       raceName: isRealRace ? draft.raceName : undefined,
       raceLocation: isRealRace ? draft.raceLocation : undefined,
       raceId: isRealRace ? draft.raceId : undefined,
+      // A custom race has no catalog terrain, so it is left unset and reads as
+      // DEFAULT_TERRAIN ("rolling") — the honest middle, editable in Settings.
+      terrain: isRealRace ? draft.terrain : undefined,
       raceDateISO: fitness ? "" : draft.raceDateISO ?? "",
       level: lvl,
       workoutsPerWeek: wpw,
@@ -1066,6 +1071,9 @@ function RaceStep({ draft, set }: StepProps) {
       raceId: r.id,
       raceName: r.name,
       raceLocation: r.location,
+      // the course trains the plan and adjusts the finish estimate (#85). Picking
+      // a real event is the whole reason we know this without asking.
+      terrain: r.terrain,
     }));
 
   return (

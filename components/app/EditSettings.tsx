@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { DateField } from "@/components/app/DateField";
-import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthPref, StrengthSplit, Unit } from "@/lib/types";
+import { DateRange, Discipline, Injury, Level, Profile, RaceType, StrengthPref, StrengthSplit, Terrain, Unit } from "@/lib/types";
+import { DEFAULT_TERRAIN, TERRAIN_ORDER, terrainBlurb, terrainLabel } from "@/lib/terrain";
 import { generatePlan, defaultSportSplit } from "@/lib/planEngine";
 import { rebuildFromToday } from "@/lib/adapt";
 import { apiIntake, ParsedInjury } from "@/lib/api";
@@ -81,6 +82,9 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [raceId, setRaceId] = useState<string | undefined>(profile.raceId);
   const [raceName, setRaceName] = useState<string | undefined>(profile.raceName);
   const [raceLocation, setRaceLocation] = useState<string | undefined>(profile.raceLocation);
+  // The course profile (#85). Unset reads as DEFAULT_TERRAIN, so the control shows
+  // the value actually being trained off rather than an empty state.
+  const [terrain, setTerrain] = useState<Terrain>(profile.terrain ?? DEFAULT_TERRAIN);
   const [showCatalog, setShowCatalog] = useState(false);
   const [level, setLevel] = useState<Level>(profile.level);
   const [unit, setUnit] = useState<Unit>(profile.unitPreference ?? "metric");
@@ -169,6 +173,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       raceName: isRealRace ? raceName : undefined,
       raceLocation: isRealRace ? raceLocation : undefined,
       raceId: isRealRace ? raceId : undefined,
+      terrain: fitness ? undefined : terrain,
       raceDateISO: fitness ? "" : raceDateISO,
       level,
       unitPreference: unit,
@@ -289,6 +294,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                     setRaceId(r.id);
                     setRaceName(r.name);
                     setRaceLocation(r.location);
+                    setTerrain(r.terrain);
                     setShowCatalog(false);
                   }}
                 />
@@ -317,6 +323,18 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
                 {dateOk ? fmtFullDate(raceDateISO) : "Pick a date in the future."}
               </p>
             )}
+          </Field>
+          )}
+
+          {/* course profile — drives hill work and the finish estimate (#85) */}
+          {!fitness && (
+          <Field label="Course profile">
+            <div className="grid grid-cols-2 gap-2">
+              {TERRAIN_ORDER.map((t) => (
+                <Pill key={t} on={terrain === t} onClick={() => setTerrain(t)}>{terrainLabel(t)}</Pill>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted">{terrainBlurb(terrain)}</p>
           </Field>
           )}
 
