@@ -16,6 +16,7 @@ import { CheckinSheet } from "./CheckinSheet";
 import { CoachSheet } from "./CoachSheet";
 import { EditSettings } from "./EditSettings";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
+import { PlanUpdating } from "./PlanUpdating";
 import { useAppleHealthAutoSync } from "./useAppleHealthAutoSync";
 import { todayISO } from "@/lib/dates";
 import {
@@ -53,6 +54,12 @@ const COACH_GREETING: CoachMsg = {
  *  the remaining plan around today. Two is a bad week everyone has; three is a pattern,
  *  and by then the untouched days are visibly rotting the plan. */
 const REALIGN_AT_MISSED = 3;
+
+/** How long the recalculating indicator stays up before it reports. The plan update
+ *  itself takes single-digit milliseconds; this is what makes it perceivable (#184). */
+const RECALC_FLOOR_MS = 650;
+/** …and how long the outcome word lingers before it clears. */
+const RECALC_HOLD_MS = 1400;
 
 // The toast provider has to sit ABOVE the component that builds `actions`, because
 // those actions are what raise the toasts (a silent rebuild is the bug in #108).
@@ -137,26 +144,47 @@ function AppShellInner() {
   // when the honest answer is nothing (respondTo returns null far more often
   // than not). Always undoable: an adaptation the athlete can't reverse is one
   // they have to fight.
+  // #184 asked for a visible recalculating state: "it's going to load and say
+  // 'Calculating plan', and then when it's done, it's going to give me the best
+  // workout." The work is real but runs in milliseconds, so RECALC_FLOOR_MS keeps it
+  // on screen long enough to be seen. The indicator always resolves to a WORD, never
+  // just vanishing — respondTo returns null far more often than not, and a spinner
+  // that fades to nothing is exactly how the old silent version felt broken.
+  const [recalc, setRecalc] = useState<"idle" | "working" | "changed" | "nochange">("idle");
+  const recalcTimers = useRef<number[]>([]);
+  useEffect(() => () => recalcTimers.current.forEach((t) => window.clearTimeout(t)), []);
+
   const respond = useCallback(
     (next: Plan, event: AthleteEvent) => {
       const res = respondTo(next, today, event);
-      if (!res) {
-        applyPlan(next);
-        return;
-      }
       const prev = next;
-      applyPlan(res.plan);
-      for (const warning of res.warnings) toast({ text: warning, tone: "warning", duration: 9000 });
-      if (res.changedIds.length) {
-        track("plan_represcribed", { changed: res.changedIds.length, event: event.kind });
-        toast({
-          text: res.headline,
-          tone: "default",
-          actionLabel: "Undo",
-          onAction: () => applyPlan(prev),
-          duration: 9000,
-        });
-      }
+      const changed = !!res && res.changedIds.length > 0;
+
+      recalcTimers.current.forEach((t) => window.clearTimeout(t));
+      recalcTimers.current = [];
+      setRecalc("working");
+
+      // apply immediately — the athlete's own action must never feel delayed. Only the
+      // ANNOUNCEMENT waits, so the outcome lands after the indicator has been seen.
+      applyPlan(res ? res.plan : next);
+      if (res) for (const warning of res.warnings) toast({ text: warning, tone: "warning", duration: 9000 });
+
+      recalcTimers.current.push(
+        window.setTimeout(() => {
+          setRecalc(changed ? "changed" : "nochange");
+          if (changed && res) {
+            track("plan_represcribed", { changed: res.changedIds.length, event: event.kind });
+            toast({
+              text: res.headline,
+              tone: "default",
+              actionLabel: "Undo",
+              onAction: () => applyPlan(prev),
+              duration: 9000,
+            });
+          }
+        }, RECALC_FLOOR_MS),
+        window.setTimeout(() => setRecalc("idle"), RECALC_FLOOR_MS + RECALC_HOLD_MS),
+      );
     },
     [today, applyPlan, toast],
   );
@@ -426,6 +454,8 @@ function AppShellInner() {
               {tab === "profile" && <ProfileTab />}
             </TabDeck>
           </div>
+
+          <PlanUpdating state={recalc} />
 
           <BottomNav tab={tab} onChange={setTab} />
         </div>
