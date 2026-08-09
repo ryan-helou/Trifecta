@@ -8,10 +8,30 @@ export function pad(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
+/** The granularity every prescribed number is shown at (#187).
+ *
+ *  Ryan: "the difference between a 23 minute bike and a 25 minute bike is nothing,
+ *  just make it round and make it easy". He is right, and it isn't only cosmetic —
+ *  a 47-minute prescription reads as a computed output, which invites the athlete to
+ *  hit it exactly. Nothing in the physiology distinguishes 47 from 45; the engine's
+ *  own thresholds are far coarser than the precision it was printing.
+ *
+ *  Rounded at the point of DISPLAY, deliberately. The ledger keeps real seconds and
+ *  real metres, so load, CTL/ATL/TSB and the rails all still compute on what actually
+ *  happened — rounding the stored values would quietly corrupt the model that makes
+ *  the plan adaptive. */
 /** seconds → "1h 20m", "45 min", "8 min" */
 export function fmtDuration(totalSec: number): string {
-  // Round to whole minutes first, then split — otherwise a value like 7170s
-  // rounds the minutes to 60 and prints "1h 60m" instead of "2h".
+  // Whole minutes, and NOT snapped to a 5-minute step. Snapping was tried for #187
+  // and backed out: it made a logged 67-minute session print as "1h 5m", identical
+  // to the 65-minute session that had been prescribed. Rounding a MEASUREMENT until
+  // it matches the plan is the same defect as showing the plan's distance as though
+  // it had been covered — the thing the Today card was fixed for.
+  //
+  // "Don't tell me about a 47 minute run" is right, but the place to fix it is where
+  // the 47 is INVENTED, not where it's displayed: the engine should prescribe 45.
+  // Distance below is different — a prescribed 5.7 km and a measured 5.7 km both
+  // read fine as 6 km, because the decimal was never carrying meaning.
   const totalMin = Math.round(totalSec / 60);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
@@ -61,16 +81,21 @@ export function parseClock(str: string): number | null {
 }
 
 /** meters → "5.0 km" / "400 m" (metric) or "3.1 mi" / "400 m" (imperial). Sub-km stays in metres in both. */
-export function fmtDistance(m: number, unit: Unit = "metric"): string {
+export function fmtDistance(m: number, unit: Unit = "metric", pool = false): string {
+  // Whole kilometres and whole miles (#187): "why 5.7". The decimal was the only
+  // thing distinguishing one session from another, and nothing in the physiology
+  // turns on it.
+  //
+  // EXCEPT in the pool. A swim is prescribed in metres and 1500 is not 1900 — but
+  // converting those to "2 km" makes them the same number, which is worse than the
+  // decimal ever was. Swims stay in metres, rounded to the nearest 100, which is
+  // still round in the sense the ticket means: no decimals, no 1487.
+  if (pool) return `${m >= 400 ? Math.round(m / 100) * 100 : Math.round(m / 25) * 25} m`;
   if (m >= 1000) {
-    if (unit === "imperial") {
-      const mi = m / M_PER_MILE;
-      return `${mi % 1 === 0 ? mi.toFixed(0) : mi.toFixed(1)} mi`;
-    }
-    const km = m / 1000;
-    return `${km % 1 === 0 ? km.toFixed(0) : km.toFixed(1)} km`;
+    if (unit === "imperial") return `${Math.round(m / M_PER_MILE)} mi`;
+    return `${Math.round(m / 1000)} km`;
   }
-  return `${Math.round(m)} m`;
+  return `${m >= 200 ? Math.round(m / 50) * 50 : Math.round(m)} m`;
 }
 
 /** sec/km → "4:37/km" (metric) or "7:26/mi" (imperial) */

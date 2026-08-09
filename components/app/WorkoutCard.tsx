@@ -68,7 +68,7 @@ export function WorkoutCard({ workout, onOpen, compact, onQuickComplete }: Props
           {workout.estDistanceM ? (
             <>
               <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
-              <span className="tabular-nums">{fmtDistance(workout.estDistanceM, unit)}</span>
+              <span className="tabular-nums">{fmtDistance(workout.estDistanceM, unit, workout.discipline === "swim")}</span>
             </>
           ) : (
             !compact && <span>{meta.label}</span>
