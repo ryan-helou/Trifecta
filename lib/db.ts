@@ -96,6 +96,14 @@ export interface Store {
    *  cut both ways or the blocked party still sees and comments on their sessions. */
   getBlockEdges(userId: string): Promise<string[]>;
   addReport(fromId: string, kind: "comment" | "athlete", targetId: string, reason: string): Promise<void>;
+  // Notifications — what happened to you while you weren't looking (#33).
+  addNotification(n: NewNotification): Promise<void>;
+  listNotifications(userId: string, limit?: number): Promise<NotificationRow[]>;
+  markNotificationsRead(userId: string, throughISO: string): Promise<void>;
+  /** device push tokens, one row per install */
+  upsertPushToken(userId: string, token: string, platform: string): Promise<void>;
+  getPushTokens(userId: string): Promise<string[]>;
+  deletePushToken(token: string): Promise<void>;
   // ---- leagues (points competitions between users) ----
   createLeague(name: string, ownerId: string, settings: LeagueSettings, inviteCode: string): Promise<League>;
   getLeague(leagueId: string): Promise<League | null>;
@@ -166,6 +174,23 @@ export interface CommentRow {
 /** Longest comment we'll store. Long enough for a real reaction, short enough
  *  that the feed stays a feed and a single row can't be used as a payload. */
 export const COMMENT_MAX = 500;
+
+export type NotificationKind = "kudos" | "comment";
+
+export interface NewNotification {
+  userId: string; // who it's FOR
+  kind: NotificationKind;
+  actorUsername: string; // who did it
+  workoutId: string;
+  /** the comment text, for a comment — so the notification can quote it */
+  text?: string;
+}
+
+export interface NotificationRow extends NewNotification {
+  id: string;
+  atISO: string;
+  readAtISO?: string;
+}
 
 function newId(): string {
   return (
@@ -288,6 +313,31 @@ class PgStore implements Store {
                target_id TEXT NOT NULL,
                reason TEXT NOT NULL,
                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+             )`,
+          ),
+        )
+        .then(() =>
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS notifications (
+               id TEXT PRIMARY KEY,
+               user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               kind TEXT NOT NULL,
+               actor_username TEXT NOT NULL,
+               workout_id TEXT NOT NULL,
+               text TEXT,
+               created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+               read_at TIMESTAMPTZ
+             )`,
+          ),
+        )
+        .then(() => this.pool.query(`CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC)`))
+        .then(() =>
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS push_tokens (
+               token TEXT PRIMARY KEY,
+               user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               platform TEXT NOT NULL,
+               updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
              )`,
           ),
         )
@@ -544,6 +594,61 @@ class PgStore implements Store {
       targetId,
       reason,
     ]);
+  }
+
+  async addNotification(n: NewNotification): Promise<void> {
+    await this.init();
+    await this.pool.query(
+      "INSERT INTO notifications (id, user_id, kind, actor_username, workout_id, text) VALUES ($1,$2,$3,$4,$5,$6)",
+      [newId(), n.userId, n.kind, n.actorUsername, n.workoutId, n.text ?? null],
+    );
+  }
+
+  async listNotifications(userId: string, limit = 50): Promise<NotificationRow[]> {
+    await this.init();
+    const r = await this.pool.query(
+      "SELECT id, user_id, kind, actor_username, workout_id, text, created_at, read_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2",
+      [userId, limit],
+    );
+    return r.rows.map((row) => ({
+      id: row.id as string,
+      userId: row.user_id as string,
+      kind: row.kind as NotificationKind,
+      actorUsername: row.actor_username as string,
+      workoutId: row.workout_id as string,
+      text: (row.text as string) ?? undefined,
+      atISO: new Date(row.created_at as string).toISOString(),
+      readAtISO: row.read_at ? new Date(row.read_at as string).toISOString() : undefined,
+    }));
+  }
+
+  async markNotificationsRead(userId: string, throughISO: string): Promise<void> {
+    await this.init();
+    await this.pool.query("UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL AND created_at <= $2", [
+      userId,
+      throughISO,
+    ]);
+  }
+
+  async upsertPushToken(userId: string, token: string, platform: string): Promise<void> {
+    await this.init();
+    // Keyed on the TOKEN, not the user: a device handed to someone else must move
+    // with the new owner rather than keep pushing the previous one's notifications.
+    await this.pool.query(
+      "INSERT INTO push_tokens (token, user_id, platform) VALUES ($1,$2,$3) ON CONFLICT (token) DO UPDATE SET user_id = $2, platform = $3, updated_at = now()",
+      [token, userId, platform],
+    );
+  }
+
+  async getPushTokens(userId: string): Promise<string[]> {
+    await this.init();
+    const r = await this.pool.query("SELECT token FROM push_tokens WHERE user_id = $1", [userId]);
+    return r.rows.map((row) => row.token as string);
+  }
+
+  async deletePushToken(token: string): Promise<void> {
+    await this.init();
+    await this.pool.query("DELETE FROM push_tokens WHERE token = $1", [token]);
   }
 
   private mapStrava(row: Record<string, unknown>): StravaConn {
@@ -1166,6 +1271,8 @@ class MemoryStore implements Store {
       if (a === userId || c === userId) this.blocks.delete(b);
     }
     this.reports = this.reports.filter((r) => r.fromId !== userId);
+    this.notifications = this.notifications.filter((n) => n.userId !== userId);
+    for (const [tok, v] of this.pushTokens) if (v.userId === userId) this.pushTokens.delete(tok);
     // league data — mirrors the FK cascades the Postgres store gets for free
     for (const k of [...this.members.keys()]) if (k.endsWith(`::${userId}`)) this.members.delete(k);
     for (const [id, a] of this.activities) if (a.userId === userId) this.activities.delete(id);
@@ -1274,6 +1381,41 @@ class MemoryStore implements Store {
 
   async addReport(fromId: string, kind: "comment" | "athlete", targetId: string, reason: string): Promise<void> {
     this.reports.push({ fromId, kind, targetId, reason, atISO: new Date().toISOString() });
+  }
+
+  // ---- notifications ----
+
+  private notifications: NotificationRow[] = [];
+  private pushTokens = new Map<string, { userId: string; platform: string }>();
+
+  async addNotification(n: NewNotification): Promise<void> {
+    this.notifications.push({ ...n, id: newId(), atISO: new Date().toISOString() });
+  }
+
+  async listNotifications(userId: string, limit = 50): Promise<NotificationRow[]> {
+    return this.notifications
+      .filter((n) => n.userId === userId)
+      .sort((a, b) => b.atISO.localeCompare(a.atISO))
+      .slice(0, limit);
+  }
+
+  async markNotificationsRead(userId: string, throughISO: string): Promise<void> {
+    const at = new Date().toISOString();
+    for (const n of this.notifications) {
+      if (n.userId === userId && !n.readAtISO && n.atISO <= throughISO) n.readAtISO = at;
+    }
+  }
+
+  async upsertPushToken(userId: string, token: string, platform: string): Promise<void> {
+    this.pushTokens.set(token, { userId, platform });
+  }
+
+  async getPushTokens(userId: string): Promise<string[]> {
+    return [...this.pushTokens.entries()].filter(([, v]) => v.userId === userId).map(([k]) => k);
+  }
+
+  async deletePushToken(token: string): Promise<void> {
+    this.pushTokens.delete(token);
   }
 
   // ---- leagues ----

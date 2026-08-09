@@ -3,6 +3,7 @@ import { getStore } from "@/lib/db";
 import { getUserIdFromRequest } from "@/lib/auth-server";
 import { rateLimit } from "@/lib/rateLimit";
 import type { Plan } from "@/lib/types";
+import { notifyAndPush } from "@/lib/notifyServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,20 @@ export async function POST(req: NextRequest) {
 
   if (on) await store.addKudos(uid, owner.id, workoutId);
   else await store.removeKudos(uid, owner.id, workoutId);
+
+  // Tell them (#33). Only on the way UP — un-kudosing someone is not news, and
+  // notifying on both edges would let a tap-tap-tap turn into a stream of alerts.
+  // Never awaited into the response: giving kudos must succeed whether or not
+  // the recipient's phone can be reached.
+  if (on) {
+    const me = await store.getUserById(uid);
+    void notifyAndPush(store, owner.id, {
+      userId: owner.id,
+      kind: "kudos",
+      actorUsername: me?.username ?? "",
+      workoutId,
+    });
+  }
 
   const kudos = (await store.getKudosForOwner(owner.id)).filter((k) => k.workoutId === workoutId).length;
   return NextResponse.json({ ok: true, on, kudos });
