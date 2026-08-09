@@ -182,19 +182,11 @@ export function ProgressTab() {
                     Form <b className="text-foreground">{form.tsb > 0 ? "+" : ""}{Math.round(form.tsb)}</b>
                   </span>
                 </div>
-                {/* Form is deliberately NOT presented as the difference of the two
-                    numbers beside it, because it isn't one. computePmc records tsb as
-                    the balance the athlete carried INTO the day (the standard PMC lag)
-                    while ctl and atl are that day's updated values, so the three don't
-                    reconcile — fitness 192 next to fatigue 208 next to form +11. That
-                    only became visible once #145 made the chart state its numbers
-                    instead of leaving them to be read off two lines. Labelled here
-                    rather than silently recomputed: which convention is right is a
-                    load-model question (doc 02 §4 #3 states TSB = CTL − ATL flatly),
-                    and it changes everyone's form band, so it is not a display fix. */}
-                <p className="text-[0.68rem] leading-snug text-faint">
-                  Form is the balance you carried into today, so it won&apos;t equal fitness minus fatigue.
-                </p>
+                {/* These three now subtract, so nothing needs explaining. A caveat
+                    line lived here while tsb was a lagged quantity stored beside
+                    today's ctl/atl (fitness 192, fatigue 208, form +11); computePmc
+                    makes it same-day, and the sentence went with it. If a disclaimer
+                    ever has to come back, fix the model instead. */}
               </div>
             )}
             <div className="eyebrow mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.66rem]">
