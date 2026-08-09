@@ -37,6 +37,7 @@ import {
 } from "@/lib/adapt";
 import { respondTo, type AthleteEvent } from "@/lib/respond";
 import { adjustSession } from "@/lib/prescribe";
+import { repaceSession, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
 import type { Plan } from "@/lib/types";
 import { logReadiness, readinessScore, READY_LOW } from "@/lib/readiness";
 import { track } from "@/lib/analytics";
@@ -354,6 +355,52 @@ function AppShellInner() {
         onAction: () => applyPlan(prev),
         duration: 8000,
       });
+    },
+
+    // The same contract as `adjust`, by distance instead of time (#185). Distance
+    // and duration move together inside resizeByDistance, so the header can never
+    // end up disagreeing with the steps beneath it.
+    setDistance: (id, targetM) => {
+      const res = resizeByDistance(plan, id, targetM);
+      if (!res) {
+        toast({ text: "That session can't be resized to that distance.", tone: "default" });
+        return;
+      }
+      const prev = plan;
+      track("session_distance_set", { targetM });
+      respond(res.plan, { kind: "logged", workoutId: id });
+      toast({ text: res.summary, tone: "success", actionLabel: "Undo", onAction: () => applyPlan(prev), duration: 8000 });
+    },
+
+    // Setting the pace a session will be done at (#185). This is the one control
+    // that changes what the session IS rather than how much of it there is: the
+    // zone follows the pace and the LOAD follows the zone, so it goes through
+    // `respond` exactly like overshooting a session does — which is the whole
+    // point of Ryan's "just the most accurate" answer.
+    //
+    // repaceSession returns null both when nothing would change and when the rails
+    // refuse, and those are different messages: one is "you already picked that",
+    // the other is "this would break the week". Reporting the second as the first
+    // would teach athletes the control is broken.
+    repace: (id, value) => {
+      const res = repaceSession(plan, id, value);
+      if (!res) {
+        const w = plan.workouts[id];
+        const kind = w ? targetKindFor(w, plan.paces) : null;
+        const already = w && kind && zoneForTarget(plan.paces, kind, value) === w.primaryZone;
+        toast({
+          text: already
+            ? "That's the intensity it's already prescribed at."
+            : "That would push this week past what it can safely absorb. Try a smaller change, or shorten the session first.",
+          tone: "default",
+          duration: already ? 4000 : 7000,
+        });
+        return;
+      }
+      const prev = plan;
+      track("session_repaced", { zone: res.workout.primaryZone });
+      respond(res.plan, { kind: "logged", workoutId: id });
+      toast({ text: res.summary, tone: "success", actionLabel: "Undo", onAction: () => applyPlan(prev), duration: 8000 });
     },
     rebuild: () => realign("manual"),
     ease: (days, cause = "manual") => {

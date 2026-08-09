@@ -77,6 +77,10 @@ export interface Workout {
   estDistanceM?: number;
   /** dominant intensity zone, for the calendar dot */
   primaryZone: Zone;
+  /** the athlete set an explicit intensity for this session (#185). The zone
+   *  above has already moved to match — this records what they chose, so the
+   *  session can say so and so it can be put back. */
+  pacedAt?: { kind: "run-pace" | "swim-pace" | "bike-power"; value: number; zone: Zone };
   /** set when this session was made course-specific for the race's terrain
    *  (lib/terrain.ts). Purely descriptive — zone, type and duration are
    *  unchanged, so nothing downstream needs to branch on it. */
