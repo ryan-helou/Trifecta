@@ -189,7 +189,7 @@ export async function apiStravaDisconnect() {
 
 // ---- social ----
 
-import type { SocialPayload } from "./social";
+import type { FeedComment, SocialPayload } from "./social";
 
 export async function apiSocial(today: string): Promise<SocialPayload | null> {
   const { ok, data } = await jsonFetch(`/api/social?today=${encodeURIComponent(today)}`);
@@ -210,6 +210,31 @@ export async function apiKudos(ownerUsername: string, workoutId: string, on: boo
     body: JSON.stringify({ ownerUsername, workoutId, on }),
   });
   return { ok, ...(data as { error?: string; on?: boolean; kudos?: number }) };
+}
+
+export async function apiComment(ownerUsername: string, workoutId: string, text: string) {
+  const { ok, data } = await jsonFetch("/api/social/comments", {
+    method: "POST",
+    body: JSON.stringify({ ownerUsername, workoutId, text }),
+  });
+  return { ok, ...(data as { error?: string; comment?: FeedComment }) };
+}
+
+export async function apiDeleteComment(id: string) {
+  const { ok, data } = await jsonFetch("/api/social/comments", {
+    method: "DELETE",
+    body: JSON.stringify({ id }),
+  });
+  return { ok, ...(data as { error?: string }) };
+}
+
+/** Block, unblock, or report-and-block another athlete (#183 / guideline 1.2). */
+export async function apiModerate(action: "block" | "unblock" | "report", username: string, opts?: { commentId?: string; reason?: string }) {
+  const { ok, data } = await jsonFetch("/api/social/moderate", {
+    method: "POST",
+    body: JSON.stringify({ action, username, ...opts }),
+  });
+  return { ok, ...(data as { error?: string; blocked?: boolean; reported?: boolean }) };
 }
 
 // ---- leagues ----

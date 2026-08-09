@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
-import { apiFollow, apiKudos, apiSocial } from "@/lib/api";
-import { FeedCard, SocialPayload } from "@/lib/social";
+import { apiComment, apiDeleteComment, apiFollow, apiKudos, apiModerate, apiSocial } from "@/lib/api";
+import { FeedCard, FeedItem, SocialPayload } from "@/lib/social";
 import { daysBetween } from "@/lib/dates";
 import { DisciplineIcon, Icon } from "./icons";
 import { DISCIPLINE_META } from "@/lib/zones";
-import { Discipline } from "@/lib/types";
+import { Discipline, Unit } from "@/lib/types";
+import { fmtDistance, fmtDuration, fmtPace, fmtPace100 } from "@/lib/format";
 import { haptic } from "@/lib/haptics";
 
 function ago(todayISO: string, iso: string): string {
@@ -20,12 +21,169 @@ function ago(todayISO: string, iso: string): string {
 }
 
 /**
+ * One session in the feed (#183) — sport, duration, distance, pace and the
+ * athlete's own words, with kudos and comments under it.
+ *
+ * MODERATION IS PART OF THE COMPONENT, not a settings screen. This is the app's
+ * first user-generated content and App Review guideline 1.2 requires a report
+ * path and a block for it; more to the point, "report this" three taps away in
+ * Settings is not a real escape hatch for someone reading something they don't
+ * want to read. It sits on the row that carries the content.
+ */
+function FeedRow({
+  item,
+  today,
+  unit,
+  onChanged,
+}: {
+  item: FeedItem;
+  today: string;
+  unit: Unit;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const meta = DISCIPLINE_META[item.discipline as Discipline];
+
+  const kudos = async () => {
+    haptic(item.kudosedByMe ? "light" : "success");
+    const r = await apiKudos(item.username, item.workoutId, !item.kudosedByMe);
+    if (!r.ok) toast({ text: r.error || "Couldn't do that.", tone: "warning" });
+    onChanged();
+  };
+
+  const send = async () => {
+    const t = text.trim();
+    if (!t) return;
+    setBusy(true);
+    const r = await apiComment(item.username, item.workoutId, t);
+    setBusy(false);
+    if (!r.ok) { toast({ text: r.error || "Couldn't post that.", tone: "warning" }); return; }
+    setText("");
+    haptic("success");
+    onChanged();
+  };
+
+  const removeComment = async (id: string) => {
+    const r = await apiDeleteComment(id);
+    if (!r.ok) toast({ text: r.error || "Couldn't delete that.", tone: "warning" });
+    onChanged();
+  };
+
+  // Report AND block in one action: reporting someone and still seeing them is
+  // not a resolution, and asking the athlete to make the same decision twice is
+  // just friction at the worst possible moment.
+  const report = async () => {
+    const r = await apiModerate("report", item.username);
+    if (!r.ok) { toast({ text: r.error || "Couldn't report that.", tone: "warning" }); return; }
+    toast({ text: `Reported. You won't see ${item.username} again.`, tone: "success", duration: 7000 });
+    onChanged();
+  };
+
+  // Each sport in its own unit — see FeedItem. A ride reads in km/h, a run in
+  // min/km, a swim per 100m; a gym session simply shows a duration.
+  const intensity = item.paceSecPerKm
+    ? fmtPace(item.paceSecPerKm, unit)
+    : item.speedKmh
+    ? `${item.speedKmh} km/h`
+    : item.paceSecPer100M
+    ? fmtPace100(item.paceSecPer100M)
+    : null;
+  const stats = [
+    fmtDuration(item.durationSec),
+    item.distanceM ? fmtDistance(item.distanceM, unit, item.discipline === "swim") : null,
+    intensity,
+  ].filter(Boolean);
+
+  return (
+    <div className="card p-3.5">
+      <div className="flex items-start gap-3">
+        <Avatar name={item.username} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="truncate font-display font-semibold">{item.isSelf ? "You" : item.username}</span>
+            <span className="shrink-0 text-xs text-faint">{ago(today, item.whenISO)}</span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-sm">
+            <span style={{ color: `var(${meta?.colorVar ?? "--accent"})` }}>
+              <DisciplineIcon discipline={item.discipline as Discipline} size={15} />
+            </span>
+            <span className="truncate">{item.title}</span>
+          </div>
+          <div className="mt-0.5 text-xs tabular-nums text-muted">{stats.join(" · ")}</div>
+          {item.note && <p className="mt-1.5 text-sm italic leading-snug text-muted">“{item.note}”</p>}
+        </div>
+      </div>
+
+      <div className="mt-2.5 flex items-center gap-2 border-t border-line pt-2.5">
+        {/* You can't cheer for yourself — the API refuses it, so the button isn't
+            there to press (#108: never offer a control that does nothing). But the
+            COUNT still shows, because seeing that three people cheered your session
+            is the entire reward loop; hiding it on your own row removed the only
+            reason the feature pays anyone back. */}
+        {item.isSelf ? (
+          item.kudos > 0 && (
+            <span className="chip pointer-events-none opacity-80">♥ {item.kudos} Kudos</span>
+          )
+        ) : (
+          <button onClick={kudos} aria-pressed={item.kudosedByMe} className={`chip ${item.kudosedByMe ? "is-selected" : ""}`}>
+            ♥ {item.kudos > 0 ? item.kudos : ""} Kudos
+          </button>
+        )}
+        <button onClick={() => setOpen((v) => !v)} className="chip">
+          💬 {item.comments.length > 0 ? item.comments.length : ""} Comment
+        </button>
+        {!item.isSelf && (
+          <button onClick={report} className="ml-auto text-[0.7rem] text-faint underline underline-offset-2">
+            Report
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-2.5 space-y-2">
+          {item.comments.map((c) => (
+            <div key={c.id} className="flex items-start gap-2 text-sm">
+              <span className="shrink-0 font-semibold">{c.mine ? "You" : c.username}</span>
+              <span className="min-w-0 flex-1 break-words text-muted">{c.text}</span>
+              {/* your own comment, or any comment on your own session */}
+              {(c.mine || item.isSelf) && (
+                <button onClick={() => removeComment(c.id)} aria-label="Delete comment" className="shrink-0 text-xs text-faint">✕</button>
+              )}
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <input
+              className="input flex-1"
+              placeholder={item.isSelf ? "Add a note for your crew" : `Say something to ${item.username}`}
+              value={text}
+              maxLength={COMMENT_MAX_CLIENT}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+            />
+            <button onClick={send} disabled={busy || !text.trim()} className="btn btn-primary px-4 py-2.5 text-sm disabled:opacity-40">
+              Post
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Mirrors COMMENT_MAX on the server. Duplicated rather than imported because
+ *  lib/db pulls in `pg`, which must never reach the client bundle. */
+const COMMENT_MAX_CLIENT = 500;
+
+/**
  * The follow/kudos feed. It used to own a bottom-nav tab of its own; that slot is
  * now the League tab, and this renders as a panel inside it (`embedded`), which
  * drops the page header and outer padding the host already provides.
  */
 export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
-  const { today } = useUI();
+  const { today, unit } = useUI();
   const toast = useToast();
   const [data, setData] = useState<SocialPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +256,17 @@ export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
         <div className="card p-6 text-center text-sm text-muted">Loading your crew…</div>
       ) : (
         <>
+          {/* THE FEED (#183). Sessions, chronological, with what people actually
+              did and room to say something about it — the reason to open the tab. */}
+          {data && data.items.length > 0 && (
+            <div className="space-y-2.5">
+              <div className="eyebrow text-[0.72rem]">Recent sessions</div>
+              {data.items.map((it) => (
+                <FeedRow key={`${it.username}:${it.workoutId}`} item={it} today={today} unit={unit} onChanged={load} />
+              ))}
+            </div>
+          )}
+
           {/* feed — who you follow */}
           {data && data.feed.length > 0 ? (
             <div className="space-y-2.5">
