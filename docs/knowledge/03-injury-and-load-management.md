@@ -470,11 +470,43 @@ Reintroduction should be a **graded ramp** (walk/run-style for run; **volume bef
 speed**), not a step back to full load. This is the difference between "injury-aware" and
 "rehab-aware."
 
-**C. Auto-regulation stays asymmetric — protect fast, add slow.** Preserve the `adapt.ts`
-rule that good days never add load. Any future readiness/pain input should be able to
+**C. Auto-regulation stays asymmetric — protect fast, add slow.** ~~Preserve the `adapt.ts`
+rule that good days never add load.~~ Any future readiness/pain input should be able to
 *ease* the plan automatically but should require deliberate, gradual steps to *increase*
 it. The cost function is asymmetric: a missed adaptation is cheap; an injury is a churn
 event.
+
+> ### ⚠️ OVERRIDDEN by product decision — 2026-08-09, Ryan
+>
+> **Decision:** the plan adapts automatically in BOTH directions. An athlete who is
+> consistently under the load this block budgeted for now gets load added back without
+> being asked, exactly as an athlete who is over it gets load removed. This is ticket
+> 184's core requirement ("the plan needs to automatically and dynamically update after
+> everything"), and it was put to Ryan explicitly as a choice between an *offered*
+> increase that preserves this rule and an automatic one that overrides it. He chose the
+> automatic version.
+>
+> **What this rule was protecting against, recorded so the trade is not forgotten:** the
+> two errors are not symmetric. Easing when it wasn't needed costs a little training.
+> Adding when it shouldn't have been added costs an injury, and an injury is a churn
+> event — weeks lost, and for a health product, a liability surface. That asymmetry has
+> not stopped being true; it has been *accepted*.
+>
+> **What still bounds the increase** (these are doc 04 §4.1 #10 and this doc's own
+> injury caps, NOT rule C, so the override does not touch them):
+> - `RAMP_MAX = 1.25` and `increasesAnyWeek()` in `lib/rails.ts` — an automatic increase
+>   is validated by `railsRegressed()` and is refused if it would breach the week-over-week
+>   ramp or push the block out of its intensity band.
+> - `MAX_ADD` in `lib/prescribe.ts` caps a single automatic increase well below the 1.5×
+>   an athlete may ask for by hand. The plan is less free with load than the athlete is.
+> - Never in race week, never past the taper, and never for a session inside an injured
+>   discipline's cap (rules A and B still stand).
+> - The deadband still applies, so this only fires on a sustained trend, not one easy day.
+>
+> **If this is ever revisited:** the safe version that was NOT taken is an offered
+> increase — surface "you have been training lighter than planned, want to put some
+> back?" and apply a graded increase on acceptance. That preserves the asymmetry while
+> still answering "I feel good, I could go longer".
 
 **D. Add a pain sensor and let it escalate.** A per-session **pain flag with location and
 0–10 severity** is the missing input. Wire it so that: mild, non-worsening pain → continue
