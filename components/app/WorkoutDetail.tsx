@@ -12,8 +12,16 @@ import { Sheet } from "./Sheet";
 import { buildWorkoutFit, fitFilename } from "@/lib/fit";
 import { whyAddsContext, whyForWorkout } from "@/lib/why";
 import { adjustChoices } from "@/lib/prescribe";
+import {
+  canSetDistance,
+  distanceChoices,
+  targetChoices,
+  targetKindFor,
+  targetLabel,
+  targetUnavailableReason,
+} from "@/lib/modify";
 import { haptic } from "@/lib/haptics";
-import { useUI } from "./ui";
+import { useUI, type UIActions } from "./ui";
 import { useToast } from "./Toast";
 import { renderShareCard, shareCard, shareCardFilename } from "@/lib/shareCard";
 
@@ -70,48 +78,168 @@ function RepBlock({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; un
   );
 }
 
-/** Resize this session. Options are TIMES, not percentages — the real thought is
- *  "I've only got forty minutes", and nobody reasons about their own training in
- *  percentages. The current length is marked so putting it back is one tap, and the
- *  list comes from the session's ORIGINAL prescription, so repeatedly shortening
- *  never walks the options down with it. */
-function AdjustPanel({
+/** One labelled row of chips. Every control in Modify has the same shape, so the
+ *  sheet reads as a list of properties of the session rather than five unrelated
+ *  tools that happen to be stacked. */
+function ModifyRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="border-t border-line py-3 first:border-t-0 first:pt-0">
+      <div className="eyebrow mb-1.5 text-[0.68rem]">{label}</div>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+      {hint && <p className="mt-1.5 text-[0.7rem] leading-snug text-faint">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * MODIFY WORKOUT — the single place to change anything about a session (#185).
+ *
+ * Length, distance, intensity, sport and day were previously four separate
+ * buttons plus two undiscoverable swipe gestures (#174). They are properties of
+ * the same session, so they live in one sheet; the swipes stay as shortcuts for
+ * people who already know them.
+ *
+ * INTENSITY IS NOT COSMETIC. Picking a pace re-prescribes the session at the zone
+ * that pace actually is, and the rest of the week absorbs it — so the row states
+ * the zone next to the pace, and the hint says plainly that the plan will move.
+ * Where no honest target exists (a ride from an athlete with no FTP) the row is
+ * replaced by the reason, never silently dropped (#130).
+ */
+function ModifyPanel({
+  plan,
   workout,
-  onPick,
-  onCancel,
+  unit,
+  actions,
+  onDone,
+  onClose,
 }: {
+  plan: Plan;
   workout: Workout;
-  onPick: (sec: number) => void;
-  onCancel: () => void;
+  unit: Unit;
+  actions: UIActions;
+  onDone: () => void;
+  onClose: () => void;
 }) {
-  const choices = adjustChoices(workout);
-  const base = workout.prescribed?.estDurationSec ?? workout.estDurationSec;
-  if (!choices.length) return null;
+  const lengths = adjustChoices(workout);
+  const distances = canSetDistance(workout) ? distanceChoices(workout) : [];
+  const kind = targetKindFor(workout, plan.paces);
+  const paceWhy = targetUnavailableReason(workout, plan.paces);
+  const paces = kind ? targetChoices(plan.paces, kind) : [];
+  const sports: Discipline[] = ["swim", "bike", "run", "strength"];
+  const today = todayISO();
+  const days = Array.from({ length: 10 }).map((_, i) => addDays(today, i));
+  const baseSec = workout.prescribed?.estDurationSec ?? workout.estDurationSec;
+  const baseM = workout.prescribed?.estDistanceM ?? workout.estDistanceM ?? 0;
+
   return (
     <div className="mb-4 rounded-2xl border border-line bg-surface-2 p-3.5">
-      <div className="eyebrow mb-2 text-[0.7rem]">How long have you got?</div>
-      <div className="flex flex-wrap gap-1.5">
-        {choices.map((sec) => {
-          const isNow = Math.abs(sec - workout.estDurationSec) < 60;
-          const isPlanned = Math.abs(sec - base) < 60;
-          return (
-            <button
-              key={sec}
-              onClick={() => { haptic("select"); onPick(sec); }}
-              aria-pressed={isNow}
-              className={`chip ${isNow ? "is-selected" : ""}`}
-            >
-              {fmtDuration(sec)}
-              {isPlanned && !isNow ? " · planned" : ""}
-            </button>
-          );
-        })}
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-sm font-semibold">Modify workout</span>
+        <button onClick={onClose} className="text-xs text-muted">Done</button>
       </div>
-      <p className="mt-2.5 text-xs leading-snug text-muted">
-        The session keeps its shape — we drop or add whole intervals rather than quietly
-        rewriting what it is.
-      </p>
-      <button onClick={onCancel} className="btn btn-ghost mt-3 w-full py-2.5 text-sm">Cancel</button>
+
+      {lengths.length > 0 && (
+        <ModifyRow label="Length" hint="Keeps its shape — whole intervals in or out, never a quiet rewrite.">
+          {lengths.map((sec) => {
+            const isNow = Math.abs(sec - workout.estDurationSec) < 60;
+            const isPlanned = Math.abs(sec - baseSec) < 60;
+            return (
+              <button
+                key={sec}
+                onClick={() => { haptic("select"); actions.adjust(workout.id, sec); }}
+                aria-pressed={isNow}
+                className={`chip ${isNow ? "is-selected" : ""}`}
+              >
+                {fmtDuration(sec)}{isPlanned && !isNow ? " · planned" : ""}
+              </button>
+            );
+          })}
+        </ModifyRow>
+      )}
+
+      {distances.length > 0 && (
+        <ModifyRow label="Distance" hint="Time moves with it, so the header never disagrees with the steps.">
+          {distances.map((m) => {
+            const isNow = Math.abs(m - (workout.estDistanceM ?? 0)) < 50;
+            const isPlanned = Math.abs(m - baseM) < 50;
+            return (
+              <button
+                key={m}
+                onClick={() => { haptic("select"); actions.setDistance(workout.id, m); }}
+                aria-pressed={isNow}
+                className={`chip ${isNow ? "is-selected" : ""}`}
+              >
+                {fmtDistance(m, unit)}{isPlanned && !isNow ? " · planned" : ""}
+              </button>
+            );
+          })}
+        </ModifyRow>
+      )}
+
+      {kind ? (
+        <ModifyRow
+          label="Pace"
+          hint="Changing this changes what the session IS — the zone moves with it, and the rest of the week adjusts to absorb it."
+        >
+          {paces.map(({ zone, value }) => (
+            <button
+              key={zone}
+              onClick={() => { haptic("select"); actions.repace(workout.id, value); }}
+              aria-pressed={zone === workout.primaryZone}
+              className={`chip ${zone === workout.primaryZone ? "is-selected" : ""}`}
+            >
+              {targetLabel(kind, value)}
+              <span className="ml-1 text-[0.68rem] text-muted">Z{zone}</span>
+            </button>
+          ))}
+        </ModifyRow>
+      ) : paceWhy ? (
+        <ModifyRow label="Pace">
+          <p className="text-[0.72rem] leading-snug text-muted">{paceWhy}</p>
+        </ModifyRow>
+      ) : null}
+
+      <ModifyRow label="Sport" hint="Swapped sessions are capped so a swap can't hide a jump in running load.">
+        {sports.map((d) => (
+          <button
+            key={d}
+            disabled={d === workout.discipline}
+            onClick={() => { haptic("select"); actions.swap(workout.id, d); onDone(); }}
+            className={`chip inline-flex items-center gap-1.5 disabled:opacity-30 ${d === workout.discipline ? "is-selected" : ""}`}
+          >
+            <span style={{ color: `var(${DISCIPLINE_META[d].colorVar})` }}><DisciplineIcon discipline={d} size={16} /></span>
+            {DISCIPLINE_META[d].label}
+          </button>
+        ))}
+      </ModifyRow>
+
+      <ModifyRow label="Day">
+        <div className="no-scrollbar -mx-0.5 flex w-full gap-1.5 overflow-x-auto px-0.5">
+          {days.map((iso) => (
+            <button
+              key={iso}
+              onClick={() => { haptic("select"); actions.move(workout.id, iso); onDone(); }}
+              aria-pressed={iso === workout.date}
+              className={`chip shrink-0 ${iso === workout.date ? "is-selected" : ""}`}
+            >
+              {weekdayShort(dayIndexOf(iso))} {fmtDayMonth(iso)}
+            </button>
+          ))}
+        </div>
+      </ModifyRow>
+
+      <div className="border-t border-line pt-3">
+        <button
+          onClick={() => {
+            if (workout.status === "skipped") { haptic("light"); actions.unskip(workout.id); }
+            else { haptic("warning"); actions.skip(workout.id); onDone(); }
+          }}
+          className="btn btn-ghost w-full py-2.5 text-sm"
+          style={{ color: workout.status === "skipped" ? undefined : "var(--danger)" }}
+        >
+          {workout.status === "skipped" ? "Un-skip this session" : "Skip this session"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -171,7 +299,7 @@ function SessionStructure({ sections, paces, unit }: { sections: { label: string
 export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
   const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
   const toast = useToast();
-  const [mode, setMode] = useState<null | "move" | "swap" | "log" | "adjust">(null);
+  const [mode, setMode] = useState<null | "log" | "modify">(null);
   const [note, setNote] = useState("");
   const meta = DISCIPLINE_META[workout.discipline];
   const reps = repsSummary(workout);
@@ -288,6 +416,19 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
             {whyAddsContext(why) && (
               <p className="mt-1.5 border-t border-accent/15 pt-1.5 text-xs leading-relaxed text-muted">{why.text}</p>
             )}
+            {/* A re-paced session keeps its planned NAME while its intensity moves,
+                so "Long Endurance Run" can sit above "Threshold" and read like the
+                app contradicting itself. It doesn't — the athlete set it — and this
+                is the sentence that says so. Rendered from `pacedAt` rather than
+                written into `purpose`, so repeated edits can't stack up copies of
+                it and reverting the session can't leave the note behind. */}
+            {workout.pacedAt && (
+              <p className="mt-1.5 border-t border-accent/15 pt-1.5 text-xs leading-relaxed text-muted">
+                You set this at {targetLabel(workout.pacedAt.kind, workout.pacedAt.value)} — that&apos;s{" "}
+                {ZONES[workout.pacedAt.zone].name.toLowerCase()} (Z{workout.pacedAt.zone}), not the{" "}
+                {workout.prescribed ? "pace it was written for" : "planned pace"}.
+              </p>
+            )}
           </div>
 
           {workout.note && (
@@ -323,21 +464,15 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           )}
 
           {/* action panels */}
-          {mode === "move" && (
-            <MovePanel
-              onPick={(iso) => { actions.move(workout.id, iso); close(); }}
-              onCancel={() => setMode(null)}
-            />
-          )}
-          {mode === "adjust" && (
-            <AdjustPanel
+          {mode === "modify" && (
+            <ModifyPanel
+              plan={plan}
               workout={workout}
-              onPick={(sec) => { actions.adjust(workout.id, sec); setMode(null); }}
-              onCancel={() => setMode(null)}
+              unit={unit}
+              actions={actions}
+              onDone={close}
+              onClose={() => setMode(null)}
             />
-          )}
-          {mode === "swap" && (
-            <SwapPanel current={workout.discipline} onPick={(d) => { actions.swap(workout.id, d); close(); }} onCancel={() => setMode(null)} />
           )}
           {mode === "log" && (
             <div className="mb-4 rounded-2xl border border-line bg-surface-2 p-3">
@@ -367,21 +502,14 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                   {workout.rpe != null || workout.feel || workout.actualDurationSec != null ? "Edit check-in" : "＋ Add a check-in"}
                 </button>
               )}
+              {/* ONE entry point (#185). Length, distance, pace, sport, day and skip
+                  were five buttons and two undiscoverable swipes (#174); they are all
+                  properties of this session, so they live behind one door. */}
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => setMode(mode === "adjust" ? null : "adjust")} className="btn btn-ghost py-2.5 text-sm">Adjust length</button>
-                <button onClick={() => setMode(mode === "move" ? null : "move")} className="btn btn-ghost py-2.5 text-sm">Move day</button>
-                <button onClick={() => setMode(mode === "swap" ? null : "swap")} className="btn btn-ghost py-2.5 text-sm">Swap sport</button>
-                <button onClick={() => setMode(mode === "log" ? null : "log")} className="btn btn-ghost py-2.5 text-sm">Did something else</button>
-                <button
-                  onClick={() => {
-                    if (workout.status === "skipped") { haptic("light"); actions.unskip(workout.id); }
-                    else { haptic("warning"); actions.skip(workout.id); }
-                  }}
-                  className="btn btn-ghost py-2.5 text-sm"
-                  style={{ color: workout.status === "skipped" ? undefined : "var(--danger)" }}
-                >
-                  {workout.status === "skipped" ? "Un-skip" : "Skip workout"}
+                <button onClick={() => setMode(mode === "modify" ? null : "modify")} className="btn btn-ghost py-2.5 text-sm">
+                  {mode === "modify" ? "Close" : "Modify workout"}
                 </button>
+                <button onClick={() => setMode(mode === "log" ? null : "log")} className="btn btn-ghost py-2.5 text-sm">Did something else</button>
               </div>
               {/* Only once it's actually done — a card for a session you haven't
                   trained yet is a claim, not a result. */}
@@ -418,52 +546,6 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
     <div className="flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2">
       <div className="eyebrow text-[0.66rem]">{label}</div>
       <div className={`font-display text-base font-semibold tnum ${accent ? "text-accent" : ""}`}>{value}</div>
-    </div>
-  );
-}
-
-function MovePanel({ onPick, onCancel }: { onPick: (iso: string) => void; onCancel: () => void }) {
-  const today = todayISO();
-  const days = Array.from({ length: 10 }).map((_, i) => addDays(today, i));
-  return (
-    <div className="mb-4 rounded-2xl border border-line bg-surface-2 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-semibold">Move to which day?</span>
-        <button onClick={onCancel} className="text-xs text-muted">Cancel</button>
-      </div>
-      <div className="no-scrollbar flex gap-2 overflow-x-auto">
-        {days.map((iso) => (
-          <button key={iso} onClick={() => onPick(iso)} className="flex flex-col items-center rounded-xl border border-line bg-surface px-3 py-2 text-center hover:bg-surface-3">
-            <span className="text-xs text-muted">{weekdayShort(dayIndexOf(iso))}</span>
-            <span className="tnum text-sm font-semibold">{fmtDayMonth(iso)}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SwapPanel({ current, onPick, onCancel }: { current: Discipline; onPick: (d: Discipline) => void; onCancel: () => void }) {
-  const opts: Discipline[] = ["swim", "bike", "run", "strength"];
-  return (
-    <div className="mb-4 rounded-2xl border border-line bg-surface-2 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-semibold">Swap for an easy…</span>
-        <button onClick={onCancel} className="text-xs text-muted">Cancel</button>
-      </div>
-      <div className="grid grid-cols-4 gap-2">
-        {opts.map((d) => (
-          <button
-            key={d}
-            disabled={d === current}
-            onClick={() => onPick(d)}
-            className="flex flex-col items-center rounded-xl border border-line bg-surface py-2.5 disabled:opacity-30 hover:bg-surface-3"
-          >
-            <span style={{ color: `var(${DISCIPLINE_META[d].colorVar})` }}><DisciplineIcon discipline={d} size={22} /></span>
-            <span className="mt-1 text-xs">{DISCIPLINE_META[d].label}</span>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

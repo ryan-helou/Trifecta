@@ -109,7 +109,9 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   // skipped session is zero load, which leaves the athlete FRESHER than budget,
   // and the never-add rule then correctly declines to hand them extra work.
   // Doc 02 §4 #11 — a life-miss is not a reason to soften anything.
-  const re = represcribe(plan, todayISO);
+  // The session the athlete just acted on is excluded: they set it deliberately,
+  // and the responder's job is to adjust the sessions AROUND that choice.
+  const re = represcribe(plan, todayISO, undefined, event.workoutId);
 
   if (!re) {
     if (!warnings.length) return null;

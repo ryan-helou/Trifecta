@@ -235,8 +235,23 @@ export interface Represcription {
 
 /** Re-prescribe the next few sessions from the load the athlete has actually
  *  produced. Returns null when there's nothing to say: not enough history, the
- *  deviation is inside the deadband, or no session could be changed honestly. */
-export function represcribe(plan: Plan, todayISO: string, horizon = HORIZON_SESSIONS): Represcription | null {
+ *  deviation is inside the deadband, or no session could be changed honestly.
+ *
+ *  `exceptId` protects a session the athlete has just set by hand. The plan
+ *  should respond AROUND a deliberate choice, not TO it: without this, setting
+ *  today's easy run to threshold pace made it Zone 4 and then — in the same
+ *  action, from the credit branch — 10% longer, so asking for harder silently
+ *  bought harder AND longer. The same shape bit the length control: shorten a
+ *  session because you're short of time and the responder could hand some of it
+ *  straight back. It is the rule `hardDayConflicts` already states in words —
+ *  "the athlete did it on purpose, and silently undoing it would be the app
+ *  arguing with them" — applied to volume instead of scheduling. */
+export function represcribe(
+  plan: Plan,
+  todayISO: string,
+  horizon = HORIZON_SESSIONS,
+  exceptId?: string,
+): Represcription | null {
   const dev = formDeviation(plan, todayISO);
   if (!dev) return null; // not enough ledger yet — debounce by construction
 
@@ -251,7 +266,14 @@ export function represcribe(plan: Plan, todayISO: string, horizon = HORIZON_SESS
 
   // the next `horizon` real sessions, in date order, never touching race day
   const upcoming = Object.values(plan.workouts)
-    .filter((w) => w.date >= todayISO && w.status === "planned" && w.discipline !== "rest" && w.id !== "w-race-day")
+    .filter(
+      (w) =>
+        w.date >= todayISO &&
+        w.status === "planned" &&
+        w.discipline !== "rest" &&
+        w.id !== "w-race-day" &&
+        w.id !== exceptId,
+    )
     .sort((a, b) => (a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)))
     .slice(0, horizon);
   if (!upcoming.length) return null;

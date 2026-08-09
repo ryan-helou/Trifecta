@@ -45,6 +45,8 @@ export const EVENTS = [
   "plan_represcribed", // { changed, event } — the ledger resized the next sessions
   "coach_action_applied", // { action, changed } — a change the athlete accepted from the chat
   "session_adjusted", // { targetSec } — the athlete resized a session by hand
+  "session_distance_set", // { targetM } — resized by distance instead of time (#185)
+  "session_repaced", // { zone } — the athlete set the intensity, moving the zone (#185)
   "duplicates_healed", // { removed } — phantom synced sessions cleaned up on restore (#123)
   "session_feedback", // { verdict (enum), discipline (enum) } — the one-tap "how did that feel"
   "form_opened", // { band (enum) }

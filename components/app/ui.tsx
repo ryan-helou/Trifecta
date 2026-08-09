@@ -32,6 +32,12 @@ export interface UIActions {
   ease(days: number, cause?: "strain" | "manual"): void;
   /** resize one session to a target duration, because the athlete asked */
   adjust(id: string, targetSec: number): void;
+  /** resize one session to a target DISTANCE; time moves with it (#185) */
+  setDistance(id: string, targetM: number): void;
+  /** set the intensity a session will actually be done at. NOT cosmetic — the
+   *  zone moves to match the pace, the load moves with the zone, and the rest of
+   *  the week responds (#185, Ryan's call: "just the most accurate"). */
+  repace(id: string, value: number): void;
   /** record today's morning readiness (eases the day if low) */
   logReadiness(dateISO: string, input: ReadinessInput): void;
   /** re-tune pace targets from recent sessions; returns what moved, or null */
