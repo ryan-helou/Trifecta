@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.10",
+  "latest": "1.0.11",
   "bundles": [
-    {
-      "version": "1.0.8",
-      "sha256": "de461d054ccc276a4e75b9594d2b9276672b5a39dea70ebc2f81c2007c6159af",
-      "size": 771585,
-      "createdAtISO": "2026-08-06T20:30:17.684Z",
-      "comment": "#119 — the coach input stays above the keyboard (all sheets)"
-    },
     {
       "version": "1.0.9",
       "sha256": "723ade5121a377013df1fa921a428abe73883100fb5bfa9acdcd56c30d1e4c71",
@@ -21,6 +14,13 @@
       "size": 771727,
       "createdAtISO": "2026-08-07T04:13:51.721Z",
       "comment": "#123 duplicate sessions fixed + healed; #121 gym-friendly workout logging"
+    },
+    {
+      "version": "1.0.11",
+      "sha256": "15f227a9eb856d1a8e083531b60cb33d21b920ca2578ada6c6e629dc17886030",
+      "size": 772466,
+      "createdAtISO": "2026-08-09T14:50:17.600Z",
+      "comment": "run icon, keyboard fix, adjust session length, swap explains itself, coach model id"
     }
   ]
 }
