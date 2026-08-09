@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.11",
+  "latest": "1.0.12",
   "bundles": [
-    {
-      "version": "1.0.9",
-      "sha256": "723ade5121a377013df1fa921a428abe73883100fb5bfa9acdcd56c30d1e4c71",
-      "size": 771708,
-      "createdAtISO": "2026-08-06T22:10:53.300Z",
-      "comment": "#120 — the plan eases itself, and Today reports what you actually did"
-    },
     {
       "version": "1.0.10",
       "sha256": "b639085629c06f4e71bc843afe9088b445b060f2d217a3975a1688acda6c560d",
@@ -21,6 +14,13 @@
       "size": 772466,
       "createdAtISO": "2026-08-09T14:50:17.600Z",
       "comment": "run icon, keyboard fix, adjust session length, swap explains itself, coach model id"
+    },
+    {
+      "version": "1.0.12",
+      "sha256": "a27217b3490091d781d189b76abf1e78b678b8511f8ac0770f7d6e5ba9000ab3",
+      "size": 778610,
+      "createdAtISO": "2026-08-09T23:58:18.215Z",
+      "comment": "#182 Form now subtracts · #85 course-aware training · #185 modify by pace · #183 Friends feed + comments · #33 notifications"
     }
   ]
 }
