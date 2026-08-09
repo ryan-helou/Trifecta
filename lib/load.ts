@@ -43,9 +43,17 @@ export const FORM_BANDS = { freshMin: 5, freshMax: 25, buildingMin: -30, detrain
 export const MIN_LEDGER_DAYS = 5;
 // How far below the plan's own prescribed form an athlete must drift before the next
 // week is softened. Calibrated on simulated athletes: a compliant one measures exactly
-// 0%, a persistent +1 RPE lands near −12 to −15%, +2 RPE near −20 to −26%. Set so real
+// 0%, a persistent +1 RPE lands near −8 to −11%, +2 RPE near −13 to −19%. Set so real
 // overreaching fires while ordinary build-phase depth does not.
-export const FORM_DEBT_EASE_PCT = -12;
+//
+// Was −12 while TSB was a lagged quantity. Making TSB same-day (see computePmc)
+// compressed the whole deviation scale by a factor of ~0.72, so the line had to move
+// with its units or the trigger would have quietly gone deaf — the constant is
+// expressed in the fold's terms, and the fold changed. −8.5 was chosen by measurement,
+// not by scaling: swept across 5 archetypes × 7 weeks × 9 effort levels, it reproduces
+// 312 of 315 of the shipped ease/no-ease decisions, and all 3 differences are
+// none → ease. Nothing became less protective.
+export const FORM_DEBT_EASE_PCT = -8.5;
 export const MIN_LOADED_SESSIONS = 2;
 
 export type LoadSource = "rpe" | "hr" | "feel" | "zone";
@@ -119,19 +127,44 @@ export function dailyLoads(plan: Plan, throughISO: string): DailyLoad[] {
   return days;
 }
 
-/** Fold the daily ledger into the PMC. TSB is YESTERDAY's CTL − ATL — the form
- *  you wake up with, unaffected by what you do today. Cold start seeds {0,0}
- *  (underestimates already-trained athletes early; a seed enables tests and a
- *  future import-history path). */
+/**
+ * Fold the daily ledger into the PMC. TSB is SAME-DAY CTL − ATL, so the three
+ * numbers the athlete is shown actually subtract.
+ *
+ * This used to store yesterday's gap (the TrainingPeaks convention) next to
+ * today's updated CTL and ATL, which made the Form card unable to reconcile:
+ * a real athlete read "Fitness 192 · Fatigue 208 · Form +11". The lag has a
+ * genuine rationale — form is what you wake up WITH, and today's session
+ * shouldn't move it — but it was never surfaced, so it read as an arithmetic
+ * bug (product decision, 2026-08-09, Ryan).
+ *
+ * Two things make the same-day reading safe here, and both were measured
+ * rather than assumed:
+ *
+ *   1. `sessionLoad` credits nothing until a session is done/swapped, so a
+ *      planned session contributes 0. Opening the app in the morning, today's
+ *      work isn't in the ledger yet — which is precisely the "unaffected by
+ *      what you do today" property the lag was protecting, already provided by
+ *      the status gate. The lag was double-counting a guarantee we had.
+ *   2. On race morning it reads BETTER: across the archetypes, a tapered
+ *      half/intermediate goes building → fresh (+10 → +47) and half/advanced
+ *      +19 → +61. Telling a fully-tapered athlete they're "building" on the
+ *      start line was the lag's fault.
+ *
+ * 27% of athlete-days change band, near-symmetrically (59 down, 69 up) — a
+ * different reading, not a drift in one direction.
+ *
+ * Cold start seeds {0,0} (underestimates already-trained athletes early; a
+ * seed enables tests and a future import-history path).
+ */
 export function computePmc(days: DailyLoad[], seed?: { ctl: number; atl: number }): PmcPoint[] {
   let ctl = seed?.ctl ?? 0;
   let atl = seed?.atl ?? 0;
   const points: PmcPoint[] = [];
   for (const d of days) {
-    const tsb = ctl - atl;
     ctl += (d.load - ctl) * K_CTL;
     atl += (d.load - atl) * K_ATL;
-    points.push({ dateISO: d.dateISO, load: d.load, ctl, atl, tsb });
+    points.push({ dateISO: d.dateISO, load: d.load, ctl, atl, tsb: ctl - atl });
   }
   return points;
 }

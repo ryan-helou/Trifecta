@@ -200,21 +200,25 @@ section("ledger survives rebuildFromToday: kept-/logged- history counted by date
 }
 
 // ---- 6. PMC invariants ----
-section("PMC: exact-EWMA fold, convergence, yesterday-based TSB");
+section("PMC: exact-EWMA fold, convergence, and Form that actually subtracts");
 {
   const one = computePmc([{ dateISO: ANCHOR, load: 100 }]);
   ok(Math.abs(one[0].ctl - 100 * K_CTL) < 1e-12, "day-1 CTL = load × K_CTL (exact-EWMA alpha, test-pinned)");
   ok(Math.abs(one[0].atl - 100 * K_ATL) < 1e-12, "day-1 ATL = load × K_ATL");
-  ok(one[0].tsb === 0, "day-1 TSB is the seed gap — today's session can't change today's form");
 
   const flat = Array.from({ length: 600 }, (_, i) => ({ dateISO: addDays(ANCHOR, i), load: 100 }));
   const conv = computePmc(flat);
   const end = conv[conv.length - 1];
   ok(Math.abs(end.ctl - 100) < 0.5, `constant 100 AU/day converges CTL → 100 (got ${end.ctl.toFixed(1)})`);
   ok(Math.abs(end.tsb) < 1, "steady state settles TSB ≈ 0");
+
+  // THE PROPERTY THE CARD DEPENDS ON. An athlete read "Fitness 192 · Fatigue 208
+  // · Form +11" and was right to call it broken: tsb was yesterday's gap stored
+  // beside today's ctl/atl. Every point must now reconcile, on every day, for
+  // every seed — this is the assertion that keeps the three printed numbers honest.
   ok(
-    conv.slice(1).every((p, i) => Math.abs(p.tsb - (conv[i].ctl - conv[i].atl)) < 1e-12),
-    "TSB always reads YESTERDAY's CTL − ATL",
+    conv.every((p) => Math.abs(p.tsb - (p.ctl - p.atl)) < 1e-12),
+    "Form == Fitness − Fatigue, on the SAME day, at every point",
   );
 
   const taper = computePmc([
@@ -224,9 +228,21 @@ section("PMC: exact-EWMA fold, convergence, yesterday-based TSB");
   const tEnd = taper[taper.length - 1];
   ok(tEnd.tsb > taper[59].tsb, "cutting load raises TSB (ATL decays faster than CTL)");
   ok(tEnd.atl < tEnd.ctl, "after a taper, fatigue sits below fitness");
+  // the reason the same-day reading is the better one: a fully tapered athlete
+  // should be told they are FRESH on the start line, not still "building"
+  ok(tEnd.tsb > 0, `after a 10-day taper, form is positive (got ${tEnd.tsb.toFixed(0)})`);
 
   const seeded = computePmc([{ dateISO: ANCHOR, load: 0 }], { ctl: 50, atl: 80 });
-  ok(seeded[0].tsb === -30, "a seed supplies day-1's yesterday values");
+  ok(
+    Math.abs(seeded[0].tsb - (seeded[0].ctl - seeded[0].atl)) < 1e-12,
+    "a seeded fold reconciles too — no path stores a stale gap",
+  );
+  ok(seeded[0].tsb > -30, "a rest day on a fatigued seed recovers form rather than freezing it");
+
+  // A planned session must not move today's form. This used to be the lag's job;
+  // it is really the status gate's job, and that is what makes same-day safe.
+  const rest = computePmc([{ dateISO: ANCHOR, load: 0 }], { ctl: 60, atl: 60 });
+  ok(rest[0].tsb > 0, "with nothing credited today, form can only improve — today's planned work is not in the ledger");
 }
 
 // ---- 7. determinism + the form-state history gate ----
@@ -270,8 +286,27 @@ section("band sanity on a full 16-week olympic plan");
   const atRace = byDate.get(raceDay)!;
   ok(atRace.tsb > byDate.get(taperStart)!.tsb, "TSB rises through the taper into race day");
 
-  const raceForm = formStateFor(p, raceDay);
-  ok(raceForm !== null && raceForm.band === "fresh", `race-day form lands in the fresh band (got ${raceForm?.band})`);
+  // Race MORNING — the state the athlete actually opens the app in. The race is
+  // still `planned`, so it carries no load yet; this asks whether the taper worked.
+  //
+  // This used to mark the race itself done and still assert "fresh", which only
+  // passed because TSB lagged a day and hid the race's own load. Same-day TSB made
+  // that visible: a finished olympic-distance race read −85. The assertion was
+  // measuring the wrong morning, not the wrong thing.
+  const morning: Plan = {
+    ...p,
+    workouts: Object.fromEntries(
+      Object.entries(p.workouts).map(([id, w]) => [id, w.date === raceDay ? { ...w, status: "planned" as const } : w]),
+    ),
+  };
+  const raceForm = formStateFor(morning, raceDay);
+  ok(raceForm !== null && raceForm.band === "fresh", `race-morning form lands in the fresh band (got ${raceForm?.band})`);
+
+  // ...and the evening of the race is emphatically not fresh. An athlete who has
+  // just raced is deep in it, and the card should say so rather than congratulate
+  // them on their freshness.
+  const evening = formStateFor(p, raceDay);
+  ok(evening !== null && evening.band !== "fresh", `having just raced does not read as fresh (got ${evening?.band})`);
 }
 
 

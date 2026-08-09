@@ -130,10 +130,28 @@ The industry-standard dashboard, from Banister's impulse-response model, popular
 ```
 CTL_today = CTL_yesterday + (Load_today − CTL_yesterday) × (1 / τ_CTL)     τ_CTL ≈ 42 days
 ATL_today = ATL_yesterday + (Load_today − ATL_yesterday) × (1 / τ_ATL)     τ_ATL ≈ 7 days
-TSB_today = CTL_yesterday − ATL_yesterday
+TSB_today = CTL_today − ATL_today
 ```
 
 (A more exact EWMA uses `α = 1 − e^(−1/τ)` instead of `1/τ`; both are used in the wild. Intervals.icu and TrainingPeaks both default to 42/7.)
+
+> **Note — the TSB lag, and why Trifecta doesn't use it (2026-08-09, Ryan's call).**
+> TrainingPeaks defines TSB with a one-day lag (`CTL_yesterday − ATL_yesterday`), on the
+> reasoning that form is what you wake up with and today's session shouldn't move it.
+> This document previously printed the lagged form here while §4 #3 below stated
+> `TSB = CTL − ATL` flatly — and the contradiction made it into the code, which stored
+> yesterday's gap beside today's CTL and ATL. The Progress card then showed an athlete
+> "Fitness 192 · Fatigue 208 · Form +11", three numbers that cannot all be true.
+>
+> Trifecta uses the **same-day** definition, because the lag's rationale is already
+> satisfied elsewhere: `sessionLoad` credits nothing until a session is `done`, so a
+> planned session contributes zero load and today's work genuinely can't move today's
+> form. The lag was double-counting a guarantee the status gate already gives.
+>
+> Measured consequence: 27% of athlete-days change form band, near-symmetrically, and
+> race morning reads *better* — a fully-tapered half/intermediate goes building → fresh
+> (+10 → +47). `FORM_DEBT_EASE_PCT` moved −12 → −8.5 to keep its units, preserving
+> 312/315 adaptation decisions (all 3 differences are none → ease).
 
 - **CTL — "Fitness":** long EWMA. Rises slowly with sustained load, decays slowly with rest. Reflects accumulated training. A trained age-grouper sits ~50–80; a pro peaks 120–150 (in cycling-TSS terms).
 - **ATL — "Fatigue":** short EWMA. Spikes fast, clears in days.
