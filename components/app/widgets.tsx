@@ -56,7 +56,7 @@ export function RaceCountdown({ plan, today }: { plan: Plan; today: string }) {
   const progress = elapsed / totalDays;
   const unit = plan.profile.unitPreference ?? "metric";
   const legs = [
-    { label: "Swim", v: fmtDistance(dist.swim, unit), c: "var(--swim)", align: "text-left" },
+    { label: "Swim", v: fmtDistance(dist.swim, unit, true), c: "var(--swim)", align: "text-left" },
     { label: "Bike", v: fmtDistance(dist.bike, unit), c: "var(--bike)", align: "text-center" },
     { label: "Run", v: fmtDistance(dist.run, unit), c: "var(--run)", align: "text-right" },
   ];

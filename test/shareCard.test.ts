@@ -56,7 +56,9 @@ section("the card reports what was DONE, not what was planned");
     dateLabel: "TUE 4 AUG",
   });
   ok(c.duration === "1h 7m", `actual duration wins over the estimate (got ${c.duration})`);
-  ok(c.distance === "43.6 km", `actual distance wins over the estimate (got ${c.distance})`);
+  // Distance rounds to whole km under #187; duration deliberately does NOT snap, so a
+  // logged 67 min never collapses onto the 65 min that was prescribed.
+  ok(c.distance === "44 km", `actual distance wins over the estimate, rounded (got ${c.distance})`);
 }
 {
   const c = shareCardCopy({ workout: workout(), plan, unit: "metric", dateLabel: "X" });
@@ -67,7 +69,7 @@ section("the card reports what was DONE, not what was planned");
 section("units follow the athlete, not the stored metres");
 {
   const c = shareCardCopy({ workout: workout(), plan, unit: "imperial", dateLabel: "X" });
-  ok(c.distance === "26.1 mi", `imperial athlete gets miles (got ${c.distance})`);
+  ok(c.distance === "26 mi", `imperial athlete gets miles, rounded (got ${c.distance})`);
 }
 
 section("a session with no distance doesn't invent one");
