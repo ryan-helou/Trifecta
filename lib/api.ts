@@ -237,6 +237,26 @@ export async function apiModerate(action: "block" | "unblock" | "report", userna
   return { ok, ...(data as { error?: string; blocked?: boolean; reported?: boolean }) };
 }
 
+export interface NotificationsPayload {
+  notifications: { id: string; kind: "kudos" | "comment"; actorUsername: string; workoutId: string; text?: string; atISO: string; readAtISO?: string }[];
+  unread: number;
+  /** false while APNs is unprovisioned — the UI must not promise delivery it can't make */
+  pushEnabled: boolean;
+}
+
+export async function apiNotifications(): Promise<NotificationsPayload | null> {
+  const { ok, data } = await jsonFetch("/api/notifications");
+  return ok ? (data as NotificationsPayload) : null;
+}
+
+export async function apiMarkNotificationsRead(throughISO: string) {
+  const { ok } = await jsonFetch("/api/notifications", {
+    method: "POST",
+    body: JSON.stringify({ action: "read", throughISO }),
+  });
+  return ok;
+}
+
 // ---- leagues ----
 
 export async function apiLeagues(): Promise<{ leagues: League[]; invites: LeagueInvite[] } | null> {

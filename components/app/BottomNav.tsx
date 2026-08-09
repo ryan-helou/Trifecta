@@ -12,7 +12,16 @@ const TABS: { key: TabKey; label: string; icon: IconName }[] = [
   { key: "profile", label: "Profile", icon: "profile" },
 ];
 
-export function BottomNav({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey) => void }) {
+export function BottomNav({
+  tab,
+  onChange,
+  badges,
+}: {
+  tab: TabKey;
+  onChange: (t: TabKey) => void;
+  /** unread counts per tab — today only Friends has one (#33) */
+  badges?: Partial<Record<TabKey, number>>;
+}) {
   const activeIndex = TABS.findIndex((t) => t.key === tab);
 
   return (
@@ -41,13 +50,23 @@ export function BottomNav({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey
             >
               <span
                 key={active ? "on" : "off"}
-                className={`transition ${active ? "animate-nav-bounce text-accent" : "text-muted"}`}
+                className={`relative transition ${active ? "animate-nav-bounce text-accent" : "text-muted"}`}
               >
                 <Icon name={t.icon} size={22} strokeWidth={active ? 1.9 : 1.6} />
+                {/* A dot, not a number: the count is on the tab itself, and a
+                    two-digit badge on a 22px icon is unreadable at this size. */}
+                {!!badges?.[t.key] && (
+                  <span
+                    aria-hidden
+                    className="absolute -right-1 -top-0.5 h-2 w-2 rounded-full ring-2 ring-background"
+                    style={{ background: "var(--accent)" }}
+                  />
+                )}
               </span>
               <span className={`text-[11px] font-semibold transition-colors ${active ? "text-accent" : "text-muted"}`}>
                 {t.label}
               </span>
+              {!!badges?.[t.key] && <span className="sr-only">{badges[t.key]} unread</span>}
             </button>
           );
         })}

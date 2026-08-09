@@ -37,6 +37,7 @@ import {
 } from "@/lib/adapt";
 import { respondTo, type AthleteEvent } from "@/lib/respond";
 import { adjustSession } from "@/lib/prescribe";
+import { apiMarkNotificationsRead, apiNotifications } from "@/lib/api";
 import { repaceSession, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
 import type { Plan } from "@/lib/types";
 import { logReadiness, readinessScore, READY_LOW } from "@/lib/readiness";
@@ -84,6 +85,44 @@ function AppShellInner() {
   const [coachMsgs, setCoachMsgs] = useState<CoachMsg[]>([COACH_GREETING]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+
+  // Unread kudos/comments, for the Friends badge (#33). Polled rather than pushed
+  // because APNs isn't provisioned yet (see lib/push.ts) — this is what makes the
+  // feature real in the meantime, and it stays useful afterwards for a foregrounded
+  // app, which never receives a push anyway.
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const fetchUnread = async () => {
+      const n = await apiNotifications();
+      if (alive && n) setUnread(n.unread);
+    };
+    // The visibility guard belongs on the RECURRING poll, not the first read.
+    // Guarding both meant an app that booted while hidden — a backgrounded
+    // launch, a restored tab — showed no badge at all until something happened
+    // to make it visible again. Caught by the badge staying empty with an unread
+    // row sitting in the API.
+    const tick = () => {
+      if (document.visibilityState === "visible") void fetchUnread();
+    };
+    void fetchUnread();
+    const iv = setInterval(tick, 90_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
+
+  // Opening Friends is reading them. Marked read THROUGH the moment the tab was
+  // opened, so anything that lands while it's on screen still counts as unread.
+  useEffect(() => {
+    if (tab !== "friends" || unread === 0) return;
+    const through = new Date().toISOString();
+    setUnread(0);
+    void apiMarkNotificationsRead(through);
+  }, [tab, unread]);
 
   // Keep "today" live: a PWA left open overnight must roll over to the new day.
   const [today, setToday] = useState(() => todayISO());
@@ -504,7 +543,7 @@ function AppShellInner() {
 
           <PlanUpdating state={recalc} />
 
-          <BottomNav tab={tab} onChange={setTab} />
+          <BottomNav tab={tab} onChange={setTab} badges={{ friends: unread }} />
         </div>
 
       {detail && <WorkoutDetail workout={detail} plan={plan} />}

@@ -3,6 +3,7 @@ import { COMMENT_MAX, getStore } from "@/lib/db";
 import { getUserIdFromRequest } from "@/lib/auth-server";
 import { rateLimit } from "@/lib/rateLimit";
 import type { Plan } from "@/lib/types";
+import { notifyAndPush } from "@/lib/notifyServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,18 @@ export async function POST(req: NextRequest) {
 
   const me = await store.getUserById(uid);
   const row = await store.addComment(uid, owner.id, workoutId, text);
+
+  // Commenting on your own session is a note to your crew, not something to
+  // notify yourself about.
+  if (owner.id !== uid) {
+    void notifyAndPush(store, owner.id, {
+      userId: owner.id,
+      kind: "comment",
+      actorUsername: me?.username ?? "",
+      workoutId,
+      text: row.text,
+    });
+  }
   return NextResponse.json({
     ok: true,
     comment: { id: row.id, username: me?.username ?? "", text: row.text, atISO: row.atISO, mine: true },
