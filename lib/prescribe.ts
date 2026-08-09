@@ -48,6 +48,22 @@ export const MAX_CUT = 0.7;
  *  scalar and the weekly ease card agree about which direction is bad. */
 export const FULL_CUT_PCT = FORM_DEBT_EASE_PCT * 2.5; // -30
 
+/** The most a single AUTOMATIC re-prescription may ADD.
+ *
+ *  Deliberately far below MAX_STRETCH (1.5), which is what an athlete may ask for by
+ *  hand: the plan is less free with load than the person is. Doc 03 §4 C used to forbid
+ *  automatic increases outright; Ryan overrode that on 2026-08-09 (see the note in that
+ *  section). The asymmetry survives in the numbers even though the rule is gone —
+ *  trimming can take 30% off in one step, adding can put 12% back — because the reason
+ *  for it never stopped being true: a missed adaptation costs a little training, a
+ *  wrongly-added one costs an injury. */
+export const MAX_ADD = 1.12;
+
+/** Deviation (percent of CTL) at which the increase reaches MAX_ADD. Mirrors
+ *  FULL_CUT_PCT, but wider — you have to be well clear of budget for a sustained
+ *  stretch before the plan starts handing work back. */
+export const FULL_ADD_PCT = 25;
+
 /** How many upcoming sessions one re-prescription may touch. A single event
  *  earns a small horizon; larger structural change is the weekly adaptation's
  *  job, not this one's. */
@@ -185,11 +201,27 @@ export function scaleWorkout(w: Workout, factor: number, opts?: { allowLonger?: 
  *  means they're ahead of budget, and the answer there is 1.0 — the original
  *  plan, never more than it. */
 export function loadFactor(deltaPct: number): number {
-  if (deltaPct >= -DEADBAND_PCT) return 1;
-  if (deltaPct <= FULL_CUT_PCT) return MAX_CUT;
-  const span = FULL_CUT_PCT + DEADBAND_PCT; // negative
-  const t = (deltaPct + DEADBAND_PCT) / span; // 0 at the deadband edge → 1 at full cut
-  return 1 - t * (1 - MAX_CUT);
+  // inside the deadband nothing happens in either direction — one easy day, or one
+  // hard one, is noise (doc 02 §4 #10)
+  if (Math.abs(deltaPct) <= DEADBAND_PCT) return 1;
+
+  if (deltaPct < 0) {
+    // DEBT: the work is costing more than budgeted → trim
+    if (deltaPct <= FULL_CUT_PCT) return MAX_CUT;
+    const span = FULL_CUT_PCT + DEADBAND_PCT; // negative
+    const t = (deltaPct + DEADBAND_PCT) / span; // 0 at the deadband edge → 1 at full cut
+    return 1 - t * (1 - MAX_CUT);
+  }
+
+  // CREDIT: consistently under what this block budgeted for → put some back.
+  //
+  // This branch is the doc 03 §4 C override (2026-08-09, Ryan's decision, recorded in
+  // that doc). It used to return 1 unconditionally, because good days were never
+  // allowed to add load. It now adds — gently, capped at MAX_ADD, and still gated by
+  // railsRegressed at the call site so it can never breach the ramp.
+  if (deltaPct >= FULL_ADD_PCT) return MAX_ADD;
+  const t = (deltaPct - DEADBAND_PCT) / (FULL_ADD_PCT - DEADBAND_PCT); // 0 → 1
+  return 1 + t * (MAX_ADD - 1);
 }
 
 export interface Represcription {
@@ -209,7 +241,13 @@ export function represcribe(plan: Plan, todayISO: string, horizon = HORIZON_SESS
   if (!dev) return null; // not enough ledger yet — debounce by construction
 
   const factor = loadFactor(dev.deltaPct);
-  if (factor >= 1) return null;
+  if (factor === 1) return null; // inside the deadband — nothing honest to say
+
+  // Adding is allowed now (doc 03 §4 C override), but never while an injury is
+  // active. Rules A and B of that doc are untouched by the override, and handing more
+  // load to someone already carrying a niggle is exactly the case they exist for.
+  const injured = (plan.profile.injuries ?? []).length > 0;
+  if (factor > 1 && injured) return null;
 
   // the next `horizon` real sessions, in date order, never touching race day
   const upcoming = Object.values(plan.workouts)
@@ -223,7 +261,7 @@ export function represcribe(plan: Plan, todayISO: string, horizon = HORIZON_SESS
   let changed = 0;
   for (const w of upcoming) {
     if (raceWeek != null && w.weekIndex >= raceWeek) continue; // never touch race week
-    const scaled = scaleWorkout(w, factor);
+    const scaled = scaleWorkout(w, factor, { allowLonger: factor > 1 });
     if (scaled) {
       next.workouts[w.id] = scaled;
       changed++;
@@ -243,9 +281,13 @@ export function represcribe(plan: Plan, todayISO: string, horizon = HORIZON_SESS
     factor,
     deltaPct: dev.deltaPct,
     reason:
-      `Your last couple of weeks have cost you about ${Math.abs(Math.round(dev.deltaPct))}% more than this block budgeted for, ` +
-      `so the next ${changed} ${changed === 1 ? "session is" : "sessions are"} trimmed to ${Math.round(factor * 100)}% — ` +
-      `same shape, less of it.`,
+      factor < 1
+        ? `Your last couple of weeks have cost you about ${Math.abs(Math.round(dev.deltaPct))}% more than this block budgeted for, ` +
+          `so the next ${changed} ${changed === 1 ? "session is" : "sessions are"} trimmed to ${Math.round(factor * 100)}% — ` +
+          `same shape, less of it.`
+        : `You've been running about ${Math.round(dev.deltaPct)}% lighter than this block budgeted for, ` +
+          `so the next ${changed} ${changed === 1 ? "session gets" : "sessions get"} ${Math.round((factor - 1) * 100)}% put back — ` +
+          `same shape, a little more of it.`,
   };
 }
 

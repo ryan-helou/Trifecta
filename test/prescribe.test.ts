@@ -22,11 +22,14 @@
 // ---------------------------------------------------------------------------
 
 import { generatePlan } from "../lib/planEngine";
+import { railsRegressed } from "../lib/rails";
 import { logCheckin } from "../lib/adapt";
 import { FORM_DEBT_EASE_PCT } from "../lib/load";
 import {
   DEADBAND_PCT,
   MAX_STRETCH,
+  MAX_ADD,
+  FULL_ADD_PCT,
   adjustChoices,
   adjustSession,
   FULL_CUT_PCT,
@@ -97,7 +100,24 @@ function strainedPlan(): { plan: Plan; today: string } {
 section("loadFactor: eases on debt, never adds on credit");
 {
   ok(loadFactor(0) === 1, "on budget → no change");
-  ok(loadFactor(50) === 1, "way ahead of budget → still 1.0, never more (doc 02 §4 #9)");
+  // Doc 03 §4 C was OVERRIDDEN on 2026-08-09 (Ryan's decision, recorded in that doc):
+  // the plan now adapts automatically in both directions. This assertion used to read
+  // "way ahead of budget → still 1.0, never more" and is inverted on purpose.
+  ok(loadFactor(50) > 1, `way ahead of budget → load is added back (got ${loadFactor(50)})`);
+  ok(loadFactor(50) === MAX_ADD, "and it is capped at MAX_ADD");
+  ok(loadFactor(FULL_ADD_PCT) === MAX_ADD, "the cap is reached at FULL_ADD_PCT");
+  ok(loadFactor(DEADBAND_PCT) === 1, "just inside the deadband on the credit side → nothing");
+  ok(loadFactor(DEADBAND_PCT + 0.1) > 1, "just outside it → a small increase");
+  // the asymmetry survives in the NUMBERS even though the rule is gone
+  ok(MAX_ADD - 1 < 1 - MAX_CUT, `adding stays gentler than trimming (${MAX_ADD} vs ${MAX_CUT})`);
+  ok(MAX_ADD < MAX_STRETCH, "and the plan is less free with load than the athlete is by hand");
+  // monotone upward too
+  let up = 1;
+  for (let d = 0; d <= 40; d += 1) {
+    const f = loadFactor(d);
+    ok(f >= up - 1e-9, `credit side is monotone at +${d}% (${f.toFixed(3)} ≥ ${up.toFixed(3)})`);
+    up = f;
+  }
   ok(loadFactor(-DEADBAND_PCT + 0.1) === 1, "inside the deadband → nothing happens");
   ok(loadFactor(FULL_CUT_PCT) === MAX_CUT, "at the full-cut anchor → the deepest cut");
   ok(loadFactor(FULL_CUT_PCT * 3) === MAX_CUT, "beyond it → still bottoms out, never deeper");
@@ -280,6 +300,37 @@ section("adjustSession: the athlete's own change, honest and still bounded");
 
   ok(adjustSession(plan, "nope", 1800) === null, "an unknown id adjusts nothing");
   ok(adjustSession(plan, w.id, 0) === null, "a zero target is refused");
+}
+
+// --- 6c. automatic increases (doc 03 §4 C override) --------------------------
+section("an athlete under budget gets load back — bounded, and never while injured");
+{
+  // consistently UNDER the plan: sessions logged much easier than prescribed
+  const today = addDays(ANCHOR, 16);
+  let light = generatePlan(profile(), ANCHOR);
+  for (const w of Object.values(light.workouts)) {
+    if (w.discipline === "rest" || w.date >= today) continue;
+    light = logCheckin(light, w.id, { rpe: 2, feel: "great" });
+  }
+  const res = represcribe(light, today);
+  if (res) {
+    ok(res.factor > 1, `load is added back (factor ${res.factor.toFixed(3)})`);
+    ok(res.factor <= MAX_ADD + 1e-9, `never beyond MAX_ADD (${MAX_ADD})`);
+    ok(/put back/.test(res.reason), `and it says so plainly (got "${res.reason}")`);
+    for (const [id, after] of Object.entries(res.plan.workouts)) {
+      const before = light.workouts[id];
+      if (before.estDurationSec === after.estDurationSec) continue;
+      ok(after.estDurationSec >= before.estDurationSec, `${id} got longer, not shorter`);
+      ok(after.estDurationSec === workoutSeconds(after), `${id} header still matches its structure`);
+    }
+    // the rails still bound it — this is doc 04, untouched by the override
+    ok(railsRegressed(light, res.plan).length === 0, "an automatic increase never breaches the rails");
+  }
+
+  // …but never while an injury is active. Doc 03 rules A and B are NOT overridden.
+  const hurt = { ...light, profile: { ...light.profile, injuries: [{ id: "i1", area: "shin", disciplines: ["run"], severity: "niggle" }] } } as Plan;
+  const hurtRes = represcribe(hurt, today);
+  ok(hurtRes === null || hurtRes.factor <= 1, "an injured athlete is never handed more load automatically");
 }
 
 // --- 7. degenerate input -----------------------------------------------------
