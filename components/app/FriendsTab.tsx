@@ -258,10 +258,15 @@ export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
         <>
           {/* THE FEED (#183). Sessions, chronological, with what people actually
               did and room to say something about it — the reason to open the tab. */}
-          {data && data.items.length > 0 && (
+          {/* `items ?? []`, not `items`, because the OTA bundle and the Railway
+              server deploy INDEPENDENTLY. A bundle carrying this UI can reach a
+              phone before the server that serves the field does, and `.length` on
+              undefined would white-screen the whole tab. Degrades to the old
+              card-only Friends until the server catches up. */}
+          {(data?.items ?? []).length > 0 && (
             <div className="space-y-2.5">
               <div className="eyebrow text-[0.72rem]">Recent sessions</div>
-              {data.items.map((it) => (
+              {(data?.items ?? []).map((it) => (
                 <FeedRow key={`${it.username}:${it.workoutId}`} item={it} today={today} unit={unit} onChanged={load} />
               ))}
             </div>
