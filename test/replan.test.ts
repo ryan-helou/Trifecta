@@ -24,8 +24,8 @@
 // ---------------------------------------------------------------------------
 
 import { generatePlan } from "../lib/planEngine";
-import { swapDiscipline, setStatus } from "../lib/adapt";
-import { adjustSession } from "../lib/prescribe";
+import { swapDiscipline, setStatus, unswapDiscipline, easeUpcoming } from "../lib/adapt";
+import { adjustSession, scaleWorkout } from "../lib/prescribe";
 import { checkRails } from "../lib/rails";
 import { hardDayConflicts } from "../lib/respond";
 import { DISCIPLINE_META } from "../lib/zones";
@@ -37,7 +37,7 @@ import {
   sportDrift,
   weekDrift,
 } from "../lib/replan";
-import type { Plan, Profile, Week } from "../lib/types";
+import type { Discipline, Plan, Profile, Week } from "../lib/types";
 
 let checks = 0;
 let failures = 0;
@@ -309,6 +309,84 @@ section("you cannot bike your way out of running");
 }
 
 // --- 6. what it must never touch ------------------------------------------
+// A session must never advertise a speed no human produces. The specific failure
+// (#201, Ryan: "How can I do 15k in 35 mins") was NOT the swap — it was the
+// baseline the swap left behind. `prescribed` is what every later resize measures
+// against, and it still described the sport that had just been replaced, so
+// `scaleWorkout`'s `baseline.estDistanceM × ratio` rebuilt the RUN's distance from
+// the BIKE's. Any ease after the swap resurrected it.
+section("a swapped session never inherits the old sport's distance");
+{
+  // km/h a human can actually sustain for a training session, generously bounded.
+  const SANE: Record<string, [number, number]> = { run: [5, 26], bike: [10, 60], swim: [1, 9] };
+  const insane = (p: Plan) =>
+    Object.values(p.workouts).filter((w) => {
+      const lim = SANE[w.discipline];
+      if (!lim || !w.estDistanceM || !w.estDurationSec) return false;
+      const kmh = w.estDistanceM / 1000 / (w.estDurationSec / 3600);
+      return kmh < lim[0] || kmh > lim[1];
+    });
+
+  ok(insane(plan8).length === 0, `a fresh plan implies no impossible speeds (got ${insane(plan8).length})`);
+
+  // The exact reproduction, in both directions and for every sport pair.
+  for (const [from, to] of [
+    ["bike", "run"],
+    ["run", "bike"],
+    ["bike", "swim"],
+    ["swim", "run"],
+    ["run", "swim"],
+    ["swim", "bike"],
+  ] as Array<[Discipline, Discipline]>) {
+    const victim = Object.values(plan8.workouts).find(
+      (w) => w.discipline === from && w.status === "planned" && w.estDurationSec >= 30 * 60,
+    );
+    if (!victim) continue;
+    // 1) the athlete resizes it — this is what mints `prescribed`
+    const resized = adjustSession(plan8, victim.id, Math.round(victim.estDurationSec * 0.8));
+    const base = resized?.plan ?? plan8;
+    // 2) they swap the sport
+    const swapped = swapDiscipline(base, victim.id, to);
+    const madeIt = swapped.workouts[victim.id];
+    ok(
+      madeIt.prescribed === undefined,
+      `${from}→${to}: the swap clears the baseline minted for the sport that left`,
+    );
+    ok(insane(swapped).length === 0, `${from}→${to}: the swap itself implies no impossible speed`);
+    // 3) anything that RESIZES it afterwards must not resurrect the old sport's
+    //    size. This is the assertion that catches the user-visible symptom: the
+    //    week rebalance in respondToEdit scales pool sessions through exactly this
+    //    call, and easeUpcoming alone doesn't reach an easy session, so asserting
+    //    only through easeUpcoming would let the bug back in.
+    const rescaled = scaleWorkout(madeIt, 0.9);
+    if (rescaled?.estDistanceM && rescaled.estDurationSec) {
+      const kmh = rescaled.estDistanceM / 1000 / (rescaled.estDurationSec / 3600);
+      const lim = SANE[rescaled.discipline];
+      ok(
+        !lim || (kmh >= lim[0] && kmh <= lim[1]),
+        `${from}→${to}: resizing after the swap stays possible — got ${(rescaled.estDistanceM / 1000).toFixed(1)}km in ${Math.round(rescaled.estDurationSec / 60)}min = ${kmh.toFixed(1)} km/h`,
+      );
+    }
+    const eased = easeUpcoming(swapped, TODAY, 7, "manual");
+    const bad = insane(eased);
+    ok(
+      bad.length === 0,
+      `${from}→${to}: an ease after the swap keeps every session possible${
+        bad.length ? ` — ${bad[0].title} ${(bad[0].estDistanceM! / 1000).toFixed(1)}km in ${Math.round(bad[0].estDurationSec / 60)}min` : ""
+      }`,
+    );
+  }
+
+  // And undoing a swap must not leave the incoming sport's baseline behind either.
+  const r = Object.values(plan8.workouts).find((w) => w.discipline === "run" && w.status === "planned");
+  if (r) {
+    const there = swapDiscipline(plan8, r.id, "bike");
+    const back = unswapDiscipline(there, r.id);
+    ok(back.workouts[r.id].prescribed === undefined, "unswapping clears the baseline too");
+    ok(insane(easeUpcoming(back, TODAY, 7, "manual")).length === 0, "...and easing after an unswap stays possible");
+  }
+}
+
 section("boundaries");
 {
   const hard = inWeek(plan8, week8).find((w) => w.primaryZone >= 4 && w.status === "planned")!;

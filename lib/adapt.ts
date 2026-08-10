@@ -380,6 +380,15 @@ export function swapDiscipline(plan: Plan, id: string, discipline: Discipline): 
     estDistanceM: draft.estDistanceM,
     primaryZone: draft.primaryZone,
     status: "planned",
+    // The swap IS the new prescription for this slot, so the old one has to go.
+    // `prescribed` is the baseline every later resize measures against, and it
+    // still described the sport that just left: `scaleWorkout` derives distance
+    // as `baseline.estDistanceM × ratio`, so a ride resized then swapped to a run
+    // came back from the next ease as a 36 km "run" in 74 min — 29.5 km/h (#201,
+    // where Ryan got 15 km in 35 min). Clearing it makes the swapped-in session
+    // its own baseline, which is what it should have been from the first pass.
+    prescribed: undefined,
+    pacedAt: undefined,
     note: allowance.capped ? `Swapped from ${original.discipline} · kept short` : `Swapped from ${original.discipline}`,
     swappedFrom: original,
     impactCapped: allowance.capped ? allowance.reason ?? undefined : undefined,
@@ -404,6 +413,11 @@ export function unswapDiscipline(plan: Plan, id: string): Plan {
     estDistanceM: o.estDistanceM,
     primaryZone: o.primaryZone,
     status: "planned",
+    // Same reasoning as the swap: the restored session is its own baseline, and
+    // keeping a baseline minted for the sport being removed is how the two
+    // disagree (#201).
+    prescribed: undefined,
+    pacedAt: undefined,
     note: undefined,
     swappedFrom: undefined,
   };

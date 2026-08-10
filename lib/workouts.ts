@@ -218,7 +218,12 @@ function swimCD(m: number): Segment {
   });
 }
 
-export function swimTechnique(ctx: BuildCtx): Draft {
+export function swimTechnique(ctx: BuildCtx, min?: number): Draft {
+  // The DRILL block is a fixed skill dose — doing 12 rounds of catch-up drill
+  // instead of 4 does not make anyone a better swimmer, it makes them bored. The
+  // aerobic pull set at the end is what carries extra volume when the week has
+  // room for it, so that's the only part that moves with the budget (#202).
+  const pulls = min == null ? 4 : Math.max(3, Math.min(10, Math.round(swimMainMetersFor(ctx, min) / 300)));
   return finish(ctx, {
     discipline: "swim",
     type: "technique",
@@ -255,8 +260,8 @@ export function swimTechnique(ctx: BuildCtx): Draft {
         kind: "main",
         discipline: "swim",
         zone: 2,
-        repeat: 4,
-        description: "4 × 100m pull, buoy (20s rest)",
+        repeat: pulls,
+        description: `${pulls} × 100m pull, buoy (20s rest)`,
         children: [
           seg({ kind: "main", discipline: "swim", zone: 2, distanceM: 100, description: "100m pull" }),
           seg({ kind: "rest", discipline: "swim", durationSec: 20, description: "20s rest" }),
@@ -265,6 +270,32 @@ export function swimTechnique(ctx: BuildCtx): Draft {
       swimCD(200),
     ],
   });
+}
+
+/**
+ * Main-set metres that will fill roughly `min` minutes in the pool (#202).
+ *
+ * Swim was the ONLY sport that ignored the weekly budget: its roles were built
+ * `scalable: false`, so every swim came out at its builder's intrinsic default
+ * and the sport never progressed — measured on a 70.3 plan, four consecutive
+ * base weeks of 33 min + 35 min while the long ride went 95 → 115 → 140 and the
+ * long run 70 → 85 → 100. Ryan: "all runs and bikes are same length... look into
+ * it". He had the sport wrong and the smell right.
+ *
+ * Priced at CSS + 6 s (the endurance pace the sets actually prescribe), less the
+ * ~500 m of warm-up and cool-down every session carries, plus a rest allowance —
+ * an interval set is not swum continuously and pretending otherwise would make
+ * every swim run long. Bounded because pool volume is not free: doc 01 §4 treats
+ * swimming as technique-limited, so a beginner is not handed 3 km because the
+ * budget had room.
+ */
+export function swimMainMetersFor(ctx: BuildCtx, min: number): number {
+  const secPer100 = (ctx.paces.swim.cssSecPer100 || 120) + 6;
+  const REST_FRACTION = 0.15; // ~30 s rest per ~3 min rep
+  const usableSec = Math.max(0, min * 60) * (1 - REST_FRACTION);
+  const totalM = (usableSec / secPer100) * 100;
+  const mainM = totalM - 500; // swimWU(300) + swimCD(200)
+  return Math.max(600, Math.min(3000, Math.round(mainM / 100) * 100));
 }
 
 export function swimEndurance(ctx: BuildCtx, mainM = 1200): Draft {
