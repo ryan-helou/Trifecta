@@ -4,11 +4,10 @@ import { useEffect, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
-import { fmtPace, fmtPace100, fmtClock, fmtDuration } from "@/lib/format";
+import { fmtPace, fmtPace100 } from "@/lib/format";
 import { fmtFullDate, daysBetween } from "@/lib/dates";
 import { raceCategoryName, isFitnessGoal } from "@/lib/planEngine";
 import { terrainLabel, terrainOf } from "@/lib/terrain";
-import { projectRace } from "@/lib/predict";
 import { InstallHint } from "./InstallHint";
 import { Connections } from "./Connections";
 import { Notifications } from "./Notifications";
@@ -49,8 +48,6 @@ export function ProfileTab() {
   const paces = plan.paces;
   const unit = profile.unitPreference ?? "metric";
   const daysOut = fitness ? null : Math.max(0, daysBetween(today, profile.raceDateISO));
-  const proj = projectRace(profile, today);
-  const calibrated = !!profile.calibration;
 
   return (
     <div
@@ -74,62 +71,13 @@ export function ProfileTab() {
         </div>
       </div>
 
-      {/* goal card — the race target, or the fitness block (discipline-coded) */}
-      <div className="card-glass relative overflow-hidden p-5">
-        {fitness ? (
-          <div>
-            <div className="eyebrow text-[0.72rem]">Your goal</div>
-            <div className="mt-1.5 font-display text-[1.4rem] font-semibold leading-tight">General fitness</div>
-            <div className="mt-0.5 text-sm text-muted">
-              A rolling base → build block — no race on the calendar. Add one any time to periodise toward it.
-            </div>
-          </div>
-        ) : (
-          // The countdown IS the card. What used to be here — the race name at headline
-          // size, the location, and a swim/bike/run distance row — is all static trivia
-          // the athlete picked themselves and can't act on: a 70.3 is always 1.9/90/21.1.
-          // Only one number here changes, and it's the one that matters.
-          <div className="flex items-baseline justify-between gap-4">
-            <div className="flex items-baseline gap-3">
-              <span className="font-display text-[3.4rem] font-semibold leading-[0.85] tabular-nums text-accent">{daysOut}</span>
-              <span className="text-sm leading-[1.15] text-muted">
-                days
-                <br />
-                to go
-              </span>
-            </div>
-            <div className="min-w-0 text-right">
-              <div className="eyebrow text-[0.7rem]">{raceCategoryName(profile)}</div>
-              <div className="mt-1 text-sm text-muted">{fmtFullDate(profile.raceDateISO)}</div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {proj.projectedSec > 0 && (
-        <Section title="Race projection">
-          <div className="flex items-stretch">
-            <div className="flex-1 px-4 py-3.5">
-              <div className="eyebrow text-[0.66rem]">Projected finish</div>
-              <div className="mt-1 font-display text-[1.6rem] font-semibold leading-none tabular-nums text-accent">
-                {fmtClock(proj.projectedSec)}
-              </div>
-            </div>
-            <div className="flex-1 border-l border-line px-4 py-3.5">
-              <div className="eyebrow text-[0.66rem]">At today&apos;s fitness</div>
-              <div className="mt-1 font-display text-[1.6rem] font-semibold leading-none tabular-nums">
-                {fmtClock(proj.currentSec)}
-              </div>
-            </div>
-          </div>
-          <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
-            {proj.gainSec > 60
-              ? `Your remaining training is worth about ${fmtDuration(proj.gainSec)}. `
-              : "You're close to your projected ceiling for this race. "}
-            {calibrated ? "Recalibrated from your recent sessions." : "Sharpens as we learn from your sessions."}
-          </div>
-        </Section>
-      )}
+      {/* The countdown and the race projection used to sit here, and both are
+          gone (#197 — "too much on one screen"). Neither was this screen's job:
+          Today's hero already shows days-to-go AND the projected finish, and
+          Progress plots the projection as a trend. What a settings screen owes
+          you is what your plan is CONFIGURED as, which is the "Your setup" block
+          below — the race, its date and the countdown now ride on one row there
+          instead of two cards up here. */}
 
       {/* Where finished workouts come from. High in the tab on purpose: it's the
           one-time setup an athlete does early, and App Review must be able to find
@@ -138,7 +86,6 @@ export function ProfileTab() {
 
       <PacesSection paces={paces} unit={unit} />
 
-
       {/* YOUR SETUP, VISIBLE (#197 — "can't find things").
           Every one of these lived behind a single row labelled "Edit race &
           training settings", so the only way to check what your plan was built
@@ -146,7 +93,16 @@ export function ProfileTab() {
           the screen and the sheet is where you go to CHANGE one, which is the
           right way round: a settings screen should tell you your settings. */}
       <Section title="Your setup">
-        <Row first k="Race" v={fitness ? "General fitness" : raceCategoryName(profile)} />
+        <Row
+          first
+          k="Race"
+          v={fitness ? "General fitness" : raceCategoryName(profile)}
+          sub={
+            fitness
+              ? "Rolling base → build. Add a race any time to periodise toward it."
+              : `${fmtFullDate(profile.raceDateISO)} · ${daysOut} ${daysOut === 1 ? "day" : "days"} to go`
+          }
+        />
         {!fitness && <Row k="Course" v={terrainLabel(terrainOf(profile))} />}
         <Row k="Experience" v={profile.level.charAt(0).toUpperCase() + profile.level.slice(1)} />
         <Row k="Sessions / week" v={`${profile.workoutsPerWeek}`} />
@@ -330,11 +286,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ k, v, first }: { k: string; v: string; first?: boolean }) {
+function Row({ k, v, sub, first }: { k: string; v: string; sub?: string; first?: boolean }) {
   return (
-    <div className={`flex items-center justify-between px-4 py-3 ${first ? "" : "border-t border-line"}`}>
-      <span className="text-sm text-muted">{k}</span>
-      <span className="text-sm font-semibold tabular-nums">{v}</span>
+    <div className={`flex items-center justify-between gap-3 px-4 py-3 ${first ? "" : "border-t border-line"}`}>
+      <span className="shrink-0 text-sm text-muted">{k}</span>
+      <span className="min-w-0 text-right">
+        <span className="block text-sm font-semibold tabular-nums">{v}</span>
+        {sub && <span className="mt-0.5 block text-xs text-muted">{sub}</span>}
+      </span>
     </div>
   );
 }
