@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
 import { apiComment, apiDeleteComment, apiFollow, apiKudos, apiModerate, apiSocial } from "@/lib/api";
-import { FeedCard, FeedItem, SocialPayload } from "@/lib/social";
-import { daysBetween } from "@/lib/dates";
+import { FeedItem, SocialPayload } from "@/lib/social";
+import { dayIndexOf, daysBetween } from "@/lib/dates";
 import { DisciplineIcon, Icon } from "./icons";
 import { DISCIPLINE_META } from "@/lib/zones";
 import { Discipline, Unit } from "@/lib/types";
@@ -182,12 +182,38 @@ const COMMENT_MAX_CLIENT = 500;
  * now the League tab, and this renders as a panel inside it (`embedded`), which
  * drops the page header and outer padding the host already provides.
  */
+/**
+ * FRIENDS — rebuilt (#192, "friends tab sucks… we need to completely rethink it").
+ *
+ * What was actually wrong, found by using it with a populated crew rather than by
+ * reading the code:
+ *
+ *  1. THE SAME SESSION APPEARED TWICE, with two different kudos buttons. "Recent
+ *     sessions" listed every session; "Your crew" listed every followed athlete
+ *     with their LATEST session under it. On a real feed "Long Endurance Run"
+ *     rendered seven times on one page. That is squarely my fault: #183 added the
+ *     feed and never retired the cards it superseded.
+ *  2. THE TAB OPENED WITH A FORM. "Add a friend by username" was the first thing
+ *     on screen, above all content, and it only works if you already know
+ *     someone's exact username — the least likely thing anyone came here to do.
+ *  3. YOUR OWN TRAINING LED THE FEED. You have three other tabs for that. Seeing
+ *     your session with its kudos IS the reward loop, but as the headline item it
+ *     just pushes everyone else's below the fold.
+ *  4. 5.2 SCREENS of scroll before any of it was useful.
+ *
+ * So: the crew becomes a compact roster strip (who they are, how they're doing,
+ * one tap to add) and the feed becomes the page — grouped by day so it reads as a
+ * timeline. Each session appears exactly once, in one place, with one set of
+ * actions. Your own sessions stay, because the kudos on them are the payoff, but
+ * only once somebody has actually reacted.
+ */
 export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
   const { today, unit } = useUI();
   const toast = useToast();
   const [data, setData] = useState<SocialPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [addName, setAddName] = useState("");
+  const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -204,7 +230,20 @@ export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
     setBusy(false);
     if (!r.ok) { toast({ text: r.error || "Couldn't update.", tone: "warning" }); return; }
     haptic(on ? "success" : "light");
-    if (on) toast({ text: `Following ${username}.`, tone: "success" });
+    if (on) {
+      toast({ text: `Following ${username}.`, tone: "success" });
+    } else {
+      // Unfollowing is one tap on somebody's face, so it has to be recoverable —
+      // the same act-then-undo contract every other destructive action in the app
+      // uses. Without this a mis-tap silently removed a friend.
+      toast({
+        text: `Unfollowed ${username}.`,
+        tone: "default",
+        actionLabel: "Undo",
+        onAction: () => void follow(username, true),
+        duration: 7000,
+      });
+    }
     load();
   };
 
@@ -213,7 +252,17 @@ export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
     if (!name) return;
     await follow(name, true);
     setAddName("");
+    setAdding(false);
   };
+
+  const crew = data?.feed ?? [];
+  // Your own sessions earn a place once someone has reacted — that's the payoff.
+  // Before that they're just your training, which three other tabs already show.
+  const items = (data?.items ?? []).filter(
+    (i) => !i.isSelf || i.kudos > 0 || i.comments.length > 0,
+  );
+  const days = groupByDay(items, today);
+  const hasCrew = crew.length > 0;
 
   return (
     <div
@@ -227,28 +276,53 @@ export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
         </div>
       )}
 
-      {/* add a friend */}
-      <div className="flex gap-2">
-        <input
-          className="input flex-1"
-          placeholder="Add a friend by username"
-          autoCapitalize="none"
-          autoCorrect="off"
-          value={addName}
-          onChange={(e) => setAddName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-        />
-        <button onClick={add} disabled={busy || !addName.trim()} className="btn btn-primary px-5 py-3 text-sm disabled:opacity-40">Add</button>
-      </div>
+      {/* THE ROSTER — who your crew is, at a glance, with adding folded behind a
+          "+" instead of a text box occupying the top of the page. */}
+      {hasCrew && (
+        <div className="no-scrollbar -mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+          {crew.map((c) => (
+            <button
+              key={c.username}
+              onClick={() => follow(c.username, false)}
+              className="flex w-[4.2rem] shrink-0 flex-col items-center gap-1"
+              aria-label={`Unfollow ${c.username}`}
+            >
+              <span className="relative">
+                <Avatar name={c.username} />
+                {c.streak >= 2 && (
+                  <span className="absolute -bottom-0.5 -right-1 inline-flex items-center gap-px rounded-full bg-surface px-1 py-px text-[0.6rem] text-accent">
+                    {/* capped: a long streak is real, but four digits blow the badge
+                        off the avatar it's pinned to */}
+                    <Icon name="flame" size={9} /><span className="tabular-nums">{c.streak > 99 ? "99+" : c.streak}</span>
+                  </span>
+                )}
+              </span>
+              <span className="w-full truncate text-center text-[0.68rem] text-muted">{c.username}</span>
+            </button>
+          ))}
+          <button
+            onClick={() => setAdding((v) => !v)}
+            aria-label="Add a friend"
+            className="flex w-[4.2rem] shrink-0 flex-col items-center gap-1"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full border border-dashed border-line text-muted">＋</span>
+            <span className="text-[0.68rem] text-muted">Add</span>
+          </button>
+        </div>
+      )}
 
-      {/* race cohort */}
-      {data && data.cohort.count > 0 && (
-        <div className="card-glass animate-fade-up flex items-center gap-3 p-4">
-          <span className="text-accent"><Icon name="target" size={22} /></span>
-          <div className="text-sm">
-            <span className="font-semibold tabular-nums">{data.cohort.count}</span> other{data.cohort.count === 1 ? " athlete is" : " athletes are"} training for
-            {data.cohort.raceName ? <> <span className="font-semibold">{data.cohort.raceName}</span></> : " your race"}.
-          </div>
+      {(adding || !hasCrew) && (
+        <div className="flex gap-2">
+          <input
+            className="input flex-1"
+            placeholder="Add a friend by username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            value={addName}
+            onChange={(e) => setAddName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+          />
+          <button onClick={add} disabled={busy || !addName.trim()} className="btn btn-primary px-5 py-3 text-sm disabled:opacity-40">Add</button>
         </div>
       )}
 
@@ -256,43 +330,44 @@ export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
         <div className="card p-6 text-center text-sm text-muted">Loading your crew…</div>
       ) : (
         <>
-          {/* THE FEED (#183). Sessions, chronological, with what people actually
-              did and room to say something about it — the reason to open the tab. */}
-          {/* `items ?? []`, not `items`, because the OTA bundle and the Railway
-              server deploy INDEPENDENTLY. A bundle carrying this UI can reach a
-              phone before the server that serves the field does, and `.length` on
-              undefined would white-screen the whole tab. Degrades to the old
-              card-only Friends until the server catches up. */}
-          {(data?.items ?? []).length > 0 && (
-            <div className="space-y-2.5">
-              <div className="eyebrow text-[0.72rem]">Recent sessions</div>
-              {(data?.items ?? []).map((it) => (
-                <FeedRow key={`${it.username}:${it.workoutId}`} item={it} today={today} unit={unit} onChanged={load} />
-              ))}
-            </div>
-          )}
-
-          {/* feed — who you follow */}
-          {data && data.feed.length > 0 ? (
-            <div className="space-y-2.5">
-              <div className="eyebrow text-[0.72rem]">Your crew</div>
-              {data.feed.map((c) => (
-                <FriendRow key={c.username} card={c} today={today} onKudos={load} onUnfollow={() => follow(c.username, false)} />
+          {/* THE FEED IS THE PAGE. Grouped by day so it reads as a timeline rather
+              than an undated pile, and each session appears exactly once. */}
+          {days.length > 0 ? (
+            <div className="space-y-5">
+              {days.map(([label, group]) => (
+                <div key={label} className="space-y-2.5">
+                  <div className="eyebrow text-[0.72rem]">{label}</div>
+                  {group.map((it) => (
+                    <FeedRow key={`${it.username}:${it.workoutId}`} item={it} today={today} unit={unit} onChanged={load} />
+                  ))}
+                </div>
               ))}
             </div>
           ) : (
             <div className="card animate-fade-up p-6 text-center">
               <div className="flex justify-center text-accent"><Icon name="friends" size={34} /></div>
-              <div className="mt-2 font-display font-semibold">Build your crew</div>
-              <p className="mx-auto mt-1 max-w-[17rem] text-sm text-muted">Add a friend by username, or follow someone training for your race below.</p>
+              <div className="mt-2 font-display font-semibold">{hasCrew ? "Nothing logged yet" : "Build your crew"}</div>
+              <p className="mx-auto mt-1 max-w-[17rem] text-sm text-muted">
+                {hasCrew
+                  ? "When your crew trains, their sessions land here."
+                  : "Follow someone training for your race, or add a friend by username."}
+              </p>
             </div>
           )}
 
-          {/* suggestions */}
-          {data && data.suggestions.length > 0 && (
+          {/* Suggestions earn their place only while the crew is small — once you
+              have people, this is just a list of strangers under your friends. */}
+          {data && data.suggestions.length > 0 && crew.length < 5 && (
             <div className="space-y-2.5">
               <div className="eyebrow text-[0.72rem]">Athletes to follow</div>
-              {data.suggestions.map((c) => (
+              {data.cohort.count > 0 && (
+                <p className="text-xs text-muted">
+                  <span className="font-semibold tabular-nums text-foreground">{data.cohort.count}</span> other
+                  {data.cohort.count === 1 ? " athlete is" : " athletes are"} training for
+                  {data.cohort.raceName ? ` ${data.cohort.raceName}` : " your race"}.
+                </p>
+              )}
+              {data.suggestions.slice(0, 5).map((c) => (
                 <div key={c.username} className="card flex items-center gap-3 p-3.5">
                   <Avatar name={c.username} />
                   <div className="min-w-0 flex-1">
@@ -312,65 +387,23 @@ export function FriendsTab({ embedded = false }: { embedded?: boolean } = {}) {
   );
 }
 
-function FriendRow({ card, today, onKudos, onUnfollow }: { card: FeedCard; today: string; onKudos: () => void; onUnfollow: () => void }) {
-  const [kudos, setKudos] = useState(card.latest?.kudos ?? 0);
-  const [mine, setMine] = useState(card.latest?.kudosedByMe ?? false);
-  const [busy, setBusy] = useState(false);
-
-  const toggleKudos = async () => {
-    if (!card.latest) return;
-    const next = !mine;
-    setMine(next);
-    setKudos((k) => k + (next ? 1 : -1));
-    setBusy(true);
-    haptic(next ? "success" : "light");
-    const r = await apiKudos(card.username, card.latest.workoutId, next);
-    setBusy(false);
-    if (r.ok && typeof r.kudos === "number") setKudos(r.kudos);
-    onKudos();
-  };
-
-  const disc = (card.latest?.discipline ?? "run") as Discipline;
-
-  return (
-    <div className="card p-3.5">
-      <div className="flex items-center gap-3">
-        <Avatar name={card.username} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate font-display font-semibold">{card.username}</span>
-            {card.streak >= 2 && (
-              <span className="inline-flex items-center gap-0.5 text-xs text-muted"><Icon name="flame" size={12} className="text-accent" /><span className="tabular-nums">{card.streak}</span></span>
-            )}
-          </div>
-          <div className="truncate text-xs text-muted">
-            {card.race ? card.race.name : "Training"}{card.race?.daysOut != null ? ` · ${card.race.daysOut}d out` : ""}
-          </div>
-        </div>
-        <button onClick={onUnfollow} className="text-xs text-muted transition hover:text-danger">Following</button>
-      </div>
-
-      {card.latest ? (
-        <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-          <span style={{ color: `var(${DISCIPLINE_META[disc].colorVar})` }}><DisciplineIcon discipline={disc} size={18} /></span>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{card.latest.title}</div>
-            <div className="text-xs text-muted">{ago(today, card.latest.whenISO)}</div>
-          </div>
-          <button
-            onClick={toggleKudos}
-            disabled={busy}
-            className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-sm transition ${mine ? "border-accent text-accent" : "border-line text-muted"}`}
-          >
-            <Icon name="heart" size={15} /> <span className="tabular-nums">{kudos}</span>
-          </button>
-        </div>
-      ) : (
-        <div className="mt-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-xs text-muted">No sessions logged yet — cheer them on soon.</div>
-      )}
-    </div>
-  );
+/** Bucket the feed into days, newest first, so it reads as a timeline. Labels are
+ *  relative near today and a weekday beyond that — "3d ago" on a header is worse
+ *  than "Friday" when you're scanning for when something happened. */
+function groupByDay(items: FeedItem[], today: string): Array<[string, FeedItem[]]> {
+  const out = new Map<string, FeedItem[]>();
+  const sorted = [...items].sort((a, b) => (a.whenISO < b.whenISO ? 1 : -1));
+  for (const it of sorted) {
+    const day = it.whenISO.slice(0, 10);
+    const n = daysBetween(day, today);
+    const label =
+      n <= 0 ? "Today" : n === 1 ? "Yesterday" : n < 7 ? WEEKDAY[dayIndexOf(day)] : `${Math.floor(n / 7)}w ago`;
+    out.set(label, [...(out.get(label) ?? []), it]);
+  }
+  return [...out.entries()];
 }
+
+const WEEKDAY = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function Avatar({ name }: { name: string }) {
   return (
