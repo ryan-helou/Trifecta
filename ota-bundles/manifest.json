@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.18",
+  "latest": "1.0.19",
   "bundles": [
-    {
-      "version": "1.0.16",
-      "sha256": "d0e8e54f4acbad9f5fed63a998d5895f8f5bb87c6a178ce420771c4a49b1ba7a",
-      "size": 780614,
-      "createdAtISO": "2026-08-10T18:04:31.041Z",
-      "comment": "Strava sync no longer bounces you to Today; device syncs re-plan; longer brick runs"
-    },
     {
       "version": "1.0.17",
       "sha256": "68c24283984e80a8b7259d7ffce67e1abb5c2098eeb6ad15d349af6508e0bbca",
@@ -21,6 +14,13 @@
       "size": 782516,
       "createdAtISO": "2026-08-10T19:04:58.453Z",
       "comment": "the coach reaches out — Monday briefing, ease warning, race week"
+    },
+    {
+      "version": "1.0.19",
+      "sha256": "c2315d9a422bd694a4af3e456af68b3e04cd091b5ed82d17e0b74e1963e5de93",
+      "size": 782781,
+      "createdAtISO": "2026-08-10T19:34:48.084Z",
+      "comment": "every prescribed session is a round number; the proactive coach"
     }
   ]
 }
