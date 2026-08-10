@@ -11,6 +11,20 @@ import { SplashScreen } from "@capacitor/splash-screen";
 // bundled WKWebView. This one is the most dangerous of the four — notifyAppReady()
 // tells Capgo the bundle booted successfully, so a hung import here means the call
 // never lands and the OTA layer can roll the bundle back as a failed boot.
+/** The bundle actually running, which is NOT always the one baked into the binary:
+ *  after an OTA the native build number stays put while the web bundle moves. Support
+ *  needs the second number, so both are surfaced (#179). Falls back to the build-time
+ *  version on web, or when the plugin can't answer. */
+export async function currentBundleVersion(): Promise<string | null> {
+  if (!IS_NATIVE) return null;
+  try {
+    const cur = await CapacitorUpdater.current();
+    return cur?.bundle?.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function notifyAppReady(): Promise<void> {
   if (!IS_NATIVE) return;
   try {

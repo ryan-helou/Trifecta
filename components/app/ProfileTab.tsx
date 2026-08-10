@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
@@ -12,6 +12,7 @@ import { InstallHint } from "./InstallHint";
 import { Connections } from "./Connections";
 import { Notifications } from "./Notifications";
 import { Wordmark } from "../Wordmark";
+import { currentBundleVersion } from "@/lib/ota";
 import { legalHref } from "@/lib/runtime";
 import { resolveProfile } from "@/lib/session";
 
@@ -22,6 +23,13 @@ export function ProfileTab() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // The OTA bundle actually booted, which the native build number can't tell you.
+  const [bundleVersion, setBundleVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    currentBundleVersion().then((v) => alive && setBundleVersion(v));
+    return () => { alive = false; };
+  }, []);
   // Belt and braces on top of the repair in AppProvider. This tab used to bail on
   // `!profile`, which rendered NOTHING — a completely blank Profile for anyone whose
   // stored state had a plan but no top-level profile, while every other tab (they read
@@ -154,6 +162,15 @@ export function ProfileTab() {
           </div>
         )}
         <button onClick={logout} className="btn btn-ghost w-full py-3">Log out</button>
+
+        {/* #179 — Profile carried no version at all, which makes any support
+            conversation guesswork. Both numbers matter and they are not the same:
+            after an OTA the native build stays put while the web bundle moves, so
+            "did the update land?" is only answerable with the second one. */}
+        <p className="pt-1 text-center text-[0.7rem] text-faint tabular-nums">
+          Trifecta {process.env.NEXT_PUBLIC_APP_VERSION ?? "—"}
+          {bundleVersion && bundleVersion !== process.env.NEXT_PUBLIC_APP_VERSION ? ` · running ${bundleVersion}` : ""}
+        </p>
 
         {!confirmDelete ? (
           <button onClick={() => setConfirmDelete(true)} className="btn btn-ghost w-full py-3 text-danger">Delete account</button>
