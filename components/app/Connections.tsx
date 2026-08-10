@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiStravaDisconnect, apiStravaStatus, apiStravaSync, StravaStatus } from "@/lib/api";
 import { useApp } from "../AppProvider";
+import { useUI } from "./ui";
 import { healthAvailable, requestHealthAuth, syncAppleHealth } from "@/lib/health";
 import { HEALTH_AUTOSYNC_KEY } from "./useAppleHealthAutoSync";
 import { IS_NATIVE } from "@/lib/runtime";
@@ -145,7 +146,8 @@ type HealthState = "checking" | "ready" | "unavailable";
 
 function AppleHealthCard() {
   const toast = useToast();
-  const { plan, applyPlan } = useApp();
+  const { plan } = useApp();
+  const { actions } = useUI();
   const [state, setState] = useState<HealthState>("checking");
   const [busy, setBusy] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -197,7 +199,7 @@ function AppleHealthCard() {
       // Same bug, and here the reload was pure loss: applyPlan above has ALREADY
       // put the completions on screen, so the reload only threw the athlete back
       // to Today and re-fetched what we were holding (#191).
-      applyPlan(res.plan);
+      actions.applySynced(res.plan);
       toast({ text: `Apple Health — ${res.applied} session${res.applied > 1 ? "s" : ""} marked done.`, tone: "success" });
       return;
     }
@@ -270,7 +272,7 @@ function AppleHealthCard() {
 
 function StravaCard({ hideHeader }: { hideHeader?: boolean } = {}) {
   const toast = useToast();
-  const { applyPlan } = useApp();
+  const { actions } = useUI();
   const [status, setStatus] = useState<StravaStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -317,7 +319,7 @@ function StravaCard({ hideHeader }: { hideHeader?: boolean } = {}) {
       // sync that WORKED dumped you on Today from Profile → Connections. It only
       // fired when matched > 0, which is why it hit "some users": the ones whose
       // sync actually found something. Apply the returned plan instead.
-      if (r.state?.plan) applyPlan(r.state.plan);
+      if (r.state?.plan) actions.applySynced(r.state.plan);
       else refresh();
     } else {
       toast({ text: "Synced — nothing new to match.", tone: "default" });

@@ -297,6 +297,24 @@ function AppShellInner() {
       if (nowDone && w) track("session_completed", { weekIndex: w.weekIndex, discipline: w.discipline, viaCheckin: false });
       respond(setStatus(plan, id, nowDone ? "done" : "planned"), { kind: "logged", workoutId: id });
     },
+    // A watch finished the session, not a tap — but the plan should respond
+    // exactly the same way, and the athlete should see it happen (#189). Device
+    // completions used to go straight to applyPlan, so a Strava sync silently
+    // ticked sessions and left the rest of the plan untouched: the one path where
+    // real training landed and nothing re-planned.
+    applySynced: (next, anchorId) => {
+      // Anchor on the newest session this sync completed, so the responder excludes
+      // it the way it excludes any session the athlete just acted on.
+      const newlyDone = Object.values(next.workouts)
+        .filter((w) => w.status === "done" && plan.workouts[w.id]?.status !== "done")
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const id = anchorId ?? newlyDone[newlyDone.length - 1]?.id;
+      if (!id) {
+        applyPlan(next);
+        return;
+      }
+      respond(next, { kind: "logged", workoutId: id });
+    },
     skip: (id) => {
       const w = plan.workouts[id];
       if (w) track("session_skipped", { weekIndex: w.weekIndex });
