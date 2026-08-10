@@ -25,6 +25,7 @@
 // ---------------------------------------------------------------------------
 
 import { represcribe } from "./prescribe";
+import { respondToEdit } from "./replan";
 import type { Discipline, Plan, Workout } from "./types";
 
 /** What the athlete just did. Distinct cases because the correct answers differ,
@@ -113,19 +114,54 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   // and the responder's job is to adjust the sessions AROUND that choice.
   const re = represcribe(plan, todayISO, undefined, event.workoutId);
 
-  if (!re) {
+  // ...and separately, respond to the EDIT itself. The ledger above only sees
+  // completed work, so a change to a session you haven't done yet is invisible
+  // to it — measured: 35.72% deviation before a swap and 35.72% after. That gap
+  // is what made swapping a run for a bike move nothing but the day, and it is
+  // what respondToEdit closes (Ryan, 2026-08-10).
+  //
+  // Run on the plan the ledger already adjusted, so the two compose instead of
+  // fighting: whichever has something to say, says it, and both can.
+  const afterLedger = re?.plan ?? plan;
+  const edit = respondToEdit(afterLedger, todayISO, event.workoutId);
+
+  // An edit response that changed NOTHING is a note, not an action — "that drops
+  // your only hard session and there's nowhere to move it". It must not be
+  // presented as though the plan did something, and it must not displace a real
+  // ledger change: reporting "no good day left to move it" as the headline while
+  // the plan separately lengthened an unrelated session reads as one incoherent
+  // sentence about two different things. Notes become warnings; actions lead.
+  if (edit && !edit.changedIds.length) warnings.push(edit.headline);
+  const editActed = !!edit && edit.changedIds.length > 0;
+
+  if (!re && !editActed) {
     if (!warnings.length) return null;
     return { plan, horizon: "none", headline: warnings[0], changedIds: [], warnings };
   }
 
-  const changedIds = Object.keys(re.plan.workouts).filter(
-    (id) => re.plan.workouts[id].estDurationSec !== plan.workouts[id]?.estDurationSec,
+  if (!re && editActed) {
+    return {
+      plan: edit!.plan,
+      horizon: "sessions",
+      headline: edit!.headline,
+      changedIds: edit!.changedIds,
+      warnings,
+    };
+  }
+
+  const finalPlan = editActed ? edit!.plan : re!.plan;
+  const changedIds = Object.keys(finalPlan.workouts).filter(
+    (id) =>
+      finalPlan.workouts[id].estDurationSec !== plan.workouts[id]?.estDurationSec ||
+      finalPlan.workouts[id].primaryZone !== plan.workouts[id]?.primaryZone,
   );
 
   return {
-    plan: re.plan,
+    plan: finalPlan,
     horizon: "sessions",
-    headline: re.reason,
+    // The edit is the more immediate thing the athlete just did, so it leads when
+    // both have something to say.
+    headline: editActed ? edit!.headline : re!.reason,
     changedIds,
     warnings,
   };

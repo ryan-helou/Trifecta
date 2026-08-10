@@ -118,8 +118,12 @@ export interface Workout {
    *  time anything rescales it and never overwritten after. Adaptation always
    *  computes from here rather than from the current value, so repeated passes
    *  converge on a fraction of the design instead of ratcheting the session
-   *  down a little more every time the athlete logs something. */
-  prescribed?: { estDurationSec: number; estDistanceM?: number; segments: Segment[] };
+   *  down a little more every time the athlete logs something.
+   *
+   *  `primaryZone` travels with it because re-pacing is the one edit that changes
+   *  intensity: without it a re-paced session reads as though it was always that
+   *  hard, and any comparison against the design silently returns zero. */
+  prescribed?: { estDurationSec: number; estDistanceM?: number; segments: Segment[]; primaryZone?: Zone };
   /** set when a swap had to be shortened to keep the receiving sport's volume
    *  ramping safely — carries the sentence explaining what was capped and why */
   impactCapped?: string;

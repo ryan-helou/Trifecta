@@ -215,6 +215,9 @@ export function repaceSession(
     estDurationSec: w.estDurationSec,
     estDistanceM: w.estDistanceM,
     segments: w.segments,
+    // the zone MUST travel with the baseline: this is the one edit that changes
+    // intensity, so without it the plan cannot tell that quality was lost
+    primaryZone: w.primaryZone,
   };
   const next: Workout = {
     ...w,
