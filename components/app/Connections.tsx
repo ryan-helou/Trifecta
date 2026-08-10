@@ -194,9 +194,11 @@ function AppleHealthCard() {
     setBusy(false);
     setLastSyncedAt(new Date().toISOString());
     if (res && res.applied > 0) {
+      // Same bug, and here the reload was pure loss: applyPlan above has ALREADY
+      // put the completions on screen, so the reload only threw the athlete back
+      // to Today and re-fetched what we were holding (#191).
       applyPlan(res.plan);
       toast({ text: `Apple Health — ${res.applied} session${res.applied > 1 ? "s" : ""} marked done.`, tone: "success" });
-      setTimeout(() => window.location.reload(), 900);
       return;
     }
     // Empty is genuinely ambiguous — no matching workouts, or access declined, and
@@ -268,6 +270,7 @@ function AppleHealthCard() {
 
 function StravaCard({ hideHeader }: { hideHeader?: boolean } = {}) {
   const toast = useToast();
+  const { applyPlan } = useApp();
   const [status, setStatus] = useState<StravaStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -308,7 +311,14 @@ function StravaCard({ hideHeader }: { hideHeader?: boolean } = {}) {
     }
     if (r.matched && r.matched > 0) {
       toast({ text: `Synced — ${r.matched} session${r.matched > 1 ? "s" : ""} marked done.`, tone: "success" });
-      setTimeout(() => window.location.reload(), 900); // pull the server-side completions into view
+      // #191, reported as "i clicked sync with strava and it brings me back to
+      // Today page". It did — this was a window.location.reload(), which remounts
+      // the app, and the selected tab is in-memory useState<TabKey>("today"). So a
+      // sync that WORKED dumped you on Today from Profile → Connections. It only
+      // fired when matched > 0, which is why it hit "some users": the ones whose
+      // sync actually found something. Apply the returned plan instead.
+      if (r.state?.plan) applyPlan(r.state.plan);
+      else refresh();
     } else {
       toast({ text: "Synced — nothing new to match.", tone: "default" });
       refresh();
