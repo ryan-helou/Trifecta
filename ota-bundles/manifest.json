@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.15",
+  "latest": "1.0.16",
   "bundles": [
-    {
-      "version": "1.0.13",
-      "sha256": "e87672b940d64db3bbf58fadf65bac0e818d9e77b45dad73d4355556a046d6e0",
-      "size": 779704,
-      "createdAtISO": "2026-08-10T14:09:51.856Z",
-      "comment": "the plan responds when you modify a session, not only when you do it"
-    },
     {
       "version": "1.0.14",
       "sha256": "71f64ca7e2577d637fbb2ab696a5fea062be8e8b02c207e2a367ffeb75ec5e42",
@@ -21,6 +14,13 @@
       "size": 780544,
       "createdAtISO": "2026-08-10T17:30:33.732Z",
       "comment": "run glyph redrawn; close button, version row, loading label, AI gate"
+    },
+    {
+      "version": "1.0.16",
+      "sha256": "d0e8e54f4acbad9f5fed63a998d5895f8f5bb87c6a178ce420771c4a49b1ba7a",
+      "size": 780614,
+      "createdAtISO": "2026-08-10T18:04:31.041Z",
+      "comment": "Strava sync no longer bounces you to Today; device syncs re-plan; longer brick runs"
     }
   ]
 }
