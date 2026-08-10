@@ -180,7 +180,16 @@ export async function apiStravaStatus(): Promise<StravaStatus> {
 
 export async function apiStravaSync() {
   const { ok, data } = await jsonFetch("/api/strava/sync", { method: "POST" });
-  return { ok, ...(data as { scanned?: number; matched?: number; error?: string }) };
+  return {
+    ok,
+    ...(data as {
+      scanned?: number;
+      matched?: number;
+      error?: string;
+      /** the plan the sync just wrote — applied directly so no reload is needed (#191) */
+      state?: { profile?: Profile; plan?: Plan } | null;
+    }),
+  };
 }
 
 export async function apiStravaDisconnect() {

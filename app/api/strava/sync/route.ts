@@ -25,7 +25,12 @@ export async function POST(req: NextRequest) {
       if (r.matched && !r.alreadyDone) matched++;
     }
     await store.touchStravaSync(uid);
-    return NextResponse.json({ ok: true, scanned: acts.length, matched });
+    // Return the plan this sync just wrote. The client used to force a full page
+    // reload to see it, which remounts the app and resets the in-memory tab to
+    // "today" — the user tapped Sync on Profile and got bounced to Today (#191).
+    // Handing the state back makes the reload unnecessary.
+    const dv = await store.getDataV(uid);
+    return NextResponse.json({ ok: true, scanned: acts.length, matched, state: dv?.state ?? null });
   } catch {
     return NextResponse.json({ error: "Sync failed. Try again." }, { status: 502 });
   }
