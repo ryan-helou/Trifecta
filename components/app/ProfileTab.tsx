@@ -15,9 +15,11 @@ import { Wordmark } from "../Wordmark";
 import { currentBundleVersion } from "@/lib/ota";
 import { legalHref } from "@/lib/runtime";
 import { resolveProfile } from "@/lib/session";
+import { SLOT_LABEL, deleteRoutine } from "@/lib/routines";
+import { summarise } from "@/lib/strength";
 
 export function ProfileTab() {
-  const { plan, username, profile: storedProfile, logout, deleteAccount, resetPlan } = useApp();
+  const { plan, username, profile: storedProfile, logout, deleteAccount, resetPlan, updateProfile } = useApp();
   const { actions, today, openSettings } = useUI();
   const toast = useToast();
   const [confirmReset, setConfirmReset] = useState(false);
@@ -113,6 +115,34 @@ export function ProfileTab() {
         <Row k="Units" v={unit === "metric" ? "Kilometres" : "Miles"} />
         <ActionRow onClick={openSettings} label="Change any of this" />
       </Section>
+
+      {/* Gym routines you built. Visible here because state the athlete created
+          and can't see or delete is state they will eventually distrust — the
+          same complaint that drove "Your setup" above. */}
+      {!!profile.routines?.length && (
+        <Section title="Your gym routines">
+          {profile.routines.map((r, i) => (
+            <div key={r.slot} className={`flex items-center justify-between gap-3 px-4 py-3 ${i ? "border-t border-line" : ""}`}>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">{r.name}</div>
+                <div className="text-xs text-muted">
+                  {SLOT_LABEL[r.slot]} · {summarise(r.exercises)}
+                </div>
+              </div>
+              <button
+                onClick={() => updateProfile({ ...profile, routines: deleteRoutine(profile.routines, r.slot) })}
+                className="shrink-0 rounded-lg px-2 py-1 text-sm leading-none text-muted transition active:scale-90 hover:text-danger"
+                aria-label={`Delete ${r.name}`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
+            Edit one by changing the sets on a gym session and saving it again.
+          </div>
+        </Section>
+      )}
 
       <Section title="Manage your plan">
         <ActionRow first onClick={recalibrate} label="Recalibrate paces from my sessions" />

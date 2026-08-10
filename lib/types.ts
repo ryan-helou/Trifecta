@@ -81,6 +81,9 @@ export interface Workout {
    *  sessions the athlete logged. See lib/strength.ts for how it reaches the
    *  load model — it does NOT invent a new unit. */
   strengthLog?: StrengthEntry[];
+  /** Which day of the athlete's split this is (#199 follow-up). Absent on plans
+   *  built before routines existed — `slotOf` falls back to the title. */
+  strengthSlot?: StrengthSlot;
   /** the athlete set an explicit intensity for this session (#185). The zone
    *  above has already moved to match — this records what they chose, so the
    *  session can say so and so it can be put back. */
@@ -240,6 +243,23 @@ export interface StrengthEntry {
   sets: StrengthSet[];
 }
 
+/** Which gym day this is, in the athlete's split. Written onto the session by the
+ *  builders in lib/workouts.ts so a saved routine can attach to "every Push day"
+ *  rather than to one dated workout — the plan regenerates, the routine shouldn't. */
+export type StrengthSlot = "full" | "upper" | "lower" | "push" | "pull" | "legs" | "home" | "custom";
+
+/** A gym session the athlete built themselves, saved and reused (#199 follow-up).
+ *  Lives on the PROFILE, not the plan: a rebuild replaces every workout, and
+ *  losing your routine because the plan re-periodised would defeat the point. */
+export interface StrengthRoutine {
+  id: string;
+  name: string;
+  /** The gym day it fills in. One routine per slot — saving again replaces it. */
+  slot: StrengthSlot;
+  exercises: StrengthEntry[];
+  updatedISO?: string;
+}
+
 export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "custom";
 
 export interface StrengthPref {
@@ -341,6 +361,9 @@ export interface Profile {
   maxHR?: number; // bpm (used to estimate LTHR when thresholdHr is absent)
   // extras
   weeklyHoursCap?: number; // athlete-imposed ceiling on weekly hours
+  /** Gym sessions the athlete built themselves, keyed by split slot (#199
+   *  follow-up). Here rather than on the plan so a rebuild can't delete them. */
+  routines?: StrengthRoutine[];
   restDayPreference?: number; // 0=Mon … 6=Sun, a day they'd like off
   longSessionDay?: number; // 0=Mon … 6=Sun, the day with most time for long sessions (default Sat=5)
   focusDiscipline?: Discipline; // a limiter they want to bias toward

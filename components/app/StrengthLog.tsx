@@ -26,8 +26,9 @@
 // ---------------------------------------------------------------------------
 
 import { useMemo, useState } from "react";
-import type { StrengthEntry, Unit, Workout } from "@/lib/types";
+import type { StrengthEntry, StrengthSlot, Unit, Workout } from "@/lib/types";
 import { exerciseHistory, setCount, volumeLoad } from "@/lib/strength";
+import { searchExercises } from "@/lib/exerciseCatalog";
 import { haptic } from "@/lib/haptics";
 
 const LB_PER_KG = 2.20462;
@@ -76,16 +77,28 @@ export function StrengthLog({
   initial,
   history,
   excludeId,
+  slot,
+  routineName,
+  onSaveRoutine,
   unit,
   onChange,
 }: {
-  /** What's already logged for this session, if anything. */
+  /** What's already logged for this session, if anything — or, when nothing is
+   *  logged yet, the athlete's saved routine for this gym day. */
   initial?: StrengthEntry[];
   /** Every workout, for "what did I lift last time". */
   history: Workout[];
   /** The session being edited — excluded from its own history so tonight's sets
    *  aren't offered back as last time's. Absent when logging something unplanned. */
   excludeId?: string;
+  /** Which gym day this is, so suggestions favour today's movements and the
+   *  routine can be saved against it. Absent for an unplanned gym session. */
+  slot?: StrengthSlot | null;
+  /** The routine currently saved for this slot, if any — named in the button so
+   *  it's obvious you're about to replace it rather than add a second one. */
+  routineName?: string | null;
+  /** Save what's on screen as the routine for `slot`. Absent ⇒ no save button. */
+  onSaveRoutine?: (entries: StrengthEntry[]) => void;
   unit: Unit;
   onChange: (entries: StrengthEntry[]) => void;
 }) {
@@ -97,6 +110,13 @@ export function StrengthLog({
   const past = useMemo(() => exerciseHistory(history.filter((w) => w.id !== excludeId)), [history, excludeId]);
   const alreadyIn = new Set(draft.map((e) => e.name.trim().toLowerCase()));
   const suggestions = past.filter((p) => !alreadyIn.has(p.name.toLowerCase())).slice(0, 6);
+
+  // What's offered while typing: the catalog, minus anything already on screen.
+  // The athlete's OWN past lifts are handled by the "Add again" chips below and
+  // deliberately aren't repeated here — two lists of the same names competing
+  // for the same tap is worse than one.
+  const typed = searchExercises(adding, slot ?? undefined).filter((n) => !alreadyIn.has(n.toLowerCase()));
+  const exactlyTyped = typed.some((n) => n.toLowerCase() === adding.trim().toLowerCase());
 
   // One place that writes state, so the parent can never see a stale draft.
   const commit = (next: DraftEntry[]) => {
@@ -262,7 +282,10 @@ export function StrengthLog({
           onKeyDown={(ev) => {
             if (ev.key === "Enter") {
               ev.preventDefault();
-              addExercise(adding);
+              // Enter takes the top suggestion when there is one, so the common
+              // case is "type three letters, hit go" and the name still lands
+              // spelled the way every other session spells it.
+              addExercise(typed[0] ?? adding);
             }
           }}
         />
@@ -274,6 +297,47 @@ export function StrengthLog({
           Add
         </button>
       </div>
+
+      {/* Canonical names, so "bench" and "Bench Press" don't become two lifts
+          with two separate PB histories. Free text still wins if they ignore it —
+          renaming someone's exercise to our nearest guess would be worse. */}
+      {typed.length > 0 && (
+        <div className="mt-1.5 overflow-hidden rounded-xl border border-line bg-surface">
+          {typed.map((name, i) => (
+            <button
+              key={name}
+              onClick={() => addExercise(name)}
+              className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm transition active:bg-surface-2 ${i ? "border-t border-line" : ""}`}
+            >
+              <span>{name}</span>
+              <span className="text-xs text-accent-soft">Add</span>
+            </button>
+          ))}
+          {adding.trim() && !exactlyTyped && (
+            <button
+              onClick={() => addExercise(adding)}
+              className="flex w-full items-center justify-between border-t border-line px-3 py-2.5 text-left text-sm text-muted transition active:bg-surface-2"
+            >
+              <span>Use &ldquo;{adding.trim()}&rdquo;</span>
+              <span className="text-xs text-accent-soft">Add</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Build it once. Saving against the SLOT (not this dated session) is what
+          makes every future Push day open ready to go — see lib/routines.ts. */}
+      {onSaveRoutine && saved.length > 0 && (
+        <button
+          onClick={() => {
+            haptic("success");
+            onSaveRoutine(saved);
+          }}
+          className="mt-2.5 w-full rounded-xl border border-dashed border-accent/45 py-2.5 text-[0.75rem] font-semibold text-accent-soft transition active:scale-[0.98]"
+        >
+          {routineName ? `Update ${routineName}` : "Save as my routine for this day"}
+        </button>
+      )}
     </div>
   );
 }

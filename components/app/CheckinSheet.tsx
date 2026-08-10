@@ -11,6 +11,8 @@ import { Celebration } from "./Celebration";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 import { StrengthLog } from "./StrengthLog";
+import { defaultRoutineName, routineForWorkout, routineFromEntries, slotOf, upsertRoutine } from "@/lib/routines";
+import { useApp } from "../AppProvider";
 
 // A little variety so finishing never feels like the same canned response twice.
 const PRAISE = [
@@ -50,11 +52,18 @@ export function CheckinSheet({
   onClose: () => void;
 }) {
   const { actions, unit } = useUI();
+  const { profile, updateProfile } = useApp();
   const meta = DISCIPLINE_META[workout.discipline];
   const isSwim = workout.discipline === "swim";
   // A gym session has no distance worth recording, so where a run asks "how far?"
   // this asks what was actually lifted (#199). Time still applies to both.
   const isStrength = workout.discipline === "strength";
+  // Which gym day this is, and the routine the athlete built for it. A session
+  // with nothing logged yet opens as their routine — that is the whole point of
+  // building one — while a session already logged opens as what they logged.
+  const slot = isStrength ? slotOf(workout) : null;
+  const routine = isStrength ? routineForWorkout(profile, workout) : null;
+  const prefill = workout.strengthLog?.length ? workout.strengthLog : routine?.exercises;
   // Distance field speaks one consistent unit: raw metres for swim, else the
   // athlete's display unit (km or mi). Label, placeholder, and parse all agree.
   const distUnit = isSwim ? "m" : unit === "imperial" ? "mi" : "km";
@@ -66,7 +75,14 @@ export function CheckinSheet({
   const [showActuals, setShowActuals] = useState(!!(workout.actualDurationSec || workout.actualDistanceM));
   // `undefined` until touched: an untouched sheet must not send the key at all,
   // or re-saving a check-in would wipe a log entered somewhere else.
-  const [strengthLog, setStrengthLog] = useState<StrengthEntry[] | undefined>(undefined);
+  //
+  // EXCEPT when the sheet opened prefilled from a routine. Then what's on screen
+  // is what the athlete is about to say they did, and saving without touching it
+  // has to record it — otherwise building a routine buys you a nice-looking form
+  // that saves nothing, which is the opposite of "don't log every time".
+  const [strengthLog, setStrengthLog] = useState<StrengthEntry[] | undefined>(() =>
+    isStrength && !workout.strengthLog?.length && routine?.exercises.length ? routine.exercises : undefined,
+  );
   const [timeStr, setTimeStr] = useState(workout.actualDurationSec ? fmtClock(workout.actualDurationSec) : "");
   const [distStr, setDistStr] = useState(
     workout.actualDistanceM ? String(isSwim ? workout.actualDistanceM : +fromMeters(workout.actualDistanceM).toFixed(2)) : "",
@@ -199,9 +215,20 @@ export function CheckinSheet({
         {isStrength && (
           <div className="mb-5">
             <StrengthLog
-              initial={workout.strengthLog}
+              initial={prefill}
               history={Object.values(plan.workouts)}
               excludeId={workout.id}
+              slot={slot}
+              routineName={routine?.name}
+              onSaveRoutine={
+                slot && profile
+                  ? (entries) => {
+                      const next = routineFromEntries(slot, routine?.name ?? defaultRoutineName(slot), entries, today);
+                      if (!next) return;
+                      updateProfile({ ...profile, routines: upsertRoutine(profile.routines, next) });
+                    }
+                  : undefined
+              }
               unit={unit}
               onChange={setStrengthLog}
             />
