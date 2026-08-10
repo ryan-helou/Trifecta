@@ -1346,6 +1346,10 @@ function buildNormalWeek(
       estDurationSec: draft.estDurationSec,
       estDistanceM: draft.estDistanceM,
       primaryZone: draft.primaryZone,
+      // Which gym day of the split this is, so a saved routine can find it
+      // (lib/routines.ts). Dropping it here is invisible — `slotOf` falls back
+      // to parsing the title — which is exactly why it's worth carrying.
+      ...(draft.strengthSlot ? { strengthSlot: draft.strengthSlot } : {}),
       status: "planned",
     };
     out[id] = wk;
@@ -1418,6 +1422,10 @@ function buildRaceWeek(
       estDurationSec: Math.min(draft.estDurationSec, 40 * 60),
       estDistanceM: draft.estDistanceM,
       primaryZone: draft.primaryZone,
+      // Which gym day of the split this is, so a saved routine can find it
+      // (lib/routines.ts). Dropping it here is invisible — `slotOf` falls back
+      // to parsing the title — which is exactly why it's worth carrying.
+      ...(draft.strengthSlot ? { strengthSlot: draft.strengthSlot } : {}),
       status: "planned",
     };
     out[id] = wk;

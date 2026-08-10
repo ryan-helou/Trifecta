@@ -9,6 +9,8 @@ import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 import { StrengthLog } from "./StrengthLog";
+import { SLOT_LABEL } from "@/lib/routines";
+import { useApp } from "../AppProvider";
 import { fmtFullDate, addDays } from "@/lib/dates";
 import { parseClock } from "@/lib/format";
 
@@ -52,6 +54,7 @@ const TRAINED = ["Push", "Pull", "Legs", "Upper", "Lower", "Full body", "Chest",
 
 export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: string; onClose: () => void }) {
   const { actions, openCoach, unit } = useUI();
+  const { profile } = useApp();
 
   const [discipline, setDiscipline] = useState<Discipline>("run");
   const [dateISO, setDateISO] = useState(today);
@@ -68,6 +71,11 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
   // ...and what was actually lifted (#199). Same editor as the planned-session
   // check-in, because an unplanned gym session deserves the same record.
   const [strengthLog, setStrengthLog] = useState<StrengthEntry[]>([]);
+  // Which saved routine to start from. An unplanned gym session has no slot of
+  // its own — the athlete says which day it was, and gets their own programme.
+  const [fromRoutine, setFromRoutine] = useState<string | null>(null);
+  const routines = profile?.routines ?? [];
+  const picked = routines.find((r) => r.slot === fromRoutine) ?? null;
 
   const isStrength = discipline === "strength";
   const isSwim = discipline === "swim";
@@ -229,7 +237,35 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
         {/* what was lifted — gym only */}
         {isStrength && (
           <div className="mb-4">
-            <StrengthLog history={Object.values(plan.workouts)} unit={unit} onChange={setStrengthLog} />
+            {routines.length > 0 && (
+              <div className="mb-2">
+                <div className="mb-1.5 eyebrow text-[0.7rem]">Start from a routine</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {routines.map((r) => (
+                    <button
+                      key={r.slot}
+                      onClick={() => { haptic("select"); setFromRoutine(fromRoutine === r.slot ? null : r.slot); }}
+                      className={`rounded-full border px-3 py-1.5 text-[0.72rem] font-semibold transition active:scale-95 ${
+                        fromRoutine === r.slot ? "border-accent bg-accent/10 text-accent" : "border-line bg-surface-2"
+                      }`}
+                    >
+                      {SLOT_LABEL[r.slot]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Remounted per routine (`key`) so picking one actually reloads the
+                editor — the draft is useState-initialised, and without this the
+                chip would highlight while the sets underneath never changed. */}
+            <StrengthLog
+              key={fromRoutine ?? "blank"}
+              initial={picked?.exercises}
+              history={Object.values(plan.workouts)}
+              slot={picked?.slot}
+              unit={unit}
+              onChange={setStrengthLog}
+            />
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import { Discipline, Level, PaceModel, Segment, SessionType, StrengthSplit, Zone } from "./types";
+import { Discipline, Level, PaceModel, Segment, SessionType, StrengthSlot, StrengthSplit, Zone } from "./types";
 import { ZONES } from "./zones";
 
 // ---------------------------------------------------------------------------
@@ -21,6 +21,9 @@ export interface Draft {
   estDurationSec: number;
   estDistanceM?: number;
   primaryZone: Zone;
+  /** Which gym day of the athlete's split this is — carried through to the
+   *  Workout so saved routines can attach to it (lib/routines.ts). */
+  strengthSlot?: StrengthSlot;
 }
 
 const M = (min: number) => Math.round(min * 60);
@@ -768,6 +771,10 @@ function gym(
   purpose: string,
   circuit: string,
   min: number,
+  // Which day of the split this is. Stamped on the session so a saved routine
+  // can attach to "every Push day" instead of to one dated workout, which a
+  // plan rebuild would throw away (lib/routines.ts).
+  slot: StrengthSlot,
   cue = "Leave 1–2 reps in reserve. Control the movement, own each rep.",
 ): Draft {
   const rounds = min >= 35 ? 3 : 2;
@@ -776,6 +783,7 @@ function gym(
     type: "strength",
     title,
     purpose,
+    strengthSlot: slot,
     primaryZone: 3,
     segments: [
       seg({ kind: "warmup", discipline: "strength", zone: 2, durationSec: M(8), description: "8 min dynamic mobility — leg swings, hip openers, band walks" }),
@@ -803,6 +811,7 @@ export function strength(ctx: BuildCtx, min = 35): Draft {
     "In-season strength keeps you durable and powerful — it protects against injury and holds form when fatigue sets in.",
     "goblet squat ×12 · RDL ×12 · step-up ×10/side · push-up ×12 · plank 45s · side plank 30s/side",
     min,
+    "full",
   );
 }
 
@@ -813,6 +822,7 @@ export function strengthLower(ctx: BuildCtx, min = 35): Draft {
     "Strong legs and hips hold your form deep into the bike and run — the antidote to the late-race fade.",
     "back/goblet squat ×8 · Romanian deadlift ×10 · walking lunge ×10/side · single-leg calf raise ×15 · glute bridge ×12",
     min,
+    "lower",
   );
 }
 
@@ -823,6 +833,7 @@ export function strengthUpper(ctx: BuildCtx, min = 35): Draft {
     "A resilient upper body and trunk keep your stroke powerful and your posture honest when fatigue sets in.",
     "push-up ×12 · single-arm row ×12/side · overhead press ×10 · band pull-apart ×15 · front plank 45s",
     min,
+    "upper",
   );
 }
 
@@ -833,6 +844,7 @@ export function strengthPush(ctx: BuildCtx, min = 35): Draft {
     "Pressing strength builds the durable chest, shoulders and triceps that protect your posture on long days.",
     "push-up ×12 · overhead press ×10 · dips ×10 · incline press ×12 · triceps extension ×12",
     min,
+    "push",
   );
 }
 
@@ -843,6 +855,7 @@ export function strengthPull(ctx: BuildCtx, min = 35): Draft {
     "A strong back and pulling chain power your swim catch and keep your shoulders balanced and injury-free.",
     "single-arm row ×12/side · lat pulldown or pull-up ×8 · face pull ×15 · biceps curl ×12 · rear-delt fly ×15",
     min,
+    "pull",
   );
 }
 
@@ -853,6 +866,7 @@ export function strengthLegs(ctx: BuildCtx, min = 35): Draft {
     "Leg day is where cycling power and running durability are forged — the base of a strong finish.",
     "squat ×10 · Romanian deadlift ×10 · split squat ×10/side · step-up ×10/side · calf raise ×15",
     min,
+    "legs",
   );
 }
 
@@ -865,6 +879,7 @@ export function strengthHome(ctx: BuildCtx, min = 35): Draft {
     "No gym needed — bodyweight and a band keep you durable and powerful right at home.",
     "squat ×15 · reverse lunge ×12/side · push-up ×12 · single-leg glute bridge ×12/side · superman ×12 · plank 45s · side plank 30s/side",
     min,
+    "home",
   );
 }
 
@@ -877,6 +892,7 @@ export function strengthCustom(ctx: BuildCtx, min = 35, note?: string): Draft {
     type: "strength",
     title: "Your Strength Session",
     purpose: "Your own resistance plan — we've reserved the time and slotted it clear of your hardest swim, bike and run days.",
+    strengthSlot: "custom",
     primaryZone: 3,
     segments: [
       seg({ kind: "warmup", discipline: "strength", zone: 2, durationSec: M(8), description: "8 min dynamic mobility — leg swings, hip openers, band walks" }),
