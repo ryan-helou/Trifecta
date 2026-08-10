@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.17",
+  "latest": "1.0.18",
   "bundles": [
-    {
-      "version": "1.0.15",
-      "sha256": "40505a27b0318f8a194a6566ec3256e93d4f5d27ec6e597146fc2c6a3e35fa1a",
-      "size": 780544,
-      "createdAtISO": "2026-08-10T17:30:33.732Z",
-      "comment": "run glyph redrawn; close button, version row, loading label, AI gate"
-    },
     {
       "version": "1.0.16",
       "sha256": "d0e8e54f4acbad9f5fed63a998d5895f8f5bb87c6a178ce420771c4a49b1ba7a",
@@ -21,6 +14,13 @@
       "size": 780628,
       "createdAtISO": "2026-08-10T18:21:13.128Z",
       "comment": "Friends rebuilt around the feed"
+    },
+    {
+      "version": "1.0.18",
+      "sha256": "224d78313a0593029d374b7ffdaec65337858931bfc7ba7140f672e08204e21f",
+      "size": 782516,
+      "createdAtISO": "2026-08-10T19:04:58.453Z",
+      "comment": "the coach reaches out — Monday briefing, ease warning, race week"
     }
   ]
 }
