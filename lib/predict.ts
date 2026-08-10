@@ -25,6 +25,34 @@ const LEVEL_GAIN: Record<Level, number> = {
 // Gains scale with weeks left, saturating around a full training block.
 const GAIN_WEEKS = 16;
 
+/**
+ * How much MORE than one build block a long horizon is worth (#196).
+ *
+ * The old model was `min(weeks, 16) / 16` — a hard cap. A 400-day plan therefore
+ * predicted exactly the same improvement as a 16-week one: 9 minutes for an
+ * intermediate 70.3, forever. Ryan: "No way I'll only go down like that 25 mins
+ * in 400 days." He's right; that isn't a conservative estimate, it's a broken one.
+ *
+ * Training adaptation saturates, it doesn't stop — so the curve is exponential
+ * toward a ceiling rather than linear-then-flat. TAU is chosen so the 16-week
+ * answer is UNCHANGED (everything already shipped keeps its number) and longer
+ * horizons keep earning, with each block adding less than the last.
+ *
+ * The ceiling is a multiple of LEVEL_GAIN, so it inherits the level scaling that
+ * is already there: a beginner has far more room than an advanced athlete, and
+ * neither can train their way to a number the model won't state.
+ */
+const GAIN_CEILING_MULT = 4;
+/** Solved so that f(GAIN_WEEKS) === 1: TAU = -16 / ln(1 - 1/4). */
+const GAIN_TAU_WEEKS = -GAIN_WEEKS / Math.log(1 - 1 / GAIN_CEILING_MULT);
+
+/** Fraction of a full build's gain earned by `weeks` of training. 1.0 at 16
+ *  weeks, rising toward GAIN_CEILING_MULT and never reaching it. */
+export function gainMultiplier(weeks: number): number {
+  if (weeks <= 0) return 0;
+  return GAIN_CEILING_MULT * (1 - Math.exp(-weeks / GAIN_TAU_WEEKS));
+}
+
 export interface RaceProjection {
   currentSec: number; // projected finish at today's fitness
   projectedSec: number; // projected finish after completing the plan
@@ -72,7 +100,7 @@ export function projectRace(profile: Profile, fromISO: string = todayISO()): Rac
 
   const course = terrainOf(profile);
   const currentSec = estimateRaceSeconds(paces, profile.level, cat, dist, course);
-  const gainFrac = LEVEL_GAIN[profile.level] * Math.min(weeksToRace, GAIN_WEEKS) / GAIN_WEEKS;
+  const gainFrac = LEVEL_GAIN[profile.level] * gainMultiplier(weeksToRace);
   const projectedSec = estimateRaceSeconds(sharpen(paces, gainFrac), profile.level, cat, dist, course);
 
   return {

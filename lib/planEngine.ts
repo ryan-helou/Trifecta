@@ -386,7 +386,13 @@ function weekSportCounts(
       swim: Math.max(0, Math.round(c.swim * 0.7)),
       bike: Math.max(c.bike > 0 ? 1 : 0, Math.round(c.bike * 0.7)),
       run: Math.max(0, Math.round(c.run * 0.7)),
-      strength: Math.min(c.strength, 1),
+      // Strength is NOT cut in a deload (#194, Ryan's call). A recovery week
+      // exists to drop ENDURANCE volume — the swim/bike/run ×0.7 above is the
+      // deload. Gym frequency is a commitment the athlete made about their week,
+      // and quietly turning "3 times" into 1 read as the app ignoring them.
+      // Doc 01 §4 #4 backs this up: in-season strength is a maintenance dose, and
+      // maintenance is exactly what you keep through a lighter week.
+      strength: c.strength,
     };
   }
   if (phase === "taper") {
@@ -471,6 +477,13 @@ function pickWeekSlots(
   // Still a fraction of race distance — a 90 min brick run is ~25% of an Ironman
   // marathon, which is durability work, not a rehearsal of the whole leg.
   const runOff = brickRunOffMin(cat, phase, idxInPhase, phaseLen);
+
+  // Quality arrives in base only once the athlete has a couple of aerobic weeks
+  // underneath them. Week one of a brand-new plan is the single worst moment to
+  // introduce intensity — it's how beginners get hurt and how a plan earns the
+  // "too spicy" reputation the whole category is fighting (competitor doc §5 #1).
+  const BASE_QUALITY_FROM_WEEK = 2;
+  const baseQualityOk = idxInPhase >= BASE_QUALITY_FROM_WEEK;
 
   // How many of each sport this week — the athlete's per-sport choice, with
   // injuries reducing/substituting volume and light weeks eased off.
@@ -567,6 +580,31 @@ function pickWeekSlots(
   }
   function bikeQualityRole(): Role {
     const cap = mods.bike.capZone;
+    // BASE IS NO LONGER 100% AEROBIC (#195, Ryan's call). Measured before this,
+    // base ran Z2:100% — not one tempo, threshold or interval session, which is
+    // stricter than our own guidance: doc 01 §4 #3 says base is "aerobic +
+    // technique + a little tempo". Sweet spot is the right base-phase quality —
+    // sub-threshold, high aerobic return, low injury cost — and it is what makes
+    // a base block feel like training rather than eight identical rides.
+    //
+    // Deliberately NOT threshold or VO2: those belong to build (§4 #3), and
+    // "too spicy too early" is the exact failure that gets endurance apps blamed
+    // for injuries (competitor doc §5 #1).
+    if (phase === "base" && !recover && cap >= 3 && baseQualityOk) {
+      // Sweet spot is zoned Z4 here (88–94% FTP straddles our Z3/Z4 boundary).
+      // On a low-volume beginner plan that one session is a big share of the
+      // block: olympic/beginner/5 measured 26.9% Z4+ against the 25% rail — the
+      // "too spicy too early" failure, caught by railsRegressed rather than by a
+      // user. Beginners get the same idea one zone down, which is what doc 01 §4
+      // #3 actually asks base for anyway.
+      const beginnerish = p.level === "beginner" || effectiveWorkouts(p) <= 5;
+      // Sweet spot every OTHER base week, and kept short. At 60 min weekly it put
+      // base weeks at 16.8% Z4+ — more than doc 01 §4 #3's "a little tempo", and
+      // enough that base stopped being base. Alternating keeps real power work in
+      // the block while leaving most base weeks aerobic.
+      if (beginnerish || !even) return quality(3, "bike", true, () => W.bikeTempo(ctx, 55), 1.2, 40, 65);
+      return quality(3, "bike", true, () => W.bikeSweetSpot(ctx, 45), 1.3, 40, 55);
+    }
     if (phase === "base" || recover || cap <= 2)
       return quality(3, "bike", false, (min) => W.bikeEndurance(ctx, min), 1.4, 40, 90, true);
     // A zone-3 cap means a niggle. Sweet spot is 88–94% FTP (zoned Z4), so it is
@@ -579,6 +617,10 @@ function pickWeekSlots(
   }
   function runQualityRole(): Role {
     const cap = mods.run.capZone;
+    // Tempo, not threshold — see the note in bikeQualityRole. A Z3 run is the
+    // most that belongs in base, and it's what doc 01 §4 #3 actually asks for.
+    if (phase === "base" && !recover && cap >= 3 && baseQualityOk)
+      return quality(1, "run", true, () => W.runTempo(ctx, 40), 1.2, 30, 55);
     if (phase === "base" || recover || cap <= 2)
       return quality(1, "run", false, (min) => W.runEasy(ctx, min), 1.2, 25, 70, true);
     if (phase === "taper")
