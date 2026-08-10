@@ -89,13 +89,33 @@ for (const c of CASES) {
   if (share != null) ok(share <= BLOCK_HARD_MAX, `${c.name}: block Z4+ ${(share * 100).toFixed(1)}% ≤ ${BLOCK_HARD_MAX * 100}%`);
 }
 {
-  // Base weeks legitimately carry NO Z4+ work, and a per-week 15-25% rail (as
-  // doc 04 §4.1 #12 words it) would fail them. Prove that shape is real, so the
-  // reason the rail is block-level is recorded rather than asserted.
+  // Base weeks sit FAR below a per-week 15–25% rail (as doc 04 §4.1 #12 words
+  // it), so that rail would fail them. Prove the shape is real, so the reason the
+  // rail is block-level is recorded rather than asserted.
+  //
+  // This used to assert base was 0% Z4+ everywhere. That stopped being true with
+  // #195 — base now carries one sweet-spot ride a week for non-beginners, which
+  // is zoned Z4. The POINT of the assertion is unchanged and is what's tested
+  // now: base is nowhere near a 15% per-week floor, so applying one would break
+  // correct plans.
   const plan = generatePlan(profile(), ANCHOR);
   const base = plan.weeks.filter((w) => w.phase === "base" && !w.isRecovery);
-  const zeroHard = base.filter((w) => (weekHardShare(plan, w) ?? 0) === 0);
-  ok(base.length > 0 && zeroHard.length === base.length, `every base week is 0% Z4+ (${zeroHard.length}/${base.length}) — a per-week floor would be wrong`);
+  const shares = base.map((w) => (weekHardShare(plan, w) ?? 0) * 100);
+  ok(base.length > 0, "there are base weeks to measure");
+  // The claim that justifies a BLOCK-level rail is that base weeks vary hugely
+  // and several carry NO Z4+ at all — a per-week 15–25% floor would fail those
+  // outright. That is still true with #195's quality: some base weeks are 0%,
+  // others carry a sweet-spot ride.
+  const zero = shares.filter((pct) => pct === 0).length;
+  ok(zero > 0, `some base weeks carry no Z4+ at all (${zero}/${base.length}) — a per-week floor would fail them`);
+  ok(
+    Math.max(...shares) - Math.min(...shares) > 5,
+    `base weeks vary widely (${Math.min(...shares).toFixed(1)}%–${Math.max(...shares).toFixed(1)}%), which is why the rail is block-level`,
+  );
+  // Deliberately NO ceiling assertion here. rails.ts already documents that doc
+  // 04's per-week number is wrong against the real engine, so inventing one in a
+  // test would re-import the mistake the rail exists to avoid. BLOCK_HARD_MAX is
+  // the guard, and it is asserted above for every archetype.
 }
 {
   // The taper is intensity-dense ON PURPOSE (doc 01 §4 #6: hold intensity, cut

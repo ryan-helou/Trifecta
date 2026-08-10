@@ -904,8 +904,13 @@ export function strengthCustom(ctx: BuildCtx, min = 35, note?: string): Draft {
 }
 
 // Dispatch to the right session for the athlete's chosen split + which strength
-// day of the week this is. Recovery weeks fall back to core/mobility; no gym
-// falls back to the bodyweight home circuit. A "custom" split is honored as-is.
+// day of the week this is. No gym falls back to the bodyweight home circuit. A
+// "custom" split is honored as-is.
+//
+// Recovery weeks used to be swapped wholesale for Core & Mobility (#193). An
+// athlete who asked for a full-body split and got handed hip openers reasonably
+// read that as the plan losing the plot. A deload keeps the SAME session, just
+// shorter — the movements are the point, the volume is what recovers.
 export function strengthFor(
   ctx: BuildCtx,
   split: StrengthSplit,
@@ -915,7 +920,9 @@ export function strengthFor(
   note?: string,
 ): Draft {
   const min = recover ? 25 : 35;
-  if (recover || split === "core") return strengthCore(ctx, min);
+  // Only an explicit "core" split gets the core session. Recovery is expressed
+  // through `min` above, not by replacing the athlete's chosen work.
+  if (split === "core") return strengthCore(ctx, min);
   if (split === "custom") return strengthCustom(ctx, min, note);
   if (home) return strengthHome(ctx, min);
   switch (split) {

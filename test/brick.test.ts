@@ -22,6 +22,7 @@
 
 import { generatePlan, brickRunOffMin } from "../lib/planEngine";
 import { checkRails } from "../lib/rails";
+import { gainMultiplier } from "../lib/predict";
 import type { Plan, Profile, Workout } from "../lib/types";
 
 let checks = 0;
@@ -188,6 +189,94 @@ section("prescriptions land on a 5-minute grid (#187)");
       ok(Math.abs(w.estDurationSec - grid) <= 180, `${rt}/${w.id}: within 3 min of the grid`);
     }
   }
+}
+
+// --- 7. #194/#193 — a deload doesn't quietly cancel your gym -------------
+section("recovery weeks keep the gym frequency you asked for");
+{
+  const withGym = generatePlan(
+    { username: "t", raceType: "half", raceDateISO: d(154), level: "intermediate", workoutsPerWeek: 8,
+      createdAtISO: ANCHOR, perSport: { swim: 2, bike: 3, run: 3 },
+      strength: { enabled: true, daysPerWeek: 3, split: "full" } } as unknown as Profile,
+    ANCHOR,
+  );
+  const rec = withGym.weeks.filter((w) => w.isRecovery);
+  ok(rec.length > 0, "the plan has recovery weeks to check");
+  for (const wk of rec) {
+    const gym = wk.workoutIds.map((id) => withGym.workouts[id]).filter((w) => w?.discipline === "strength");
+    // #194 — asked for 3, deloads used to hand back 1
+    ok(gym.length === 3, `recovery week ${wk.index + 1}: 3 gym sessions, not ${gym.length}`);
+    // #193 — and they're the athlete's chosen split, not a Core & Mobility swap
+    for (const g of gym) {
+      ok(!/core & mobility/i.test(g.title), `recovery week ${wk.index + 1}: "${g.title}" is not a core/mobility substitute`);
+    }
+  }
+  // the deload still deloads — ENDURANCE volume is what drops
+  for (const wk of rec) {
+    const prev = withGym.weeks.find((w) => w.index === wk.index - 1);
+    if (!prev || prev.isRecovery) continue;
+    const endur = (w: typeof wk) =>
+      w.workoutIds.map((id) => withGym.workouts[id]).filter((x) => x && x.discipline !== "rest" && x.discipline !== "strength")
+        .reduce((a, x) => a + x!.estDurationSec, 0);
+    ok(endur(wk) < endur(prev), `recovery week ${wk.index + 1} still cuts endurance volume`);
+  }
+}
+
+// --- 8. #195 — base has quality, and is still overwhelmingly easy ---------
+section("base contains real quality without becoming spicy");
+{
+  for (const [rt, wpw] of ARCH) {
+    for (const lvl of ["beginner", "intermediate", "advanced"] as const) {
+      const p = generatePlan(
+        { username: "t", raceType: rt, raceDateISO: d(154), level: lvl, workoutsPerWeek: wpw, createdAtISO: ANCHOR } as Profile,
+        ANCHOR,
+      );
+      const baseWeeks = p.weeks.filter((w) => w.phase === "base");
+      const sessions = baseWeeks.flatMap((w) => w.workoutIds.map((id) => p.workouts[id]))
+        .filter((w): w is Workout => !!w && w.discipline !== "rest" && w.discipline !== "strength");
+      if (!sessions.length) continue;
+
+      // it exists at all — base used to be 100% Z2
+      ok(sessions.some((w) => w.primaryZone >= 3), `${rt}/${lvl}: base contains some quality`);
+
+      // ...and the 80/20 floor holds. Doc 01 §4 #2 treats dipping under ~75%
+      // easy as a bug, and "too spicy too early" is the category's injury story.
+      const total = sessions.reduce((a, w) => a + w.estDurationSec, 0) || 1;
+      const easy = sessions.filter((w) => w.primaryZone <= 2).reduce((a, w) => a + w.estDurationSec, 0);
+      const easyPct = (100 * easy) / total;
+      ok(easyPct >= 80, `${rt}/${lvl}: base is ${easyPct.toFixed(1)}% easy (floor 80)`);
+
+      // nothing above sweet spot belongs in base — threshold and VO2 are build work
+      for (const w of sessions) {
+        ok(w.primaryZone <= 4, `${rt}/${lvl}: no Z5 in base ("${w.title}")`);
+      }
+      // and the first two base weeks stay purely aerobic
+      const first = baseWeeks.slice(0, 2).flatMap((w) => w.workoutIds.map((id) => p.workouts[id]))
+        .filter((w): w is Workout => !!w && w.discipline !== "rest" && w.discipline !== "strength");
+      for (const w of first) {
+        ok(w.primaryZone <= 2, `${rt}/${lvl}: week 1-2 of base is aerobic ("${w.title}" Z${w.primaryZone})`);
+      }
+    }
+  }
+}
+
+// --- 9. #196 — a longer runway predicts a bigger improvement -------------
+section("improvement keeps accruing past 16 weeks, with diminishing returns");
+{
+  ok(Math.abs(gainMultiplier(16) - 1) < 0.001, "16 weeks is still exactly one build block (nothing already shipped moves)");
+  ok(gainMultiplier(52) > gainMultiplier(16), "a year beats 16 weeks — the old model capped them equal");
+  ok(gainMultiplier(104) > gainMultiplier(52), "two years beats one");
+  // Diminishing means EQUAL windows add less as you go out. Comparing 16→32
+  // against 32→64 fails for the wrong reason — the second window is twice as
+  // long, so of course it adds more. Same-width windows is the real test.
+  const w1 = gainMultiplier(32) - gainMultiplier(16);
+  const w2 = gainMultiplier(48) - gainMultiplier(32);
+  const w3 = gainMultiplier(64) - gainMultiplier(48);
+  ok(w2 < w1 && w3 < w2, `each further 16 weeks adds less (${w1.toFixed(2)} → ${w2.toFixed(2)} → ${w3.toFixed(2)})`);
+  ok(gainMultiplier(0) === 0, "no runway, no projected gain");
+  // bounded — it can never promise the impossible
+  for (const w of [200, 500, 5000]) ok(gainMultiplier(w) < 4.001, `${w} weeks stays under the ceiling`);
+  ok(gainMultiplier(1) > 0 && gainMultiplier(1) < 0.2, "one week is worth something, but barely");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
