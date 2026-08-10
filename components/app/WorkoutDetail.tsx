@@ -199,7 +199,21 @@ function ModifyPanel({
         </ModifyRow>
       ) : null}
 
-      <ModifyRow label="Sport" hint="Swapped sessions are capped so a swap can't hide a jump in running load.">
+      {/* The hint has to say EASY. `replacementDraft` always builds an easy session
+          of the new sport, so swapping a threshold run for a bike silently drops a
+          Zone 5 session to Zone 2 — you lose the quality, not just the sport. The
+          old panel was headed "Swap for an easy…" and said so; the one-sheet rewrite
+          (#185) dropped that wording and left only the capping note, which is the
+          less important half. Reported by Ryan noticing a swap changed nothing but
+          the day. */}
+      <ModifyRow
+        label="Sport"
+        hint={
+          workout.primaryZone >= 4
+            ? "Swapping gives you an EASY session of that sport — this is a hard session, so its quality is lost, not moved. Capped too, so a swap can't hide a jump in running load."
+            : "Swapping gives you an easy session of that sport, capped so it can't hide a jump in running load."
+        }
+      >
         {sports.map((d) => (
           <button
             key={d}
