@@ -92,6 +92,15 @@ export function effectiveRpe(w: Workout, lthr: number | null): { rpe: number; so
   if (typeof w.rpe === "number") return { rpe: w.rpe, source: "rpe" };
   if (lthr && w.actuals?.avgHr) return { rpe: hrRpe(w.actuals.avgHr, lthr), source: "hr" };
   if (w.feel) return { rpe: clampRpe(zoneRpeMid(w.primaryZone) + FEEL_RPE_DELTA[w.feel]), source: "feel" };
+  // A rung that INFERRED effort from the logged sets/reps/weight was built here
+  // for #199 and deliberately removed. Measured, it ranked a 5×5 at 100 kg
+  // (8 sets, 4,180 kg) at RPE 3 and a bodyweight circuit (18 sets) at 6.5 — so a
+  // heavy squat day scored 105 AU against the circuit's 228, and below the 193
+  // the plain zone fallback already gives. Set density separates a circuit from a
+  // strength session but ranks them backwards for systemic cost, and without a
+  // 1RM there is no honest way to price relative intensity. A number that wrong
+  // is worse than the default it replaced, so the gym log reaches the PMC the
+  // same way every other session does: through the RPE the athlete gives it.
   return { rpe: zoneRpeMid(w.primaryZone), source: "zone" };
 }
 

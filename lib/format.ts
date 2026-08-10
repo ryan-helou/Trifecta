@@ -1,6 +1,6 @@
 // Small pure formatters shared across the UI.
 
-import { Segment, Unit, Workout } from "./types";
+import { Segment, StrengthSet, Unit, Workout } from "./types";
 
 const M_PER_MILE = 1609.34;
 
@@ -157,4 +157,29 @@ export function repsSummary(w: Workout): string | null {
   const time = sec < 120 || sec % 60 !== 0 ? `${sec}s` : `${sec / 60}′`;
   const u = child.distanceM ? `${child.distanceM}m` : sec > 0 ? time : "";
   return u ? `${rep.repeat} × ${u}` : `${rep.repeat}×`;
+}
+
+const LB_PER_KG = 2.20462;
+
+/** A lifted weight in the athlete's own unit (#199). Stored in kg always; shown
+ *  in lb for imperial, because nobody in a US gym loads 61.2 kg. */
+export function fmtWeight(kg: number, unit: Unit = "metric"): string {
+  const v = unit === "imperial" ? kg * LB_PER_KG : kg;
+  const r = Math.round(v * 10) / 10;
+  return `${r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)} ${unit === "imperial" ? "lb" : "kg"}`;
+}
+
+/** Sets collapsed the way a lifter says them out loud: "3×8 @ 60 kg, 1×6 @ 70 kg"
+ *  rather than four identical rows. Consecutive identical sets group; a change in
+ *  reps or load starts a new group, so the shape of the session survives. */
+export function fmtSets(sets: StrengthSet[], unit: Unit = "metric"): string {
+  const groups: { n: number; reps: number; weightKg?: number }[] = [];
+  for (const s of sets) {
+    const last = groups[groups.length - 1];
+    if (last && last.reps === s.reps && last.weightKg === s.weightKg) last.n++;
+    else groups.push({ n: 1, reps: s.reps, weightKg: s.weightKg });
+  }
+  return groups
+    .map((g) => `${g.n}×${g.reps}${g.weightKg ? ` @ ${fmtWeight(g.weightKg, unit)}` : ""}`)
+    .join(", ");
 }

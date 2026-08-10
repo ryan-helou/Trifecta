@@ -1,5 +1,5 @@
 import { coachSafeTitle } from "./stravaPrivacy";
-import { Discipline, Feel, Plan, Week, Workout, Zone } from "./types";
+import { Discipline, Feel, Plan, StrengthEntry, Week, Workout, Zone } from "./types";
 import { addDays, dayIndexOf, fromISO, mondayOf } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
@@ -85,7 +85,13 @@ export function logInstead(
 export function logCheckin(
   plan: Plan,
   id: string,
-  entry: { rpe?: number; feel?: Workout["feel"]; actualDurationSec?: number; actualDistanceM?: number },
+  entry: {
+    rpe?: number;
+    feel?: Workout["feel"];
+    actualDurationSec?: number;
+    actualDistanceM?: number;
+    strengthLog?: Workout["strengthLog"];
+  },
 ): Plan {
   const p = clonePlan(plan);
   const w = p.workouts[id];
@@ -101,6 +107,9 @@ export function logCheckin(
     feel: "feel" in entry ? entry.feel : w.feel,
     actualDurationSec: "actualDurationSec" in entry ? entry.actualDurationSec : w.actualDurationSec,
     actualDistanceM: "actualDistanceM" in entry ? entry.actualDistanceM : w.actualDistanceM,
+    // An emptied log clears the field rather than storing `[]`, so "did they log
+    // anything?" stays a single truthiness check everywhere downstream (#199).
+    strengthLog: "strengthLog" in entry ? (entry.strengthLog?.length ? entry.strengthLog : undefined) : w.strengthLog,
   };
   return p;
 }
@@ -119,6 +128,9 @@ export interface LoggedWorkout {
   rpe?: number;
   feel?: Feel;
   note?: string;
+  /** Sets/reps/weight for a gym session (#199) — an unplanned lift deserves the
+   *  same record as a planned one, or the log only works when the plan predicted it. */
+  strengthLog?: StrengthEntry[];
 }
 
 export type LogOutcome = "ticked" | "adjusted" | "swapped" | "bonus";
@@ -198,6 +210,7 @@ function addLoggedWorkout(plan: Plan, input: LoggedWorkout): Plan {
     feel: input.feel,
     actualDurationSec: input.durationSec,
     actualDistanceM: input.distanceM,
+    strengthLog: input.strengthLog?.length ? input.strengthLog : undefined,
     note: input.note,
   };
   reindexWeeks(p);
@@ -236,6 +249,7 @@ export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
       feel: input.feel,
       actualDurationSec: input.durationSec,
       actualDistanceM: input.distanceM,
+      ...(input.strengthLog ? { strengthLog: input.strengthLog } : {}),
     });
     if (isEquivalent(input, match)) {
       return {
@@ -267,6 +281,7 @@ export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
     feel: input.feel,
     actualDurationSec: input.durationSec,
     actualDistanceM: input.distanceM,
+    ...(input.strengthLog ? { strengthLog: input.strengthLog } : {}),
   });
   return {
     plan: swapped,
