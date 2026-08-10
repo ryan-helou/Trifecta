@@ -530,7 +530,7 @@ function pickWeekSlots(
     ? [swim(2, () => W.swimDryland(ctx), 1.0), swim(4, () => W.swimDryland(ctx), 0.9)]
     : mods.swim.avoid
     ? [easySwim(2, 0.9), easySwim(4, 0.8), easySwim(5, 0.7), easySwim(0, 0.6)]
-    : [swim(2, keySwimBuild, 1.0), swim(4, swim2Build, 1.0), easySwim(4, 0.9), easySwim(2, 0.8), easySwim(5, 0.7), easySwim(0, 0.6)];
+    : [swim(2, keySwimBuild, 1.0, true), swim(4, swim2Build, 1.0, true), easySwim(4, 0.9), easySwim(2, 0.8), easySwim(5, 0.7), easySwim(0, 0.6)];
 
   // ---- assemble: take each sport's chosen count, then strength -------------
   const chosen: Role[] = [
@@ -561,22 +561,30 @@ function pickWeekSlots(
     };
   }
   function easySwim(prefDay: number, w = 0.8): Role {
-    return swim(prefDay, () => (recover || phase === "taper" ? W.swimRecovery(ctx, 900) : W.swimTechnique(ctx)), w);
+    return swim(
+      prefDay,
+      (min) => (recover || phase === "taper" ? W.swimRecovery(ctx, 900) : W.swimTechnique(ctx, min)),
+      w,
+      true,
+    );
   }
 
   // ---- injury-aware key sessions ------------------------------------------
-  function keySwimBuild(): Draft {
+  // A threshold/CSS set and an open-water swim are STRUCTURED — their shape is the
+  // session, and stretching them to fill a budget would change what they train.
+  // Technique and endurance carry the volume, so those are the two that move (#202).
+  function keySwimBuild(min: number): Draft {
     const cap = mods.swim.capZone;
-    if (phase === "base" || recover || cap < 3) return W.swimTechnique(ctx);
+    if (phase === "base" || recover || cap < 3) return W.swimTechnique(ctx, min);
     if (phase === "peak") return W.swimOpenWater(ctx);
     if (phase === "taper") return W.swimRecovery(ctx, 1000);
-    if (cap < 4) return W.swimEndurance(ctx, 1400);
+    if (cap < 4) return W.swimEndurance(ctx, W.swimMainMetersFor(ctx, min));
     return W.swimThreshold(ctx);
   }
-  function swim2Build(): Draft {
+  function swim2Build(min: number): Draft {
     const cap = mods.swim.capZone;
     if (cap >= 4 && (phase === "peak" || phase === "taper")) return W.swimThreshold(ctx);
-    return W.swimEndurance(ctx, 1200);
+    return W.swimEndurance(ctx, W.swimMainMetersFor(ctx, min));
   }
   function bikeQualityRole(): Role {
     const cap = mods.bike.capZone;
@@ -662,14 +670,14 @@ function pickWeekSlots(
   ): Role {
     return { prefDay: day, discipline: disc, hard, scalable, weight, minMin, maxMin, build };
   }
-  function swim(prefDay: number, build: (min: number) => Draft, weight: number): Role {
+  function swim(prefDay: number, build: (min: number) => Draft, weight: number, scalable = false): Role {
     // Hardness has to reflect what the builder actually produces. Swim roles used to
     // be unconditionally `hard: false`, so a CSS threshold set (Z4) or a speed set
     // (Z5) was invisible to the scheduler's hard-day rules — which is exactly why
     // "CSS Threshold Set" dominated the measured back-to-back-hard pairs. Builders
     // are pure, so evaluating one here to read its zone is safe and cheap.
     const hard = build(60).primaryZone >= 4;
-    return { prefDay, discipline: "swim", hard, scalable: false, weight, minMin: 30, maxMin: 60, build };
+    return { prefDay, discipline: "swim", hard, scalable, weight, minMin: 25, maxMin: 60, build };
   }
 }
 

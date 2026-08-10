@@ -20,6 +20,7 @@ import { assessAdaptation, weekProgress, type AdaptationSuggestion } from "@/lib
 import { calibrationDue } from "@/lib/calibrate";
 import { computeStreak } from "@/lib/stats";
 import { formStateFor } from "@/lib/load";
+import { insightFor } from "@/lib/insight";
 import { DISCIPLINE_META } from "@/lib/zones";
 import { fmtDuration, fmtDistance } from "@/lib/format";
 import { creditedSeconds } from "@/lib/credit";
@@ -81,6 +82,21 @@ export function TodayTab() {
   const doneToday = todays.filter((w) => w.status === "done" || w.status === "swapped");
   const next = upcomingAfter(plan, today, 1)[0];
 
+  // #200 — Ryan: "when I open the app the first thing I see is what I did today.
+  // Congrats you did the bike today... you can tell me what's next."
+  //
+  // Once there's nothing left to do today, leading with a session the athlete
+  // just finished is reporting their own input back at them. The hero becomes
+  // the NEXT session instead, today's work collapses to one confirmation line,
+  // and one true insight rides underneath (his choice: next + one insight).
+  //
+  // A skipped session does NOT count as settled — that day still has an open
+  // decision, and quietly moving on would hide it.
+  const nothingLeftToday =
+    todays.length > 0 && todays.every((w) => w.status === "done" || w.status === "swapped");
+  const lookAhead = nothingLeftToday && !!next;
+  const insight = lookAhead ? insightFor(plan, today) : null;
+
   const prompt = pickPrompt({
     plan,
     profile,
@@ -113,11 +129,23 @@ export function TodayTab() {
 
       {/* --- THE ONE THING ------------------------------------------------ */}
       <div className="animate-fade-up">
-        {hero ? <TodayHero workout={hero} /> : <RestCard word={form?.word} />}
+        {lookAhead ? (
+          <NextUpHero
+            workout={next}
+            today={today}
+            doneCount={doneToday.length}
+            insight={insight?.text ?? null}
+            onOpen={() => openWorkout(next.id)}
+          />
+        ) : hero ? (
+          <TodayHero workout={hero} />
+        ) : (
+          <RestCard word={form?.word} />
+        )}
       </div>
 
       {/* any extra sessions today, compact and clearly secondary */}
-      {rest.length > 0 && (
+      {rest.length > 0 && !lookAhead && (
         <div className="animate-fade-up space-y-2" style={{ animationDelay: "40ms" }}>
           <div className="eyebrow text-[0.7rem]">Also today</div>
           {rest.map((w) => (
@@ -144,7 +172,8 @@ export function TodayTab() {
       )}
 
       {/* --- up next ------------------------------------------------------- */}
-      {next && (
+      {/* Hidden when the hero IS the next session, or the same card renders twice. */}
+      {next && !lookAhead && (
         <div className="animate-fade-up" style={{ animationDelay: "120ms" }}>
           <div className="mb-2 flex items-baseline justify-between">
             <h2 className="font-display text-[1.05rem] font-semibold">Up next</h2>
@@ -253,6 +282,88 @@ export function TodayTab() {
       {/* overlays — mounted at the screen's top level, outside every animated wrapper */}
       {readyOpen && <ReadinessSheet onClose={() => setReadyOpen(false)} />}
       {formOpen && form && <FormSheet form={form} onClose={() => setFormOpen(false)} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The look-ahead hero (#200): what's NEXT, once today is settled.
+//
+// Same visual weight as TodayHero — it is still the one thing on the screen —
+// but it points forward. Today's finished work is one tick line, not a card:
+// the athlete told US that, so restating it at hero size is the complaint.
+// Underneath, one true insight (lib/insight.ts) so the space says something the
+// athlete didn't already know instead of congratulating them for data entry.
+// ---------------------------------------------------------------------------
+
+function NextUpHero({
+  workout,
+  today,
+  doneCount,
+  insight,
+  onOpen,
+}: {
+  workout: Workout;
+  today: string;
+  doneCount: number;
+  insight: string | null;
+  onOpen: () => void;
+}) {
+  const { unit } = useUI();
+  const meta = DISCIPLINE_META[workout.discipline];
+  const dc = `var(${meta.colorVar})`;
+  const tomorrow = workout.date === addDays(today, 1);
+
+  return (
+    <div className="card relative overflow-hidden p-5">
+      <span aria-hidden className="absolute inset-x-0 top-0 h-[3px]" style={{ background: dc }} />
+
+      {/* Today, acknowledged and then got out of the way. */}
+      {doneCount > 0 && (
+        <div className="mb-3 flex items-center gap-1.5 text-[0.78rem] text-success">
+          <Icon name="check" size={14} />
+          <span>
+            {doneCount === 1 ? "Today's session is done" : `All ${doneCount} of today's sessions are done`}
+          </span>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="eyebrow text-[0.72rem]">
+          {tomorrow ? "Tomorrow" : `${weekdayLong(dayIndexOf(workout.date))} · ${fmtDayMonth(workout.date)}`}
+        </div>
+      </div>
+
+      <button onClick={onOpen} className="mt-1.5 block w-full text-left">
+        <div className="flex items-start gap-3">
+          <span
+            className="mt-0.5 flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[13px]"
+            style={{ background: `color-mix(in oklab, ${dc} 16%, transparent)`, color: dc }}
+          >
+            <DisciplineIcon discipline={workout.discipline} size={26} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-[1.35rem] font-semibold leading-tight">{workout.title}</div>
+            <div className="mt-0.5 text-sm text-muted">
+              {fmtDuration(workout.estDurationSec)}
+              {workout.estDistanceM ? ` · ${fmtDistance(workout.estDistanceM, unit)}` : ""}
+            </div>
+          </div>
+        </div>
+
+        {workout.segments?.length > 0 && (
+          <div className="mt-3.5">
+            <IntervalBar segments={workout.segments} height={30} />
+          </div>
+        )}
+
+        {workout.purpose && <p className="mt-3 text-sm leading-relaxed text-muted">{workout.purpose}</p>}
+      </button>
+
+      {/* One true thing they didn't already know. Absent rather than filler. */}
+      {insight && (
+        <p className="mt-4 border-t border-line/60 pt-3 text-sm leading-relaxed text-foreground/90">{insight}</p>
+      )}
     </div>
   );
 }
