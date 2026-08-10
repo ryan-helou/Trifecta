@@ -297,8 +297,23 @@ export function moveWorkout(plan: Plan, id: string, newDateISO: string): Plan {
 function replacementDraft(ctx: BuildCtx, discipline: Discipline, minutes: number): Draft {
   const m = Math.max(20, Math.round(minutes));
   switch (discipline) {
-    case "swim":
-      return W.swimEndurance(ctx, Math.max(800, Math.round((m * 60 * 1.3) / 100) * 100));
+    case "swim": {
+      // Size the swim by DURATION, using the athlete's own pace.
+      //
+      // This used to be `m * 60 * 1.3` — metres from seconds at 1.3 m/s, which is
+      // 1:17/100m. No age-grouper holds that for an endurance swim, so the
+      // replacement came out far longer than the session it replaced: tapping
+      // "swap → swim" on a 133 min long ride produced a 214 min, 11,000 m swim.
+      // Longer than the ride, and about seven times an Ironman swim leg.
+      //
+      // The swim's total is warm-up + main + cool-down, and `swimEndurance` builds
+      // ~600 m of that scaffolding around the main set, so the main set is the
+      // requested time minus the scaffolding, converted at real CSS pace.
+      const per100 = ctx.paces.swim.cssSecPer100 || 120;
+      const scaffoldM = 600;
+      const mainM = Math.round(((m * 60) / per100) * 100) - scaffoldM;
+      return W.swimEndurance(ctx, Math.max(800, Math.round(mainM / 100) * 100));
+    }
     case "bike":
       return W.bikeEndurance(ctx, m);
     case "run":

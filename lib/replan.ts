@@ -54,7 +54,9 @@ import { railsRegressed } from "./rails";
 import { scaleWorkout } from "./prescribe";
 import { hardDayConflicts } from "./respond";
 import { DISCIPLINE_META, ZONES } from "./zones";
-import type { Plan, Week, Workout, Zone } from "./types";
+import { injuryMods } from "./planEngine";
+import { swapDiscipline } from "./adapt";
+import type { Discipline, Plan, Week, Workout, Zone } from "./types";
 
 /** Volume drift that counts as a real change.
  *
@@ -134,6 +136,120 @@ export interface EditResponse {
   headline: string;
 }
 
+/**
+ * Sessions per sport this week, as designed vs as the plan now stands.
+ *
+ * The THIRD axis, and the one an athlete can most easily exploit. Volume and
+ * quality both survive swapping every run for a ride — the week keeps its hours
+ * and can keep its hard minutes — while the athlete quietly stops running.
+ * Ryan, 2026-08-10: "someone could get away with just biking all the time and
+ * never running."
+ *
+ * A skipped session counts as lost, exactly like a swapped one: skipping every
+ * run is the same hole by a different route.
+ */
+export function sportDrift(plan: Plan, week: Week): Record<string, { designed: number; current: number }> {
+  const out: Record<string, { designed: number; current: number }> = {};
+  const bump = (d: string, key: "designed" | "current") => {
+    out[d] = out[d] ?? { designed: 0, current: 0 };
+    out[d][key]++;
+  };
+  for (const id of week.workoutIds) {
+    const w = plan.workouts[id];
+    if (!w || w.discipline === "rest" || w.discipline === "strength") continue;
+    bump(w.swappedFrom?.discipline ?? w.discipline, "designed");
+    if (w.status === "skipped") continue;
+    bump(w.discipline, "current");
+  }
+  return out;
+}
+
+/**
+ * Put a sport back that the athlete's edits removed — automatically, not as an
+ * offer.
+ *
+ * An offer is a loophole: decline it every week and you have bought yourself a
+ * bike-only block with the plan's blessing. So this acts, and the athlete can
+ * undo it like any other adaptation.
+ *
+ * Volume-neutral: a session of the OVER-represented sport becomes the missing
+ * one. It never adds a session, so the week's hours are untouched.
+ *
+ * Two guards, both non-negotiable:
+ *   - a sport the athlete is injured out of is never restored. `avoid` is set by
+ *     a severe injury, and forcing someone back onto a stress fracture to satisfy
+ *     a sport count is the worst thing this file could do.
+ *   - the conversion goes through `swapDiscipline`, so `swapAllowance` caps it
+ *     against the week's mechanical impact headroom. Restoring runs is exactly
+ *     the direction that can spike bone/tendon load, which is what that rail is
+ *     for (#13).
+ */
+function restoreSport(
+  plan: Plan,
+  week: Week,
+  todayISO: string,
+  exceptId: string,
+): { plan: Plan; id: string; from: Discipline; to: Discipline } | null {
+  const drift = sportDrift(plan, week);
+  const mods = injuryMods(plan.profile);
+
+  const short = Object.entries(drift)
+    .filter(([d, c]) => c.current < c.designed && !(mods as Record<string, { avoid: boolean }>)[d]?.avoid)
+    .sort((a, b) => b[1].designed - b[1].current - (a[1].designed - a[1].current))
+    .map(([d]) => d as Discipline);
+  if (!short.length) return null;
+
+  // A SWAP leaves a surplus behind — you rode instead of running, so bike is over
+  // its design and converting one back is free. A SKIP leaves no surplus: the
+  // session is simply gone. Ryan asked for both to be counteracted, so when there
+  // is no surplus we take the session from whichever sport still has the most,
+  // provided it keeps at least one.
+  //
+  // That trade is deliberate and it is not free: skipping a run and converting a
+  // ride means you end the week a ride short instead of a run short. For a
+  // triathlon it is the right way round — running is the discipline that punishes
+  // lost specificity hardest and can't be bought back late.
+  //
+  // It cannot ping-pong, because a restored sport lands EXACTLY at its design and
+  // never above it, so it is never itself a surplus on the next pass.
+  const strictOver = Object.entries(drift)
+    .filter(([, c]) => c.current > c.designed)
+    .map(([d]) => d);
+  const donors = strictOver.length
+    ? new Set(strictOver)
+    : new Set(
+        Object.entries(drift)
+          .filter(([d, c]) => c.current >= 2 && !short.includes(d as Discipline))
+          .sort((a, b) => b[1].current - a[1].current)
+          .slice(0, 1)
+          .map(([d]) => d),
+      );
+  const over = donors;
+  if (!over.size) return null;
+
+  for (const want of short) {
+    // Prefer converting an EASY session of the surplus sport. Turning a threshold
+    // ride into an easy run would fix the sport count by destroying the week's
+    // quality — trading one hole for another.
+    const pool = candidates(plan, week, todayISO, exceptId)
+      .filter((w) => over.has(w.discipline) && w.discipline !== "brick")
+      .sort((a, b) => a.primaryZone - b.primaryZone);
+    for (const w of pool) {
+      const next = swapDiscipline(plan, w.id, want);
+      const made = next.workouts[w.id];
+      if (!made || made.discipline !== want) continue;
+      // Restoring a sport must never ADD time. swapDiscipline sizes the
+      // replacement from the athlete's pace and rounds to whole blocks, so it can
+      // land a few percent long; this is a relocation, not an excuse to grow the
+      // week, so anything longer than the session it replaces is refused.
+      if (made.estDurationSec > w.estDurationSec) continue;
+      if (railsRegressed(plan, next).length) continue;
+      return { plan: next, id: w.id, from: w.discipline, to: want };
+    }
+  }
+  return null;
+}
+
 /** Sessions in this week the responder may touch: still planned, not today's
  *  edit, not in the past, not race day, and carrying real structure. */
 function candidates(plan: Plan, week: Week, todayISO: string, exceptId?: string): Workout[] {
@@ -167,22 +283,36 @@ export function respondToEdit(plan: Plan, todayISO: string, exceptId: string): E
   const week = plan.weeks.find((w) => w.index === edited.weekIndex);
   if (!week || week.isRaceWeek) return null;
 
-  const drift = weekDrift(plan, week);
+  // 0) SPORT BALANCE FIRST, and automatically. This is the axis an athlete can
+  //    exploit — volume and quality both survive turning every run into a ride —
+  //    so it acts rather than asks, and it runs before the others because putting
+  //    the sport back changes what the quality branch has to work with.
+  let working = plan;
+  const restoredSport = restoreSport(plan, week, todayISO, exceptId);
+  let sportLine: string | null = null;
+  const sportIds: string[] = [];
+  if (restoredSport) {
+    working = restoredSport.plan;
+    sportIds.push(restoredSport.id);
+    sportLine = `That leaves you a ${restoredSport.to} short this week, so one of your ${restoredSport.from} sessions becomes a ${restoredSport.to}.`;
+  }
+
+  const drift = weekDrift(working, week);
 
   // 1) The athlete made the week HARDER than designed — longer, or more
   //    intense. Ease the sessions around it so the week lands where it was
   //    meant to. This is the safety direction, so it acts rather than reports.
   if (drift.volPct > EDIT_VOL_DEADBAND || drift.hardPct > EDIT_HARD_DEADBAND) {
     const excessSec = Math.max(0, drift.currentSec - drift.designedSec);
-    const pool = candidates(plan, week, todayISO, exceptId);
+    const pool = candidates(working, week, todayISO, exceptId);
     const poolSec = pool.reduce((a, w) => a + w.estDurationSec, 0);
     if (!pool.length || poolSec <= 0) return null;
     // Shrink proportionally, so no single session carries the whole correction.
     const factor = Math.max(MAX_EASE, 1 - excessSec / poolSec);
     if (factor >= 0.999) return null;
 
-    const next: Plan = { ...plan, workouts: { ...plan.workouts } };
-    const changedIds: string[] = [];
+    const next: Plan = { ...working, workouts: { ...working.workouts } };
+    const changedIds: string[] = [...sportIds];
     for (const w of pool) {
       // scaleWorkout's factor is relative to the session's ORIGINAL prescription,
       // not to its current length — that's what stops repeated passes ratcheting
@@ -198,14 +328,15 @@ export function respondToEdit(plan: Plan, todayISO: string, exceptId: string): E
       }
     }
     if (!changedIds.length) return null;
-    if (railsRegressed(plan, next).length) return null;
+    if (railsRegressed(working, next).length) return null;
     return {
       plan: next,
       changedIds,
       headline:
-        drift.hardPct > EDIT_HARD_DEADBAND && drift.volPct <= EDIT_VOL_DEADBAND
+        (sportLine ? sportLine + " " : "") +
+        (drift.hardPct > EDIT_HARD_DEADBAND && drift.volPct <= EDIT_VOL_DEADBAND
           ? `That's a harder week than it was built to be, so the ${changedIds.length} session${changedIds.length === 1 ? "" : "s"} around it ease off to make room.`
-          : `That adds ${Math.round(excessSec / 60)} min to the week, so the ${changedIds.length} session${changedIds.length === 1 ? "" : "s"} around it come down to absorb it.`,
+          : `That adds ${Math.round(excessSec / 60)} min to the week, so the ${changedIds.length} session${changedIds.length === 1 ? "" : "s"} around it come down to absorb it.`),
     };
   }
 
@@ -214,33 +345,45 @@ export function respondToEdit(plan: Plan, todayISO: string, exceptId: string): E
   //    same week rather than letting the week quietly become all-aerobic.
   if (drift.hardPct < -EDIT_HARD_DEADBAND) {
     const lostSec = drift.designedHardSec - drift.currentHardSec;
-    const restored = restoreQuality(plan, week, todayISO, exceptId, edited);
+    const restored = restoreQuality(working, week, todayISO, exceptId, edited);
     if (restored) {
-      if (railsRegressed(plan, restored.plan).length) return null;
+      if (railsRegressed(working, restored.plan).length) return null;
       return {
         plan: restored.plan,
-        changedIds: [restored.id],
-        headline: `That was ${Math.round(lostSec / 60)} min of your week's hard work, so ${restored.title} takes it on instead.`,
+        changedIds: [...sportIds, restored.id],
+        headline: sportLine
+          ? `${sportLine} And that was ${Math.round(lostSec / 60)} min of your week's hard work, so ${restored.title} takes it on instead.`
+          : `That was ${Math.round(lostSec / 60)} min of your week's hard work, so ${restored.title} takes it on instead.`,
       };
     }
     // Nowhere to put it. Say so rather than pretending the week is unchanged —
     // losing the only quality session is exactly what an athlete needs told.
     return {
-      plan,
-      changedIds: [],
-      headline: `That drops ${Math.round(lostSec / 60)} min of hard work from this week, and there's no good day left to move it to.`,
+      plan: working,
+      changedIds: sportIds,
+      headline: sportLine
+        ? `${sportLine} The hard work it was carrying has nowhere left to go this week.`
+        : `That drops ${Math.round(lostSec / 60)} min of hard work from this week, and there's no good day left to move it to.`,
     };
   }
 
   // 3) Lighter in volume only. The athlete chose that; handing the time back
   //    somewhere else would be the app arguing with them. Report, don't act.
   if (drift.volPct < -EDIT_VOL_DEADBAND) {
+    const lighter = `This week is now ${Math.abs(Math.round((drift.designedSec - drift.currentSec) / 60))} min lighter than planned.`;
     return {
-      plan,
-      changedIds: [],
-      headline: `This week is now ${Math.abs(Math.round((drift.designedSec - drift.currentSec) / 60))} min lighter than planned. That's fine — nothing else moves.`,
+      plan: working,
+      changedIds: sportIds,
+      // "nothing else moves" is only true when nothing else moved. Saying it
+      // beside a sport restoration that just changed a session is the app
+      // contradicting itself in one sentence.
+      headline: sportLine ? `${sportLine} ${lighter}` : `${lighter} That's fine — nothing else moves.`,
     };
   }
+
+  // Nothing else moved, but the sport swap on its own is a real change worth
+  // reporting — it is the whole point of the automatic restoration.
+  if (restoredSport) return { plan: working, changedIds: sportIds, headline: sportLine! };
 
   return null;
 }

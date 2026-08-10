@@ -34,6 +34,7 @@ import {
   EDIT_VOL_DEADBAND,
   designedOf,
   respondToEdit,
+  sportDrift,
   weekDrift,
 } from "../lib/replan";
 import type { Plan, Profile, Week } from "../lib/types";
@@ -184,32 +185,127 @@ section("relocated quality keeps the week's shape, across every archetype");
           continue;
         }
         relocated++;
-        const id = res.changedIds[0];
-        const was = swapped.workouts[id];
-        const now = res.plan.workouts[id];
-
-        ok(now.estDurationSec === was.estDurationSec, `${wpw}/wk ${id}: relocation is volume-neutral`);
-        ok(now.primaryZone > was.primaryZone, `${wpw}/wk ${id}: the receiver actually got harder`);
-        ok(now.discipline === was.discipline, `${wpw}/wk ${id}: the receiver keeps its own sport`);
-        // the bug this caught: a swim titled "Run Threshold 5×1km"
-        ok(
-          now.title.includes(DISCIPLINE_META[now.discipline].label),
-          `${wpw}/wk ${id}: the title names the sport it actually is ("${now.title}" on a ${now.discipline})`,
-        );
-        ok(id !== w.id, `${wpw}/wk: never relocates onto the session the athlete just edited`);
+        // A response can now carry TWO kinds of change, and they have different
+        // contracts: a SPORT restoration changes discipline (and may resize, since
+        // swapAllowance caps it on impact), a QUALITY relocation keeps the sport and
+        // duration and only raises the zone. Asserting one contract on both is how
+        // this test started failing when sport balance landed.
+        for (const id of res.changedIds) {
+          const was = swapped.workouts[id];
+          const now = res.plan.workouts[id];
+          ok(id !== w.id, `${wpw}/wk: never changes the session the athlete just edited`);
+          ok(
+            now.title.includes(DISCIPLINE_META[now.discipline].label) || now.discipline === was.discipline,
+            `${wpw}/wk ${id}: the title names the sport it actually is ("${now.title}" on a ${now.discipline})`,
+          );
+          if (now.discipline !== was.discipline) {
+            // sport restoration — volume may shrink under the impact cap, never grow
+            ok(now.estDurationSec <= was.estDurationSec, `${wpw}/wk ${id}: a restored sport never adds time`);
+          } else {
+            // quality relocation — volume-neutral, strictly harder
+            ok(now.estDurationSec === was.estDurationSec, `${wpw}/wk ${id}: relocation is volume-neutral`);
+            ok(now.primaryZone > was.primaryZone, `${wpw}/wk ${id}: the receiver actually got harder`);
+          }
+        }
         ok(
           checkRails(res.plan).violations.length <= checkRails(swapped).violations.length,
-          `${wpw}/wk ${id}: introduces no rail violation`,
+          `${wpw}/wk: introduces no rail violation`,
         );
         ok(
           hardDayConflicts(res.plan, today).length <= hardDayConflicts(swapped, today).length,
-          `${wpw}/wk ${id}: never manufactures back-to-back hard days`,
+          `${wpw}/wk: never manufactures back-to-back hard days`,
         );
       }
     }
   }
   ok(relocated > 0, `the relocation path actually runs (${relocated} cases)`);
   ok(reported > 0, `and the "nowhere to put it" path does too (${reported} cases)`);
+}
+
+// --- 5b. SPORT BALANCE: the loophole Ryan named --------------------------
+// "someone could get away with just biking all the time and never running."
+// Volume and quality both survive that — the week keeps its hours and can keep
+// its hard minutes — so this is the axis that actually closes it.
+section("you cannot bike your way out of running");
+{
+  const p = generatePlan(profile(8, { swim: 2, bike: 3, run: 3 }), ANCHOR);
+  const wk = p.weeks.find((w) => !w.isRecovery && !w.isRaceWeek && inWeek(p, w).some((x) => x.primaryZone >= 4))!;
+  const today = wk.startDate;
+  const runsIn = (q: Plan) => sportDrift(q, wkOf(q, wk.index)).run;
+
+  ok(runsIn(p).current === runsIn(p).designed, "the week starts with its designed number of runs");
+
+  // swap EVERY run away, one at a time, and the count must hold
+  let cur: Plan = p;
+  let swaps = 0;
+  for (const id of [...wk.workoutIds]) {
+    const w = cur.workouts[id];
+    if (!w || w.discipline !== "run" || w.status !== "planned") continue;
+    const swapped = swapDiscipline(cur, id, "bike");
+    const res = respondToEdit(swapped, today, id);
+    cur = res?.plan ?? swapped;
+    swaps++;
+    const r = runsIn(cur);
+    ok(r.current >= r.designed, `after ${swaps} run→bike swaps the week still has its runs (${r.current}/${r.designed})`);
+  }
+  ok(swaps > 0, `there were runs to swap (${swaps})`);
+
+  // SKIPPING is the same hole by another route
+  const skipped = setStatus(p, inWeek(p, wk).find((w) => w.discipline === "run" && w.status === "planned")!.id, "skipped");
+  const sres = respondToEdit(skipped, today, inWeek(p, wk).find((w) => w.discipline === "run")!.id);
+  if (sres) {
+    const r = runsIn(sres.plan);
+    ok(r.current >= r.designed, `skipping a run is counteracted too (${r.current}/${r.designed})`);
+  }
+
+  // ...and it settles rather than ping-ponging between sports
+  let settled: Plan = cur;
+  const anyId = inWeek(settled, wkOf(settled, wk.index)).find((w) => w.status === "planned")!.id;
+  for (let i = 0; i < 5; i++) {
+    const res = respondToEdit(settled, today, anyId);
+    ok(!res || res.changedIds.length === 0, `pass ${i + 1}: a settled week stops changing`);
+    settled = res?.plan ?? settled;
+  }
+
+  // A SEVERE injury must outrank the sport count — never force someone back onto
+  // a stress fracture to satisfy a number.
+  const injured = generatePlan(
+    { ...profile(8, { swim: 2, bike: 3, run: 3 }), injuries: [{ disciplines: ["run"], severity: "severe", area: "shin" }] } as unknown as Profile,
+    ANCHOR,
+  );
+  const iwk = injured.weeks.find((w) => w.index === wk.index)!;
+  const irun = inWeek(injured, iwk).find((w) => w.discipline === "run" && w.status === "planned");
+  if (irun) {
+    const res = respondToEdit(swapDiscipline(injured, irun.id, "bike"), iwk.startDate, irun.id);
+    const restoredRun = res?.changedIds.some((id) => res.plan.workouts[id].discipline === "run");
+    ok(!restoredRun, "a severe run injury is never overruled to restore a run");
+  } else {
+    ok(true, "a severe run injury leaves no running in the week to begin with");
+  }
+
+  // Restoring a sport must never ADD time — it is a relocation, not a top-up.
+  // This caught a live bug: swapping a 133 min ride to a swim produced a 214 min,
+  // 11,000 m swim, because replacementDraft sized swims at 1.3 m/s (1:17/100m).
+  for (const [wpw, ps] of ARCHETYPES) {
+    const q = generatePlan(profile(wpw, ps), ANCHOR);
+    for (const w of Object.values(q.workouts)) {
+      if (w.status !== "planned" || w.discipline === "rest") continue;
+      for (const to of ["swim", "bike", "run"] as const) {
+        if (to === w.discipline) continue;
+        const made = swapDiscipline(q, w.id, to).workouts[w.id];
+        if (made.discipline !== to) continue;
+        // Two legitimate reasons a replacement can be longer: rounding to whole
+        // blocks, and a floor — a swim still needs a warm-up and a cool-down, so
+        // a 26 min session becomes a ~35 min swim rather than a pointless one.
+        // Beyond that it's the 1.6× bug: a 133 min ride became a 214 min swim.
+        const MIN_VIABLE_SEC = 36 * 60;
+        ok(
+          made.estDurationSec <= Math.max(w.estDurationSec * 1.15, MIN_VIABLE_SEC),
+          `${wpw}/wk swap ${w.discipline}→${to}: ${Math.round(w.estDurationSec / 60)} min becomes ${Math.round(made.estDurationSec / 60)} min, not wildly more`,
+        );
+      }
+    }
+  }
 }
 
 // --- 6. what it must never touch ------------------------------------------
