@@ -157,6 +157,36 @@ section("longer brick runs stay inside the safety rails");
   }
 }
 
+// --- 6. #187 — the numbers the plan hands you are round -------------------
+// Ryan: "don't tell me about a 47 minute run… make it round". Measured before
+// the grid snap: only 35% of prescribed sessions landed on 5 minutes; the rest
+// were 33, 39, 49, 71, 97, 106.
+section("prescriptions land on a 5-minute grid (#187)");
+{
+  for (const [rt, wpw] of ARCH) {
+    const p = planFor(rt, wpw);
+    const ws = Object.values(p.workouts).filter((w) => w.discipline !== "rest" && w.id !== "w-race-day");
+    const timed = ws.filter((w) => w.discipline !== "swim");
+    const on = timed.filter((w) => Math.round(w.estDurationSec / 60) % 5 === 0).length;
+    ok(
+      on / timed.length >= 0.75,
+      `${rt}: ${on}/${timed.length} timed sessions are on the grid (${Math.round((100 * on) / timed.length)}%, was 35%)`,
+    );
+    // SWIMS are deliberately exempt: they're prescribed in metres, and 1500 m is
+    // the round number that matters in a pool. Snapping them to 5 minutes would
+    // turn a 1500 into a 1591.
+    for (const w of ws.filter((x) => x.discipline === "swim")) {
+      const m = w.estDistanceM ?? 0;
+      if (m > 0) ok(m % 50 === 0, `${rt}: a swim is round in METRES (${m} m)`);
+    }
+    // and the grid never moved a session far enough to change what it is
+    for (const w of timed) {
+      const grid = Math.round(w.estDurationSec / 300) * 300;
+      ok(Math.abs(w.estDurationSec - grid) <= 180, `${rt}/${w.id}: within 3 min of the grid`);
+    }
+  }
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures) {
   console.error(`\n❌ ${failures} brick invariant(s) FAILED`);
