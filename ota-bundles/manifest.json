@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.19",
+  "latest": "1.0.20",
   "bundles": [
-    {
-      "version": "1.0.17",
-      "sha256": "68c24283984e80a8b7259d7ffce67e1abb5c2098eeb6ad15d349af6508e0bbca",
-      "size": 780628,
-      "createdAtISO": "2026-08-10T18:21:13.128Z",
-      "comment": "Friends rebuilt around the feed"
-    },
     {
       "version": "1.0.18",
       "sha256": "224d78313a0593029d374b7ffdaec65337858931bfc7ba7140f672e08204e21f",
@@ -21,6 +14,13 @@
       "size": 782781,
       "createdAtISO": "2026-08-10T19:34:48.084Z",
       "comment": "every prescribed session is a round number; the proactive coach"
+    },
+    {
+      "version": "1.0.20",
+      "sha256": "eea46697fb64189b0117dcf9a58ecb1457596d0e5090b8a8ec20d2a57c8a7651",
+      "size": 784570,
+      "createdAtISO": "2026-08-10T21:37:35.332Z",
+      "comment": "the gym log (#199) and a Profile that stops repeating Today (#197)"
     }
   ]
 }
