@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.13",
+  "latest": "1.0.14",
   "bundles": [
-    {
-      "version": "1.0.11",
-      "sha256": "15f227a9eb856d1a8e083531b60cb33d21b920ca2578ada6c6e629dc17886030",
-      "size": 772466,
-      "createdAtISO": "2026-08-09T14:50:17.600Z",
-      "comment": "run icon, keyboard fix, adjust session length, swap explains itself, coach model id"
-    },
     {
       "version": "1.0.12",
       "sha256": "a27217b3490091d781d189b76abf1e78b678b8511f8ac0770f7d6e5ba9000ab3",
@@ -21,6 +14,13 @@
       "size": 779704,
       "createdAtISO": "2026-08-10T14:09:51.856Z",
       "comment": "the plan responds when you modify a session, not only when you do it"
+    },
+    {
+      "version": "1.0.14",
+      "sha256": "71f64ca7e2577d637fbb2ab696a5fea062be8e8b02c207e2a367ffeb75ec5e42",
+      "size": 780258,
+      "createdAtISO": "2026-08-10T14:43:23.990Z",
+      "comment": "sport balance is enforced on swaps and skips; swim swaps sized correctly"
     }
   ]
 }
