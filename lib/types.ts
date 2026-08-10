@@ -400,6 +400,11 @@ export interface Plan {
   readiness?: Record<string, ReadinessEntry>;
   /** week indices already auto-eased by adaptation, so the banner doesn't re-nag */
   easedWeeks?: number[];
+  /** Proactive-coach messages already delivered, as `messageKey@YYYY-MM-DD`
+   *  (lib/coachTriggers). On the PLAN rather than in localStorage because it
+   *  syncs: otherwise the same Monday briefing greets you again on your iPad,
+   *  which is exactly the repetition the one-a-day rule exists to prevent. */
+  coachSent?: string[];
   /** the day the plan was last realigned around "today" (manual or automatic).
    *  Misses BEFORE this date have already been absorbed into `kept-` history, so
    *  counting them again would make an automatic realign re-fire forever — see

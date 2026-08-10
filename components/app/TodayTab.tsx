@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
+import { CoachNudge } from "./CoachNudge";
 import { SwipeableWorkout } from "./SwipeableWorkout";
 import { WorkoutCard } from "./WorkoutCard";
 import { ReadinessSheet } from "./ReadinessSheet";
@@ -93,6 +94,10 @@ export function TodayTab() {
 
   return (
     <div className="space-y-4 px-4 pb-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}>
+      {/* The proactive coach speaks here, above everything, or not at all (#42).
+          It sits first because a message you have to scroll to isn't proactive. */}
+      <CoachNudge />
+
       {/* --- who + coach ------------------------------------------------- */}
       <div className="flex items-center justify-between gap-3">
         {/* min-w-0 + truncate: without them a long username shoves Coach off the row */}
