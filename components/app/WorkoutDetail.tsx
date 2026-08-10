@@ -5,7 +5,8 @@ import { Discipline, Plan, Segment, Unit, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 import { targetView } from "@/lib/targets";
-import { fmtDistance, fmtDuration, repsSummary } from "@/lib/format";
+import { fmtDistance, fmtDuration, fmtSets, repsSummary } from "@/lib/format";
+import { newPersonalBests, summarise } from "@/lib/strength";
 import { addDays, dayIndexOf, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
@@ -319,6 +320,10 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
   const reps = repsSummary(workout);
   const isRace = workout.id === "w-race-day";
   const done = workout.status === "done";
+  // Which lifts in this session beat everything before it. Computed against the
+  // whole plan minus this session, so the first time you log a lift it reads
+  // "New" rather than claiming a personal best over nothing (#199).
+  const pbs = workout.strengthLog?.length ? newPersonalBests(workout, Object.values(plan.workouts)) : [];
   const swapped = !!workout.swappedFrom;
   // Watch export makes sense for real endurance sessions. (This used to also gate a
   // "start guided session" in-app player; that's gone — #111.)
@@ -459,7 +464,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           )}
 
           {/* how it went — the logged check-in */}
-          {done && (workout.rpe != null || workout.feel || workout.actualDurationSec != null || workout.actualDistanceM != null) && (
+          {done && (workout.rpe != null || workout.feel || workout.actualDurationSec != null || workout.actualDistanceM != null || workout.strengthLog?.length) && (
             <div className="mb-4 rounded-2xl border p-3.5" style={{ borderColor: "color-mix(in oklab, var(--success) 35%, transparent)", background: "color-mix(in oklab, var(--success) 7%, transparent)" }}>
               <div className="eyebrow mb-2 text-[0.72rem]" style={{ color: "var(--success)" }}>How it went</div>
               <div className="flex flex-wrap items-center gap-2">
@@ -471,7 +476,34 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                 {workout.rpe != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">RPE {workout.rpe}</span>}
                 {workout.actualDurationSec != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDuration(workout.actualDurationSec)}</span>}
                 {workout.actualDistanceM != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDistance(workout.actualDistanceM, unit)}</span>}
+                {!!workout.strengthLog?.length && (
+                  <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{summarise(workout.strengthLog)}</span>
+                )}
               </div>
+
+              {/* What was actually lifted, read back (#199). A log you can enter and
+                  never see again is a write-only field, and the reason to keep one
+                  is looking up what you did last time. */}
+              {!!workout.strengthLog?.length && (
+                <div className="mt-2.5 space-y-1 border-t border-line/60 pt-2.5">
+                  {workout.strengthLog.map((e) => {
+                    const pb = pbs.find((p) => p.name.toLowerCase() === e.name.trim().toLowerCase());
+                    return (
+                      <div key={e.name} className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="min-w-0 truncate">
+                          {e.name}
+                          {pb && (
+                            <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide" style={{ color: "var(--accent)", background: "color-mix(in oklab, var(--accent) 15%, transparent)" }}>
+                              {pb.previousKg != null ? "PB" : "New"}
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted">{fmtSets(e.sets, unit)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

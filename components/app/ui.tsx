@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { Discipline, Feel, Plan, ReadinessInput, Unit } from "@/lib/types";
+import { Discipline, Feel, Plan, ReadinessInput, StrengthEntry, Unit } from "@/lib/types";
 import type { CalibrationResult } from "@/lib/calibrate";
 import type { AdaptationSuggestion, LoggedWorkout, LogResult } from "@/lib/adapt";
 
@@ -10,6 +10,9 @@ export interface CheckinEntry {
   feel?: Feel;
   actualDurationSec?: number;
   actualDistanceM?: number;
+  /** What was lifted, for gym sessions (#199). Present only when the athlete
+   *  actually edited it, so a check-in on a run can never blank a gym log. */
+  strengthLog?: StrengthEntry[];
 }
 
 export interface CoachMsg {

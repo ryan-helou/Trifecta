@@ -77,6 +77,10 @@ export interface Workout {
   estDistanceM?: number;
   /** dominant intensity zone, for the calendar dot */
   primaryZone: Zone;
+  /** What was actually lifted (#199). Present only on completed strength
+   *  sessions the athlete logged. See lib/strength.ts for how it reaches the
+   *  load model — it does NOT invent a new unit. */
+  strengthLog?: StrengthEntry[];
   /** the athlete set an explicit intensity for this session (#185). The zone
    *  above has already moved to match — this records what they chose, so the
    *  session can say so and so it can be put back. */
@@ -222,6 +226,20 @@ export interface SportFreq {
  *  on every recovery week, so an athlete who chose a full-body split was handed
  *  hip openers instead, and Ryan's call was to delete it outright rather than
  *  just stop the hijack. Plans stored with split:"core" fall back to "full". */
+/** One working set. `weightKg` is optional because bodyweight work is real work
+ *  — a set of press-ups has reps and no load, and refusing to record it would
+ *  make the log useless to exactly the athletes who train at home. */
+export interface StrengthSet {
+  reps: number;
+  weightKg?: number;
+}
+
+/** One exercise and every set of it done that session. */
+export interface StrengthEntry {
+  name: string;
+  sets: StrengthSet[];
+}
+
 export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "custom";
 
 export interface StrengthPref {

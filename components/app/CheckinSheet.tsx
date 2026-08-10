@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Feel, Plan, Workout, Zone } from "@/lib/types";
+import { Feel, Plan, StrengthEntry, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 import { fmtClock, fmtDistance, parseClock } from "@/lib/format";
@@ -10,6 +10,7 @@ import { Sheet } from "./Sheet";
 import { Celebration } from "./Celebration";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
+import { StrengthLog } from "./StrengthLog";
 
 // A little variety so finishing never feels like the same canned response twice.
 const PRAISE = [
@@ -51,6 +52,9 @@ export function CheckinSheet({
   const { actions, unit } = useUI();
   const meta = DISCIPLINE_META[workout.discipline];
   const isSwim = workout.discipline === "swim";
+  // A gym session has no distance worth recording, so where a run asks "how far?"
+  // this asks what was actually lifted (#199). Time still applies to both.
+  const isStrength = workout.discipline === "strength";
   // Distance field speaks one consistent unit: raw metres for swim, else the
   // athlete's display unit (km or mi). Label, placeholder, and parse all agree.
   const distUnit = isSwim ? "m" : unit === "imperial" ? "mi" : "km";
@@ -60,6 +64,9 @@ export function CheckinSheet({
   const [rpe, setRpe] = useState<number | undefined>(workout.rpe);
   const [feel, setFeel] = useState<Feel | undefined>(workout.feel);
   const [showActuals, setShowActuals] = useState(!!(workout.actualDurationSec || workout.actualDistanceM));
+  // `undefined` until touched: an untouched sheet must not send the key at all,
+  // or re-saving a check-in would wipe a log entered somewhere else.
+  const [strengthLog, setStrengthLog] = useState<StrengthEntry[] | undefined>(undefined);
   const [timeStr, setTimeStr] = useState(workout.actualDurationSec ? fmtClock(workout.actualDurationSec) : "");
   const [distStr, setDistStr] = useState(
     workout.actualDistanceM ? String(isSwim ? workout.actualDistanceM : +fromMeters(workout.actualDistanceM).toFixed(2)) : "",
@@ -85,6 +92,7 @@ export function CheckinSheet({
       feel,
       actualDurationSec: showActuals ? actualDurationSec : undefined,
       actualDistanceM: showActuals ? actualDistanceM : undefined,
+      ...(strengthLog ? { strengthLog } : {}),
     });
     haptic("success");
     onClose();
@@ -186,15 +194,29 @@ export function CheckinSheet({
           </div>
         </div>
 
+        {/* What was lifted — for gym sessions this IS the "what you actually did",
+            so it's open by default rather than hidden behind a disclosure. */}
+        {isStrength && (
+          <div className="mb-5">
+            <StrengthLog
+              initial={workout.strengthLog}
+              history={Object.values(plan.workouts)}
+              excludeId={workout.id}
+              unit={unit}
+              onChange={setStrengthLog}
+            />
+          </div>
+        )}
+
         {/* optional actuals */}
         {!showActuals ? (
           <button onClick={() => setShowActuals(true)} className="text-sm font-semibold text-accent-soft">
-            ＋ Add exact time / distance
+            {isStrength ? "＋ Add exact time" : "＋ Add exact time / distance"}
           </button>
         ) : (
           <div className="animate-fade-up rounded-2xl border border-line bg-surface-2 p-3.5">
             <div className="mb-2 eyebrow text-[0.7rem]">What you actually did</div>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className={`grid gap-2.5 ${isStrength ? "grid-cols-1" : "grid-cols-2"}`}>
               <label className="flex flex-col gap-1">
                 <span className="text-[0.7rem] text-muted">Time</span>
                 <input
@@ -205,6 +227,7 @@ export function CheckinSheet({
                   onChange={(e) => setTimeStr(e.target.value)}
                 />
               </label>
+              {!isStrength && (
               <label className="flex flex-col gap-1">
                 <span className="text-[0.7rem] text-muted">Distance ({distUnit})</span>
                 <input
@@ -215,6 +238,7 @@ export function CheckinSheet({
                   onChange={(e) => setDistStr(e.target.value)}
                 />
               </label>
+              )}
             </div>
           </div>
         )}

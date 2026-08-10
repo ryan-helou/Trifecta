@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { DateField } from "@/components/app/DateField";
-import { Discipline, Feel, Plan, Zone } from "@/lib/types";
+import { Discipline, Feel, Plan, StrengthEntry, Zone } from "@/lib/types";
 import type { LogResult } from "@/lib/adapt";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
+import { StrengthLog } from "./StrengthLog";
 import { fmtFullDate, addDays } from "@/lib/dates";
 import { parseClock } from "@/lib/format";
 
@@ -64,6 +65,9 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
   // asking the wrong question (#121) — "what muscles I hit or what day of the split"
   // is the thing they'd actually tell you, and it's the thing worth reading back later.
   const [trained, setTrained] = useState<string[]>([]);
+  // ...and what was actually lifted (#199). Same editor as the planned-session
+  // check-in, because an unplanned gym session deserves the same record.
+  const [strengthLog, setStrengthLog] = useState<StrengthEntry[]>([]);
 
   const isStrength = discipline === "strength";
   const isSwim = discipline === "swim";
@@ -92,6 +96,7 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
       rpe,
       feel,
       note: trained.length ? trained.join(", ") : undefined,
+      strengthLog: isStrength && strengthLog.length ? strengthLog : undefined,
     });
     haptic("success");
     setResult(res);
@@ -218,6 +223,13 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* what was lifted — gym only */}
+        {isStrength && (
+          <div className="mb-4">
+            <StrengthLog history={Object.values(plan.workouts)} unit={unit} onChange={setStrengthLog} />
           </div>
         )}
 
