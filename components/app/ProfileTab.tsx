@@ -155,78 +155,91 @@ export function ProfileTab() {
 
       <InstallHint />
 
-      <div className="space-y-2">
-        {!confirmReset ? (
-          <button onClick={() => setConfirmReset(true)} className="btn btn-ghost w-full py-3">Start a new plan</button>
-        ) : (
-          <div className="rounded-2xl border border-danger/40 bg-danger/5 p-3">
-            <div className="mb-2 text-sm">This clears your current plan and starts over. Sure?</div>
-            <div className="flex gap-2">
-              <button onClick={resetPlan} className="btn flex-1 py-2.5" style={{ background: "var(--danger)", color: "#fff" }}>Yes, restart</button>
-              <button onClick={() => setConfirmReset(false)} className="btn btn-ghost flex-1 py-2.5">Cancel</button>
+      {/* ACCOUNT + DANGER ZONE (#197).
+          These were three identical ghost buttons in a row — "Start a new plan",
+          "Log out", "Delete account" — two of them destructive and one not, with
+          the version string sandwiched between the last two. Nothing told you
+          which would cost you something (#169 flags the same thing). Log out is
+          now an ordinary action; the two irreversible ones live behind a labelled
+          red boundary you have to cross deliberately. */}
+      <Section title="Account">
+        <ActionRow first onClick={logout} label="Log out" />
+      </Section>
+
+      <div>
+        <div className="eyebrow mb-2 text-[0.72rem] text-danger">Danger zone</div>
+        <div className="card overflow-hidden border-danger/35">
+          {!confirmReset ? (
+            <button
+              onClick={() => setConfirmReset(true)}
+              className="flex w-full items-center justify-between px-4 py-3.5 text-left text-sm transition hover:bg-surface-2"
+            >
+              <span>
+                Start a new plan
+                <span className="mt-0.5 block text-xs text-muted">Clears your current plan and starts over</span>
+              </span>
+              <span className="text-danger">›</span>
+            </button>
+          ) : (
+            <div className="p-3">
+              <div className="mb-2 text-sm">This clears your current plan and starts over. Sure?</div>
+              <div className="flex gap-2">
+                <button onClick={resetPlan} className="btn flex-1 py-2.5" style={{ background: "var(--danger)", color: "#fff" }}>Yes, restart</button>
+                <button onClick={() => setConfirmReset(false)} className="btn btn-ghost flex-1 py-2.5">Cancel</button>
+              </div>
             </div>
-          </div>
-        )}
-        <button onClick={logout} className="btn btn-ghost w-full py-3">Log out</button>
+          )}
 
-        {/* #179 — Profile carried no version at all, which makes any support
-            conversation guesswork. Both numbers matter and they are not the same:
-            after an OTA the native build stays put while the web bundle moves, so
-            "did the update land?" is only answerable with the second one. */}
-        <p className="pt-1 text-center text-[0.7rem] text-faint tabular-nums">
-          Trifecta {process.env.NEXT_PUBLIC_APP_VERSION ?? "—"}
-          {bundleVersion && bundleVersion !== process.env.NEXT_PUBLIC_APP_VERSION ? ` · running ${bundleVersion}` : ""}
-        </p>
-
-        {!confirmDelete ? (
-          <button onClick={() => setConfirmDelete(true)} className="btn btn-ghost w-full py-3 text-danger">Delete account</button>
-        ) : (
-          <div className="rounded-2xl border border-danger/40 bg-danger/5 p-3">
-            <div className="mb-2 text-sm">This permanently erases your account and all your data. This can’t be undone.</div>
-            <div className="flex gap-2">
-              <button
-                disabled={deleting}
-                onClick={async () => {
-                  setDeleting(true);
-                  const err = await deleteAccount();
-                  if (err) {
-                    toast({ text: err, tone: "warning" });
-                    setDeleting(false);
-                    setConfirmDelete(false);
-                  }
-                }}
-                className="btn flex-1 py-2.5"
-                style={{ background: "var(--danger)", color: "#fff" }}
-              >
-                {deleting ? "Deleting…" : "Delete everything"}
-              </button>
-              <button onClick={() => setConfirmDelete(false)} className="btn btn-ghost flex-1 py-2.5">Cancel</button>
+          {!confirmDelete ? (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="flex w-full items-center justify-between border-t border-line px-4 py-3.5 text-left text-sm text-danger transition hover:bg-surface-2"
+            >
+              <span>
+                Delete account
+                <span className="mt-0.5 block text-xs text-muted">Permanently erases your account and all your data</span>
+              </span>
+              <span className="text-danger">›</span>
+            </button>
+          ) : (
+            <div className="border-t border-line p-3">
+              <div className="mb-2 text-sm">This permanently erases your account and all your data. This can&apos;t be undone.</div>
+              <div className="flex gap-2">
+                <button
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true);
+                    const err = await deleteAccount();
+                    if (err) {
+                      toast({ text: err, tone: "warning" });
+                      setDeleting(false);
+                      setConfirmDelete(false);
+                    }
+                  }}
+                  className="btn flex-1 py-2.5"
+                  style={{ background: "var(--danger)", color: "#fff" }}
+                >
+                  {deleting ? "Deleting\u2026" : "Delete forever"}
+                </button>
+                <button onClick={() => setConfirmDelete(false)} className="btn btn-ghost flex-1 py-2.5">Cancel</button>
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* legalHref, not a bare "/privacy": in the bundled app the extensionless path
-            resolves to no file and the tap does nothing at all. See lib/runtime.ts. */}
-        <div className="pt-1 text-center text-xs text-muted">
-          <a href={legalHref("/support")} className="underline">Support</a>
-          <span className="px-2">·</span>
-          <a href={legalHref("/privacy")} className="underline">Privacy</a>
-          <span className="px-2">·</span>
-          <a href={legalHref("/terms")} className="underline">Terms</a>
+          )}
         </div>
       </div>
 
-      <div className="eyebrow pb-4 text-center text-[0.66rem]">
-        <Wordmark /> · your path to the finish line
-      </div>
+      {/* #179 — both numbers matter and they are not the same: after an OTA the
+          native build stays put while the web bundle moves, so "did the update
+          land?" is only answerable with the second. On its own line at the very
+          bottom now, rather than wedged between Log out and Delete account. */}
+      <p className="pb-1 text-center text-[0.7rem] text-faint tabular-nums">
+        Trifecta {process.env.NEXT_PUBLIC_APP_VERSION ?? "\u2014"}
+        {bundleVersion && bundleVersion !== process.env.NEXT_PUBLIC_APP_VERSION ? ` \u00b7 running ${bundleVersion}` : ""}
+      </p>
     </div>
   );
 }
 
-/** Training paces are a power-user surface — most athletes never touch these
- *  numbers, and staring at "Bike FTP · 240 W" without context reads as noise.
- *  Collapse behind "Show" so the tab stays scannable for the mainstream user;
- *  anyone who wants to see or manually override them is one tap away. */
 function PacesSection({ paces, unit }: { paces: NonNullable<ReturnType<typeof useApp>["plan"]>["paces"]; unit: "metric" | "imperial" }) {
   const [open, setOpen] = useState(false);
   return (
