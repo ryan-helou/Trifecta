@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.20",
+  "latest": "1.0.21",
   "bundles": [
-    {
-      "version": "1.0.18",
-      "sha256": "224d78313a0593029d374b7ffdaec65337858931bfc7ba7140f672e08204e21f",
-      "size": 782516,
-      "createdAtISO": "2026-08-10T19:04:58.453Z",
-      "comment": "the coach reaches out — Monday briefing, ease warning, race week"
-    },
     {
       "version": "1.0.19",
       "sha256": "c2315d9a422bd694a4af3e456af68b3e04cd091b5ed82d17e0b74e1963e5de93",
@@ -21,6 +14,13 @@
       "size": 784570,
       "createdAtISO": "2026-08-10T21:37:35.332Z",
       "comment": "the gym log (#199) and a Profile that stops repeating Today (#197)"
+    },
+    {
+      "version": "1.0.21",
+      "sha256": "ec1b862b2737504892afeb513aed0e986450b2e6817c7721552b498dfaee0ef7",
+      "size": 787551,
+      "createdAtISO": "2026-08-10T22:07:54.542Z",
+      "comment": "build a gym routine once, and an exercise catalog to pick from"
     }
   ]
 }
