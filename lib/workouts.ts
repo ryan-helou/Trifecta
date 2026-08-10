@@ -118,22 +118,41 @@ function snapToGrid(segments: Segment[], durationSec: number): Segment[] | null 
   const delta = target - durationSec;
   if (delta === 0 || Math.abs(delta) > GRID_MAX_SHIFT_SEC) return null;
 
-  // The best absorber: the longest plain, non-repeating, duration-based main
-  // block. That's the steady endurance chunk in almost every session, and the one
-  // place three minutes genuinely doesn't matter.
-  let best = -1;
-  let bestSec = 0;
-  segments.forEach((s, i) => {
-    if (s.children?.length || (s.repeat ?? 1) > 1) return;
-    if (s.kind !== "main" || s.durationSec == null) return;
-    if (s.durationSec > bestSec) {
-      bestSec = s.durationSec;
-      best = i;
-    }
-  });
+  // Who absorbs the difference, in order of how little it matters:
+  //
+  //   1. the longest plain steady MAIN block — the endurance chunk, where three
+  //      minutes is genuinely nothing
+  //   2. failing that, the WARM-UP or COOL-DOWN
+  //
+  // The second tier is what makes interval sessions round. Every remaining
+  // off-grid run and ride was a repeat set — "warm up, 4×(8min/3min), spin down"
+  // — with no steady block at all, so the first rule found nothing and 63-minute
+  // Hill Repeats stayed 63. Shaving a rep would change the workout; taking two
+  // minutes off a 15-minute warm-up changes nothing at all.
+  //
+  // Repeat sets and their children are never touched, at either tier.
+  const pick = (want: (s: Segment) => boolean): number => {
+    let idx = -1;
+    let sec = 0;
+    segments.forEach((s, i) => {
+      if (s.children?.length || (s.repeat ?? 1) > 1) return;
+      if (s.durationSec == null || !want(s)) return;
+      if (s.durationSec > sec) {
+        sec = s.durationSec;
+        idx = i;
+      }
+    });
+    return idx;
+  };
+
+  let best = pick((s) => s.kind === "main");
+  if (best < 0) best = pick((s) => s.kind === "warmup" || s.kind === "cooldown");
   if (best < 0) return null;
+  const bestSec = segments[best].durationSec!;
   const nextSec = Math.round(bestSec + delta);
-  if (nextSec < 5 * 60) return null; // don't gut the main set to satisfy the grid
+  // Floor applies whichever tier absorbed it: a 5-minute main block is thin, and
+  // a warm-up under 5 minutes has stopped being a warm-up.
+  if (nextSec < 5 * 60) return null;
 
   return segments.map((s, i) =>
     i === best
