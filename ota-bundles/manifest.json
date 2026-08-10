@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.12",
+  "latest": "1.0.13",
   "bundles": [
-    {
-      "version": "1.0.10",
-      "sha256": "b639085629c06f4e71bc843afe9088b445b060f2d217a3975a1688acda6c560d",
-      "size": 771727,
-      "createdAtISO": "2026-08-07T04:13:51.721Z",
-      "comment": "#123 duplicate sessions fixed + healed; #121 gym-friendly workout logging"
-    },
     {
       "version": "1.0.11",
       "sha256": "15f227a9eb856d1a8e083531b60cb33d21b920ca2578ada6c6e629dc17886030",
@@ -21,6 +14,13 @@
       "size": 778610,
       "createdAtISO": "2026-08-09T23:58:18.215Z",
       "comment": "#182 Form now subtracts · #85 course-aware training · #185 modify by pace · #183 Friends feed + comments · #33 notifications"
+    },
+    {
+      "version": "1.0.13",
+      "sha256": "e87672b940d64db3bbf58fadf65bac0e818d9e77b45dad73d4355556a046d6e0",
+      "size": 779704,
+      "createdAtISO": "2026-08-10T14:09:51.856Z",
+      "comment": "the plan responds when you modify a session, not only when you do it"
     }
   ]
 }
