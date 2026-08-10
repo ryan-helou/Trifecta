@@ -7,6 +7,7 @@ import { useToast } from "./Toast";
 import { fmtPace, fmtPace100, fmtClock, fmtDuration } from "@/lib/format";
 import { fmtFullDate, daysBetween } from "@/lib/dates";
 import { raceCategoryName, isFitnessGoal } from "@/lib/planEngine";
+import { terrainLabel, terrainOf } from "@/lib/terrain";
 import { projectRace } from "@/lib/predict";
 import { InstallHint } from "./InstallHint";
 import { Connections } from "./Connections";
@@ -138,9 +139,27 @@ export function ProfileTab() {
       <PacesSection paces={paces} unit={unit} />
 
 
+      {/* YOUR SETUP, VISIBLE (#197 — "can't find things").
+          Every one of these lived behind a single row labelled "Edit race &
+          training settings", so the only way to check what your plan was built
+          from was to open a sheet and read the controls. Now the answers are on
+          the screen and the sheet is where you go to CHANGE one, which is the
+          right way round: a settings screen should tell you your settings. */}
+      <Section title="Your setup">
+        <Row first k="Race" v={fitness ? "General fitness" : raceCategoryName(profile)} />
+        {!fitness && <Row k="Course" v={terrainLabel(terrainOf(profile))} />}
+        <Row k="Experience" v={profile.level.charAt(0).toUpperCase() + profile.level.slice(1)} />
+        <Row k="Sessions / week" v={`${profile.workoutsPerWeek}`} />
+        <Row
+          k="Gym"
+          v={profile.strength?.enabled ? `${profile.strength.daysPerWeek}× / week` : "Off"}
+        />
+        <Row k="Units" v={unit === "metric" ? "Kilometres" : "Miles"} />
+        <ActionRow onClick={openSettings} label="Change any of this" />
+      </Section>
+
       <Section title="Manage your plan">
-        <ActionRow first onClick={openSettings} label="Edit race & training settings" />
-        <ActionRow onClick={recalibrate} label="Recalibrate paces from my sessions" />
+        <ActionRow first onClick={recalibrate} label="Recalibrate paces from my sessions" />
         {/* "Not feeling 100% — ease this week" lived here and is gone (#198).
             It was a third path to an outcome two better ones already cover: the
             readiness check-in asks the same question on Today and eases in
