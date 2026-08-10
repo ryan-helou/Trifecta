@@ -168,9 +168,12 @@ section("prescriptions land on a 5-minute grid (#187)");
     const ws = Object.values(p.workouts).filter((w) => w.discipline !== "rest" && w.id !== "w-race-day");
     const timed = ws.filter((w) => w.discipline !== "swim");
     const on = timed.filter((w) => Math.round(w.estDurationSec / 60) % 5 === 0).length;
+    // ALL of them, not most. The first pass reached 71–78% and left every
+    // interval session off-grid, because those have no steady block — the
+    // warm-up/cool-down absorbs it instead.
     ok(
-      on / timed.length >= 0.75,
-      `${rt}: ${on}/${timed.length} timed sessions are on the grid (${Math.round((100 * on) / timed.length)}%, was 35%)`,
+      on === timed.length,
+      `${rt}: ${on}/${timed.length} timed sessions are on the grid (was 35%)`,
     );
     // SWIMS are deliberately exempt: they're prescribed in metres, and 1500 m is
     // the round number that matters in a pool. Snapping them to 5 minutes would
