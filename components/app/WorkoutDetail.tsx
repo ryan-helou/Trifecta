@@ -398,10 +398,19 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: `color-mix(in oklab, var(${meta.colorVar}) 18%, transparent)`, color: `var(${meta.colorVar})` }}>
               <DisciplineIcon discipline={workout.discipline} size={24} />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className={`font-display text-xl font-semibold leading-tight ${isRace ? "text-accent" : ""}`}>{workout.title}</h2>
               <div className="text-sm capitalize text-muted">{meta.label} · {workout.type.replace("_", " ")}{reps ? ` · ${reps}` : ""}</div>
             </div>
+            {/* Every other sheet has one; this was the only way out being a swipe,
+                which is exactly the affordance problem (#173). */}
+            <button
+              onClick={close}
+              aria-label="Close"
+              className="-mr-1 shrink-0 self-start p-1 text-muted transition hover:text-foreground"
+            >
+              ✕
+            </button>
           </div>
 
           {/* totals */}

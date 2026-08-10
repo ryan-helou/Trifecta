@@ -60,7 +60,12 @@ export function LoadingAnimation({
     return () => cancelAnimationFrame(raf);
   }, [onDone]);
 
+  // At progress 100 the old formula clamped to the LAST step, so the screen sat at
+  // "100%" still claiming to be "Charting your longest day…" (#175). The final beat
+  // gets its own line instead of reusing work that has already finished.
+  const atEnd = progress >= 99.5;
   const stepIndex = Math.min(steps.length - 1, Math.floor((progress / 100) * steps.length));
+  const stepLabel = atEnd ? "Your plan is ready." : steps[stepIndex];
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
@@ -85,7 +90,7 @@ export function LoadingAnimation({
         </div>
       </div>
       <div key={stepIndex} className="animate-rise mt-5 h-6 text-sm font-medium text-muted">
-        {steps[stepIndex]}
+        {stepLabel}
       </div>
       <div className="mt-10 font-display text-lg font-semibold tracking-tight">
         Building your <Wordmark />

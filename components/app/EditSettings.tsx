@@ -85,6 +85,10 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   // The course profile (#85). Unset reads as DEFAULT_TERRAIN, so the control shows
   // the value actually being trained off rather than an empty state.
   const [terrain, setTerrain] = useState<Terrain>(profile.terrain ?? DEFAULT_TERRAIN);
+  // Health text is special-category data, so it only leaves the device with an
+  // explicit, separate grant (#63). That grant is also what decides whether the
+  // "Analyze with AI" button can do anything at all (#147).
+  const aiHealthOk = profile.aiHealthConsent?.granted === true;
   const [showCatalog, setShowCatalog] = useState(false);
   const [level, setLevel] = useState<Level>(profile.level);
   const [unit, setUnit] = useState<Unit>(profile.unitPreference ?? "metric");
@@ -410,11 +414,23 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
               value={injuryText}
               onChange={(e) => { setInjuryText(e.target.value); if (injuryStatus !== "idle") setInjuryStatus("idle"); }}
             />
+            {/* The consent gate is known BEFORE the tap, so ask it before the tap.
+                This used to render a live primary button that could only tell you AI
+                was off after you pressed it and waited (#147) — a control whose real
+                job was to deliver a refusal. */}
             <div className="mt-2 flex items-center gap-3">
-              <button onClick={analyzeInjuries} disabled={injuryStatus === "loading"} className="btn btn-primary px-4 py-2 text-sm">
+              <button
+                onClick={analyzeInjuries}
+                disabled={injuryStatus === "loading" || !aiHealthOk}
+                className="btn btn-primary px-4 py-2 text-sm disabled:opacity-40"
+              >
                 {injuryStatus === "loading" ? "Reading…" : injuries.length ? "Re-analyze" : "Analyze with AI"}
               </button>
-              {injuryStatus === "off" && <span className="text-xs text-muted">AI off — notes still saved.</span>}
+              {!aiHealthOk ? (
+                <span className="text-xs text-muted">Turn on AI health analysis below to use this. Your notes are saved either way.</span>
+              ) : (
+                injuryStatus === "off" && <span className="text-xs text-muted">AI off — notes still saved.</span>
+              )}
             </div>
             {injuries.length > 0 && (
               <div className="mt-3 space-y-2">

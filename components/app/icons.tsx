@@ -67,21 +67,29 @@ export function Icon({
         </svg>
       );
     case "run":
-      // Redrawn (#180). The old figure crammed six strokes into a torso 2.4 units
-      // long, so at 22px it read as someone hunched or sitting rather than running,
-      // and its trailing arm was a bare stub with no elbow while the leading arm had
-      // one — the asymmetry is a lot of why it looked broken. This one earns the
-      // silhouette instead: a longer leaning torso, a driving front knee with the
-      // shin planted, a trailing leg kicking up behind (the pose that reads as RUN
-      // and not WALK at a glance), and both arms bent.
+      // Redrawn a second time (#180). The first redraw fixed the hunched torso but
+      // introduced the thing that actually made it look broken: BOTH the trailing
+      // leg and the trailing arm pointed up-and-back, above the hip. Rendered at
+      // 112px it reads as a figure falling over backwards, and at the 22px it
+      // actually ships at it's just limbs radiating from a blob.
+      //
+      // Checked by rendering, not by reading coordinates — four candidates at
+      // 16/22/32/64/112px side by side. Two rules came out of looking at them:
+      //   - no limb may point above the hip line. That single constraint is the
+      //     difference between "running" and "broken".
+      //   - the trailing foot must still be OFF the ground. Put both feet down and
+      //     the same figure reads as a lunge or a walk.
+      // So: forward lean, driving front knee with the shin planted, trailing leg
+      // extended back and lifted but below the hip, and both arms bent — symmetric
+      // elbows, since one bare stub against one bent arm was half the old problem.
       return (
         <svg {...p}>{t}
-          <circle cx="15.6" cy="3.8" r="2" />
-          <path d="M14.4 6 11 12" />
-          <path d="M11 12 15.2 13.6 13.6 19.4" />
-          <path d="M11 12 7.2 14.8 4.4 12.8" />
-          <path d="M13.8 7.4 17 9.2 15 11.6" />
-          <path d="M13.4 7.7 9.4 8.6 8.2 5.8" />
+          <circle cx="14.6" cy="4.2" r="2.1" />
+          <path d="M13.7 6.5 10.7 12.2" />
+          <path d="M10.7 12.2 14.4 14.4 13.6 19.8" />
+          <path d="M10.7 12.2 7.2 15.6 4.6 17.8" />
+          <path d="M12.9 8.2 16.6 9.4 16.4 12.4" />
+          <path d="M12.7 8.4 8.8 9.8 9.4 12.8" />
         </svg>
       );
     case "strength":
