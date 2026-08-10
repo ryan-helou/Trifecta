@@ -856,16 +856,6 @@ export function strengthLegs(ctx: BuildCtx, min = 35): Draft {
   );
 }
 
-export function strengthCore(ctx: BuildCtx, min = 25): Draft {
-  return gym(
-    ctx,
-    "Core & Mobility",
-    "A stable core transfers power between all three disciplines and protects your back over long sessions.",
-    "dead bug ×10/side · front plank 45s · side plank 30s/side · bird-dog ×10/side · pallof press ×12/side · hollow hold 30s",
-    min,
-    "Move slowly and breathe — quality of bracing beats speed.",
-  );
-}
 
 // No-gym fallback: full-body strength you can do at home with just bodyweight + a band.
 export function strengthHome(ctx: BuildCtx, min = 35): Draft {
@@ -922,7 +912,6 @@ export function strengthFor(
   const min = recover ? 25 : 35;
   // Only an explicit "core" split gets the core session. Recovery is expressed
   // through `min` above, not by replacing the athlete's chosen work.
-  if (split === "core") return strengthCore(ctx, min);
   if (split === "custom") return strengthCustom(ctx, min, note);
   if (home) return strengthHome(ctx, min);
   switch (split) {

@@ -141,7 +141,13 @@ export function ProfileTab() {
       <Section title="Manage your plan">
         <ActionRow first onClick={openSettings} label="Edit race & training settings" />
         <ActionRow onClick={recalibrate} label="Recalibrate paces from my sessions" />
-        <ActionRow onClick={() => actions.ease(7)} label="Not feeling 100% — ease this week" />
+        {/* "Not feeling 100% — ease this week" lived here and is gone (#198).
+            It was a third path to an outcome two better ones already cover: the
+            readiness check-in asks the same question on Today and eases in
+            PROPORTION to how you actually feel, and the coach now reaches out
+            when it detects you're cooked, with the reason. This one sat four
+            rows into a settings screen, fired instantly with no preview, and
+            flattened every hard session for seven days knowing nothing. */}
         <ActionRow onClick={() => actions.rebuild()} label="Rebuild plan around today" />
       </Section>
 

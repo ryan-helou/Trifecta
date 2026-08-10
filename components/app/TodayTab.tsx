@@ -208,6 +208,25 @@ export function TodayTab() {
           </button>
         )}
 
+        {/* A PERMANENT way in to the check-in (#198).
+            The prompt card above only appears before 4pm, only when there are
+            sessions today, and only until you've answered once — so on a rest
+            day, or in the evening, or after a first answer, there was no way to
+            say "actually I feel rough". That was fine while Profile carried
+            "Not feeling 100% — ease this week", and stopped being fine the
+            moment that button was deleted in favour of this path. Removing an
+            escape hatch without providing the replacement is how a fix becomes
+            a regression. */}
+        <button
+          onClick={() => setReadyOpen(true)}
+          className="flex w-full items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-left text-sm transition hover:brightness-110 active:scale-[0.995]"
+        >
+          <span className="text-muted">
+            {plan.readiness?.[today] ? "Update how you're feeling" : "How are you feeling today?"}
+          </span>
+          <span className="text-accent-soft">›</span>
+        </button>
+
         <details className="group">
           <summary className="flex cursor-pointer list-none items-center justify-between rounded-xl px-1 py-2 text-sm text-muted transition hover:text-foreground">
             <span>Race &amp; plan details</span>
