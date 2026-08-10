@@ -232,10 +232,30 @@ export function ProfileTab() {
           native build stays put while the web bundle moves, so "did the update
           land?" is only answerable with the second. On its own line at the very
           bottom now, rather than wedged between Log out and Delete account. */}
-      <p className="pb-1 text-center text-[0.7rem] text-faint tabular-nums">
+      <p className="text-center text-[0.7rem] text-faint tabular-nums">
         Trifecta {process.env.NEXT_PUBLIC_APP_VERSION ?? "\u2014"}
         {bundleVersion && bundleVersion !== process.env.NEXT_PUBLIC_APP_VERSION ? ` \u00b7 running ${bundleVersion}` : ""}
       </p>
+
+      {/* NOT OPTIONAL, and nearly lost. Restructuring the tail of this file
+          deleted these links, and maestro/legal.yaml caught it — App Review
+          guideline 5.1.1(i) requires the privacy policy to be reachable inside
+          the app, and build 8 was rejected for precisely this. The gate exists
+          because of that rejection, and it just earned its keep.
+
+          legalHref, not a bare "/privacy": in the bundled app the extensionless
+          path resolves to no file and the tap does nothing. See lib/runtime.ts. */}
+      <div className="text-center text-xs text-muted">
+        <a href={legalHref("/support")} className="underline">Support</a>
+        <span className="px-2">·</span>
+        <a href={legalHref("/privacy")} className="underline">Privacy</a>
+        <span className="px-2">·</span>
+        <a href={legalHref("/terms")} className="underline">Terms</a>
+      </div>
+
+      <div className="eyebrow pb-4 text-center text-[0.66rem]">
+        <Wordmark /> · your path to the finish line
+      </div>
     </div>
   );
 }
