@@ -85,14 +85,83 @@ function measure(
   return { durationSec: dur, distanceM: dist };
 }
 
+/** Sessions are prescribed on a 5-minute grid (#187). */
+const GRID_SEC = 5 * 60;
+/** Below this a session is short enough that 5-minute steps distort it. */
+const GRID_MIN_SEC = 20 * 60;
+/** Never move a session by more than this to reach the grid — the grid serves
+ *  the prescription, not the other way round. */
+const GRID_MAX_SHIFT_SEC = 3 * 60;
+
+/**
+ * Snap a session onto whole minutes the athlete can actually hold in their head.
+ *
+ * Ryan, #187: "don't tell me about a 47 minute run… make it round like 6 km runs,
+ * 7 km run, why 5.7 you know". Measured before this existed, only 35% of
+ * prescribed sessions landed on a 5-minute grid — the rest were 33, 39, 49, 71,
+ * 97, 106. The difference between a 47 and a 45 minute ride is nothing
+ * physiologically and everything in how the plan reads.
+ *
+ * The adjustment is made to a SEGMENT, never to the header, because the header is
+ * derived from the segments — nudging it directly is exactly the
+ * header-contradicts-its-steps bug this codebase keeps rediscovering. The longest
+ * top-level steady block absorbs the difference; interval sets are left alone
+ * because their reps are already round and shaving a rep changes the workout.
+ *
+ * Non-goals: nothing here forces a grid it can't reach honestly. A session with
+ * no adjustable block, one under 20 minutes, or one that would have to move more
+ * than 3 minutes keeps its real number.
+ */
+function snapToGrid(segments: Segment[], durationSec: number): Segment[] | null {
+  if (durationSec < GRID_MIN_SEC) return null;
+  const target = Math.round(durationSec / GRID_SEC) * GRID_SEC;
+  const delta = target - durationSec;
+  if (delta === 0 || Math.abs(delta) > GRID_MAX_SHIFT_SEC) return null;
+
+  // The best absorber: the longest plain, non-repeating, duration-based main
+  // block. That's the steady endurance chunk in almost every session, and the one
+  // place three minutes genuinely doesn't matter.
+  let best = -1;
+  let bestSec = 0;
+  segments.forEach((s, i) => {
+    if (s.children?.length || (s.repeat ?? 1) > 1) return;
+    if (s.kind !== "main" || s.durationSec == null) return;
+    if (s.durationSec > bestSec) {
+      bestSec = s.durationSec;
+      best = i;
+    }
+  });
+  if (best < 0) return null;
+  const nextSec = Math.round(bestSec + delta);
+  if (nextSec < 5 * 60) return null; // don't gut the main set to satisfy the grid
+
+  return segments.map((s, i) =>
+    i === best
+      ? {
+          ...s,
+          durationSec: nextSec,
+          // The description carries the old minutes; regenerate the count so the
+          // step never advertises a different length from the one it now is.
+          description: s.description.replace(/^\d+\s*min/, `${Math.round(nextSec / 60)} min`),
+        }
+      : s,
+  );
+}
+
 function finish(
   ctx: BuildCtx,
   draft: Omit<Draft, "estDurationSec" | "estDistanceM">,
 ): Draft {
-  const { durationSec, distanceM } = measure(ctx, draft.segments);
+  const first = measure(ctx, draft.segments);
+  const snapped = snapToGrid(draft.segments, first.durationSec);
+  const segments = snapped ?? draft.segments;
+  // Re-measure from the segments that will actually ship, so duration AND the
+  // derived distance both describe the same session.
+  const { durationSec, distanceM } = snapped ? measure(ctx, segments) : first;
   const isDist = draft.discipline !== "strength";
   return {
     ...draft,
+    segments,
     estDurationSec: Math.round(durationSec),
     estDistanceM: isDist ? Math.round(distanceM) : undefined,
   };
