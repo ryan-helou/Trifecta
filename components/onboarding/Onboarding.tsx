@@ -1394,7 +1394,6 @@ const SPLITS: { key: StrengthSplit; name: string; d: string }[] = [
   { key: "full", name: "Full body", d: "One session hits everything — simple and effective." },
   { key: "upper-lower", name: "Upper / Lower", d: "Alternate upper-body and leg days." },
   { key: "push-pull-legs", name: "Push / Pull / Legs", d: "Classic 3-way split for higher volume." },
-  { key: "core", name: "Core & mobility", d: "Trunk stability and injury-proofing, low fatigue." },
   { key: "custom", name: "My own split", d: "Follow your own routine — write it down and we'll schedule it." },
 ];
 

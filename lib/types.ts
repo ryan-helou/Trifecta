@@ -218,7 +218,11 @@ export interface SportFreq {
   run: number;
 }
 
-export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "core" | "custom";
+/** Gym split. "core" was removed 2026-08-10 (#193): the engine used to force it
+ *  on every recovery week, so an athlete who chose a full-body split was handed
+ *  hip openers instead, and Ryan's call was to delete it outright rather than
+ *  just stop the hijack. Plans stored with split:"core" fall back to "full". */
+export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "custom";
 
 export interface StrengthPref {
   enabled: boolean;
