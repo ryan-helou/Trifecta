@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.14",
+  "latest": "1.0.15",
   "bundles": [
-    {
-      "version": "1.0.12",
-      "sha256": "a27217b3490091d781d189b76abf1e78b678b8511f8ac0770f7d6e5ba9000ab3",
-      "size": 778610,
-      "createdAtISO": "2026-08-09T23:58:18.215Z",
-      "comment": "#182 Form now subtracts · #85 course-aware training · #185 modify by pace · #183 Friends feed + comments · #33 notifications"
-    },
     {
       "version": "1.0.13",
       "sha256": "e87672b940d64db3bbf58fadf65bac0e818d9e77b45dad73d4355556a046d6e0",
@@ -21,6 +14,13 @@
       "size": 780258,
       "createdAtISO": "2026-08-10T14:43:23.990Z",
       "comment": "sport balance is enforced on swaps and skips; swim swaps sized correctly"
+    },
+    {
+      "version": "1.0.15",
+      "sha256": "40505a27b0318f8a194a6566ec3256e93d4f5d27ec6e597146fc2c6a3e35fa1a",
+      "size": 780544,
+      "createdAtISO": "2026-08-10T17:30:33.732Z",
+      "comment": "run glyph redrawn; close button, version row, loading label, AI gate"
     }
   ]
 }
