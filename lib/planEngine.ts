@@ -415,6 +415,29 @@ function trainingDays(p: Profile): Set<number> {
 // A session before it has been assigned to a day.
 type Role = Omit<Slot, "day"> & { prefDay: number };
 
+/** Run-off-bike minutes at the START of the build, and at the peak. The floor is
+ *  the transition skill (doc 01 §1.8 — bought in 10–20 min); the ceiling is
+ *  durability, scaled to the race's run leg: ~60% of an Olympic 10 km, ~30% of a
+ *  70.3 half, ~25% of an Ironman marathon. */
+const RUN_OFF_MIN: Record<Cat, { start: number; peak: number }> = {
+  olympic: { start: 12, peak: 30 },
+  half: { start: 20, peak: 55 },
+  full: { start: 22, peak: 80 },
+};
+
+export function brickRunOffMin(cat: Cat, phase: Phase, idxInPhase: number, phaseLen: number): number {
+  const { start, peak } = RUN_OFF_MIN[cat];
+  if (phase === "peak") return peak;
+  if (phase !== "build") return start;
+  // Position WITHIN the build, which the caller already computes for baseFraction.
+  // Deriving it from weekIndex instead would sawtooth: the ramp would reset every
+  // few weeks and the athlete's brick run would shrink mid-block.
+  const span = Math.max(1, phaseLen - 1);
+  const t = Math.min(1, Math.max(0, idxInPhase) / span);
+  // The build climbs to ~80% of the ceiling so the peak weeks still add something.
+  return Math.round(start + (peak * 0.8 - start) * t);
+}
+
 function pickWeekSlots(
   ctx: BuildCtx,
   p: Profile,
@@ -422,12 +445,32 @@ function pickWeekSlots(
   phase: Phase,
   weekIndex: number,
   isRecovery: boolean,
+  idxInPhase: number,
+  phaseLen: number,
 ): Slot[] {
   const recover = isRecovery;
   const even = weekIndex % 2 === 0;
   const runCap = LONG_RUN_CAP[cat];
   const rideCap = LONG_RIDE_CAP[cat];
-  const runOff = phase === "peak" ? (cat === "olympic" ? 20 : 30) : cat === "olympic" ? 12 : 18;
+  // Minutes of running straight off the bike inside a brick (#190).
+  //
+  // Doc 01 §5 gap #10 named this exactly: "brick run is capped short — fine for
+  // skill; thin for IM run-off-bike durability". Measured before changing it,
+  // every Ironman brick ran 24 min off the bike in build and 36 in peak — for a
+  // race whose run leg is a marathon — and it was FLAT across the whole build,
+  // with no progression at all.
+  //
+  // Two things bricks do, and they need different doses (doc 01 §1.8): the
+  // transition SKILL is bought in 10–20 min, and short course needs little more
+  // than that. DURABILITY — running well on pre-fatigued legs — is the long-course
+  // limiter, and it only comes from progressively longer run-off-bike blocks
+  // (§4 #8: "for IM, program at least some long run-off-bike durability work").
+  //
+  // So the ceiling scales with the race's run leg rather than being one number for
+  // everything, and it PROGRESSES: the build ramps toward it, the peak reaches it.
+  // Still a fraction of race distance — a 90 min brick run is ~25% of an Ironman
+  // marathon, which is durability work, not a rehearsal of the whole leg.
+  const runOff = brickRunOffMin(cat, phase, idxInPhase, phaseLen);
 
   // How many of each sport this week — the athlete's per-sport choice, with
   // injuries reducing/substituting volume and light weeks eased off.
@@ -1051,7 +1094,7 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
     if (isRaceWeek) {
       buildRaceWeek(ctx, profile, cat, week, workouts);
     } else {
-      buildNormalWeek(ctx, profile, cat, phase, i, isRecovery, targetHours, week, workouts);
+      buildNormalWeek(ctx, profile, cat, phase, i, isRecovery, targetHours, week, workouts, idxInPhase, phaseLen);
     }
 
     weeks.push(week);
@@ -1138,7 +1181,7 @@ function generateFitnessPlan(profile: Profile, anchorISO?: string): Plan {
       focus: focusFor(phase, isRecovery, false),
       workoutIds: [],
     };
-    buildNormalWeek(ctx, profile, cat, phase, i, isRecovery, targetHours, week, workouts);
+    buildNormalWeek(ctx, profile, cat, phase, i, isRecovery, targetHours, week, workouts, idxInPhase, phaseLen);
     weeks.push(week);
   }
 
@@ -1181,8 +1224,10 @@ function buildNormalWeek(
   targetHours: number,
   week: Week,
   out: Record<string, Workout>,
+  idxInPhase: number,
+  phaseLen: number,
 ) {
-  const slots = pickWeekSlots(ctx, profile, cat, phase, weekIndex, isRecovery);
+  const slots = pickWeekSlots(ctx, profile, cat, phase, weekIndex, isRecovery, idxInPhase, phaseLen);
 
   // build fixed (non-scalable) first to know their duration budget
   const built = new Map<Slot, Draft>();

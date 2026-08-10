@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { Discipline, Feel, ReadinessInput, Unit } from "@/lib/types";
+import { Discipline, Feel, Plan, ReadinessInput, Unit } from "@/lib/types";
 import type { CalibrationResult } from "@/lib/calibrate";
 import type { AdaptationSuggestion, LoggedWorkout, LogResult } from "@/lib/adapt";
 
@@ -32,6 +32,11 @@ export interface UIActions {
   ease(days: number, cause?: "strain" | "manual"): void;
   /** resize one session to a target duration, because the athlete asked */
   adjust(id: string, targetSec: number): void;
+  /** A device sync (Strava / Apple Health) completed sessions on our behalf.
+   *  Routed through the same responder as a manual log so the plan actually
+   *  adapts to work that arrived from a watch, and the athlete sees the same
+   *  "updating" state they get from tapping anything else (#189). */
+  applySynced(next: Plan, anchorId?: string): void;
   /** resize one session to a target DISTANCE; time moves with it (#185) */
   setDistance(id: string, targetM: number): void;
   /** set the intensity a session will actually be done at. NOT cosmetic — the
