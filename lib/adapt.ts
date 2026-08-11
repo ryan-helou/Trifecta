@@ -148,6 +148,11 @@ export interface LogResult {
   plan: Plan;
   outcome: LogOutcome;
   matchedId?: string;
+  /** The session this log produced, planned or not. The caller routes this id
+   *  through `respondTo` so an unplanned session can be absorbed into the week
+   *  (#215) — without it, "Bonus session logged" was the end of the story and the
+   *  ride you'd already done still sat on Wednesday. */
+  loggedId?: string;
   headline: string;
   detail: string;
   /** a first-person note the athlete can send straight to the coach chat */
@@ -189,7 +194,7 @@ function distClause(l: LoggedWorkout): string {
 }
 
 /** Add a self-logged session as a completed workout (used when nothing was planned). */
-function addLoggedWorkout(plan: Plan, input: LoggedWorkout): Plan {
+function addLoggedWorkoutWithId(plan: Plan, input: LoggedWorkout): { plan: Plan; id: string } {
   const p = clonePlan(plan);
   const zone: Zone = typeof input.rpe === "number" ? (input.rpe >= 7 ? 4 : input.rpe >= 5 ? 3 : 2) : 2;
   const base = `logged-${input.dateISO}-${input.discipline}`;
@@ -223,7 +228,13 @@ function addLoggedWorkout(plan: Plan, input: LoggedWorkout): Plan {
     note: input.note,
   };
   reindexWeeks(p);
-  return p;
+  return { plan: p, id };
+}
+
+/** The unplanned session an athlete logged, and the id it landed under — the id
+ *  is what lets the responder absorb it into the week (#215). */
+export function addLoggedWorkout(plan: Plan, input: LoggedWorkout): Plan {
+  return addLoggedWorkoutWithId(plan, input).plan;
 }
 
 export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
@@ -243,8 +254,10 @@ export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
     )[0];
 
   if (!match) {
+    const added = addLoggedWorkoutWithId(plan, input);
     return {
-      plan: addLoggedWorkout(plan, input),
+      plan: added.plan,
+      loggedId: added.id,
       outcome: "bonus",
       headline: "Bonus session logged",
       detail: `Nothing was planned — added your ${d} (${durTxt}${distTxt}) to the log.`,

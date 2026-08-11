@@ -450,7 +450,16 @@ function AppShellInner() {
     },
     logWorkout: (input) => {
       const res = logWorkout(plan, input);
-      applyPlan(res.plan);
+      // Route through `respond` like every other completion, rather than applying
+      // the plan straight. This is what lets an UNPLANNED session be absorbed into
+      // the week (#215): logging a bike you did on top of your planned run used to
+      // end at "Bonus session logged" while the ride you'd already done still sat
+      // on Wednesday, because `applyPlan` skips the responder entirely and the
+      // absorption lives inside it. Ryan: "if i do a bike and a run today, and i
+      // only had a run, will it affect the plan" — measured: it did not.
+      const id = res.loggedId ?? res.matchedId;
+      if (id) respond(res.plan, { kind: "logged", workoutId: id });
+      else applyPlan(res.plan);
       const { plan: _p, ...view } = res;
       return view;
     },

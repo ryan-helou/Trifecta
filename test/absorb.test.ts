@@ -286,6 +286,68 @@ section("running it twice does not compound");
   }
 }
 
+// ---------------------------------------------------------------------------
+// THE WIRING, not just the function.
+//
+// Ryan: "if i do a bike and a run today, and i only had a run, will it affect the
+// plan". Measured: it did NOT — and the absorption logic was innocent. `logWorkout`
+// called `applyPlan` directly instead of routing through `respondTo`, and the
+// absorption lives inside the responder. So the whole feature was correct and
+// unreachable from the one button most likely to reach it: "Log a workout".
+//
+// This asserts the PATH, which is the part that broke. A unit test of
+// `absorbUnplanned` passed the entire time the feature did nothing.
+// ---------------------------------------------------------------------------
+{
+  section("logging an unplanned session reaches the absorber");
+
+  // Ryan's exact case: a session IS planned today (not a bike), and a ride is
+  // still standing later in the week. `bed()` deliberately picks an empty day, so
+  // this needs its own.
+  const plan = generatePlan(profile(), ANCHOR);
+  const week = plan.weeks[2];
+  const inThisWeek = week.workoutIds.map((id) => plan.workouts[id]!).filter((w) => w.discipline !== "rest");
+  const planned = inThisWeek.find(
+    (w) =>
+      w.discipline !== "bike" &&
+      inThisWeek.some((x) => x.discipline === "bike" && x.status === "planned" && x.date > w.date),
+  );
+  ok(!!planned, `a non-bike session with a ride still to come (${planned?.discipline} on ${planned?.date})`);
+  const today = planned!.date;
+  const ticked = logCheckin(plan, planned!.id, { rpe: 5, feel: "ok", actualDurationSec: planned!.estDurationSec });
+
+  const res = logWorkout(ticked, { dateISO: today, discipline: "bike", durationSec: 3600, rpe: 5, feel: "ok" });
+  ok(res.outcome === "bonus", `a sport with nothing planned logs as a bonus (${res.outcome})`);
+  ok(!!res.loggedId, "and reports the id it created — without this the responder has nothing to absorb");
+  ok(res.plan.workouts[res.loggedId!] !== undefined, "which resolves to a real session");
+  ok(isUnplanned(res.plan.workouts[res.loggedId!]), "…and that session reads as unplanned");
+
+  // The composed path, exactly as AppShell runs it.
+  const responded = respondTo(res.plan, today, { kind: "logged", workoutId: res.loggedId! });
+  const after = responded?.plan ?? res.plan;
+
+  const ridesBefore = Object.values(res.plan.workouts).filter(
+    (w) => w.discipline === "bike" && w.weekIndex === planned!.weekIndex && w.status === "planned",
+  );
+  const ridesAfter = Object.values(after.workouts).filter(
+    (w) => w.discipline === "bike" && w.weekIndex === planned!.weekIndex && w.status === "planned" && !w.absorbedBy,
+  );
+  ok(ridesBefore.length > 0, `the week still had ${ridesBefore.length} ride(s) standing`);
+  ok(ridesAfter.length < ridesBefore.length,
+     `and the bike you already did comes off one of them (${ridesBefore.length} → ${ridesAfter.length})`);
+
+  // Absorbed is NOT missed — the whole reason `absorbedBy` exists. Measured as a
+  // DELTA rather than an absolute: this fixture jumps to week 2 without training
+  // weeks 0–1, so the window is full of genuine misses. What must hold is that
+  // absorbing a session doesn't add one.
+  const absorbed = Object.values(after.workouts).find((w) => w.absorbedBy);
+  ok(!!absorbed, "the covered session carries absorbedBy");
+  const missedBefore = assessAdaptation(res.plan, today)?.missed ?? 0;
+  const missedAfter = assessAdaptation(after, today)?.missed ?? 0;
+  ok(missedAfter <= missedBefore,
+     `absorbing never adds to the miss count (${missedBefore} → ${missedAfter}) — training MORE must never read as falling behind`);
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures) {
   console.error(`\n❌ ${failures} absorb invariant(s) FAILED`);
