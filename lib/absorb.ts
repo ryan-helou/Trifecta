@@ -150,6 +150,29 @@ export function absorbUnplanned(plan: Plan, todayISO: string, doneId: string): A
   const didSec = creditedSec(did);
   if (didSec <= 0) return null;
 
+  // WAS TODAY ALREADY SPOKEN FOR IN THIS SPORT?
+  //
+  // Ryan: "if I already did a ten k run today and I had a ten k run planned for
+  // Saturday, and I had nothing planned for today, then, and only then, should I
+  // switch." The condition is the point. If the day held no run, an unplanned 10k
+  // stands IN FOR Saturday's — you did that session, early. If the day already had
+  // a run and you did it, the 10k is genuinely on top, and deleting Saturday would
+  // be handing you a rest day for training more.
+  //
+  // Measured before this check: doing today's planned 40 min run AND an extra 55
+  // min run removed Saturday's 75 min long run outright. Same input, two very
+  // different weeks, and only one of them is what the athlete meant.
+  //
+  // So a day that already carried this sport caps the answer at SHORTEN. The work
+  // still counts — it just reduces what's left instead of cancelling it.
+  const dayAlreadyHadThisSport = Object.values(plan.workouts).some(
+    (w) =>
+      w.id !== doneId &&
+      w.date === did.date &&
+      !isUnplanned(w) &&
+      covers(did.discipline, w.discipline),
+  );
+
   // Everything still on the books this week that the work could stand in for.
   const pool = week.workoutIds
     .map((id) => plan.workouts[id])
@@ -188,7 +211,9 @@ export function absorbUnplanned(plan: Plan, todayISO: string, doneId: string): A
     if (baseSec <= 0) continue;
 
     // --- adequate equivalent → it comes off the week ------------------------
-    if (didSec / baseSec >= ADEQUATE) {
+    // …unless the day already carried this sport, in which case this was extra
+    // work rather than a stand-in, and the most it may do is shorten (see above).
+    if (didSec / baseSec >= ADEQUATE && !dayAlreadyHadThisSport) {
       const absorbed: Workout = {
         ...target,
         status: "skipped",
