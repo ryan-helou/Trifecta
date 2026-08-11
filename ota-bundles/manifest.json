@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.30",
+  "latest": "1.0.31",
   "bundles": [
-    {
-      "version": "1.0.28",
-      "sha256": "b8cef9f9d529335b2abbde9a4463f12f23c3df53fc703038072b9d3848161e8b",
-      "size": 793559,
-      "createdAtISO": "2026-08-11T17:48:40.737Z",
-      "comment": "the app no longer opens on a motionless logo"
-    },
     {
       "version": "1.0.29",
       "sha256": "ca008141424cd61b4a3d1dd468b4efb2eaea51196f88daef34efd5ab86246e4e",
@@ -20,6 +13,12 @@
       "sha256": "d1a4c9071f19936c634d1d11c72e5af65e593e1728e604b76eeb233538f764d6",
       "size": 794043,
       "createdAtISO": "2026-08-11T18:33:13.382Z"
+    },
+    {
+      "version": "1.0.31",
+      "sha256": "e2d74e1cbfce5012bd1da21a72bd3a2770ebf32bb34e70da57dc981add1f37d5",
+      "size": 798096,
+      "createdAtISO": "2026-08-11T19:12:19.551Z"
     }
   ]
 }
