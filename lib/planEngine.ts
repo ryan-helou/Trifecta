@@ -1287,6 +1287,91 @@ function buildNormalWeek(
 ) {
   const slots = pickWeekSlots(ctx, profile, cat, phase, weekIndex, isRecovery, idxInPhase, phaseLen);
 
+/**
+ * Make the same sport's sessions in one week visibly different lengths (#202).
+ *
+ * Ryan: "All runs and bikes are same length... do some research to make sure
+ * this is the good thing to do but I feel like it's off."
+ *
+ * He was right about the feel and the measurement located it. Proportional
+ * division hands near-identical shares to sessions with near-identical weights,
+ * and the 5-minute grid then rounds them onto the same block: measured across 18
+ * plans, 298 same-sport pairs in a week were EXACTLY equal and another 224 sat
+ * within four minutes — about a fifth of all adjacent pairs reading as "the same
+ * session twice".
+ *
+ * FIRST ATTEMPT, AND WHY IT'S NOT THIS. Widening the weight spread between the
+ * easy sessions made it WORSE (7.3% → 7.9% identical): shrinking a session just
+ * drives it onto its `minMin` floor, where it collides with every other session
+ * on the same floor. Separation has to be enforced, not hoped for.
+ *
+ * So: sort a sport's sessions longest-first and push each at least one grid
+ * block below the one above it, then hand the reclaimed minutes back to the
+ * longest session. Budget-neutral where there's headroom, and it deepens the
+ * long/short contrast rather than flattening it — which is the polarised shape
+ * doc 01 §4 asks for anyway. Never raises a session above its own `maxMin`, and
+ * never pushes one below `minMin`, so a week that genuinely has no room to
+ * separate is left as it was rather than mangled.
+ */
+const SEPARATION_GRID_MIN = 5;
+
+function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slot, number>): void {
+  // EVERY session of the sport takes part, not just the resizable ones. The
+  // quality session (a Sweet Spot ride, a Tempo run) is built at a fixed length,
+  // so it can't move — but it still has to be SEEN, or the easy session beside it
+  // never learns it has a twin. Measured: the entire remaining collision set was
+  // "Sweet Spot 3×8 + Aerobic Endurance Ride, both 60 min" and its siblings, and
+  // none of it was near a floor.
+  const byDisc = new Map<Discipline, Slot[]>();
+  for (const s of all) {
+    const list = byDisc.get(s.discipline);
+    if (list) list.push(s);
+    else byDisc.set(s.discipline, [s]);
+  }
+  const secOf = (s: Slot) => built.get(s)?.estDurationSec ?? 0;
+
+  for (const group of byDisc.values()) {
+    if (group.length < 2) continue;
+    const before = group.reduce((a, s) => a + secOf(s), 0);
+    const sorted = [...group].sort((a, b) => secOf(b) - secOf(a));
+
+    for (let i = 1; i < sorted.length; i++) {
+      const slot = sorted[i];
+      const ceilingSec = secOf(sorted[i - 1]) - SEPARATION_GRID_MIN * 60;
+      if (secOf(slot) <= ceilingSec) continue;
+      // A fixed-length session is a ceiling, never a thing to move: shortening a
+      // Sweet Spot set to make room would trade the week's quality for tidiness.
+      if (!slot.scalable) continue;
+      // Walk the request down a block at a time and REBUILD, because a builder
+      // snaps to whole intervals — the minutes we ask for are not the minutes we
+      // get, which is why separating the requested values alone didn't hold.
+      for (let ask = Math.floor(ceilingSec / 60); ask >= slot.minMin; ask -= SEPARATION_GRID_MIN) {
+        const candidate = slot.build(ask);
+        if (candidate.estDurationSec <= ceilingSec) {
+          built.set(slot, candidate);
+          mins.set(slot, ask);
+          break;
+        }
+      }
+    }
+
+    // Hand the reclaimed minutes back to the LONGEST session — the only one that
+    // can grow without landing on a neighbour it was just separated from.
+    const deficit = before - sorted.reduce((a, s) => a + secOf(s), 0);
+    if (deficit <= 0) continue;
+    const top = sorted[0];
+    if (!top.scalable) continue;
+    const askTop = Math.min(top.maxMin, Math.round((secOf(top) + deficit) / 60));
+    if (askTop > (mins.get(top) ?? 0)) {
+      const grown = top.build(askTop);
+      if (grown.estDurationSec <= top.maxMin * 60) {
+        built.set(top, grown);
+        mins.set(top, askTop);
+      }
+    }
+  }
+}
+
   // build fixed (non-scalable) first to know their duration budget
   const built = new Map<Slot, Draft>();
   let fixedSec = 0;
@@ -1302,12 +1387,16 @@ function buildNormalWeek(
   const targetSec = targetHours * 3600;
   const remainingSec = Math.max(0, targetSec - fixedSec);
   const wsum = scalables.reduce((a, s) => a + s.weight, 0) || 1;
+  // Allocate minutes FIRST, separate them, and only then build — a Draft is
+  // expensive to rebuild and the separation pass needs to see the whole week.
+  const mins = new Map<Slot, number>();
   for (const s of scalables) {
     const share = (s.weight / wsum) * remainingSec;
-    let min = Math.round(share / 60);
-    min = Math.max(s.minMin, Math.min(s.maxMin, min));
-    built.set(s, s.build(min));
+    const min = Math.round(share / 60);
+    mins.set(s, Math.max(s.minMin, Math.min(s.maxMin, min)));
   }
+  for (const s of scalables) built.set(s, s.build(mins.get(s)!));
+  separateWithinSport(slots, built, mins);
 
   // Hard-enforce an explicit weeklyHoursCap. targetHours already respects the cap,
   // but nothing held the *emitted* sessions to it: fixed sessions are built at their

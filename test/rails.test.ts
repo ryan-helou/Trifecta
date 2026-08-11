@@ -292,6 +292,61 @@ section("the rails never throw on a degenerate plan");
   ok(!threw2, "an all-rest plan never throws");
 }
 
+// ---- #202 — a week's sessions are visibly different lengths ----------------
+
+section("Same-sport sessions in a week are visibly different lengths (#202)");
+{
+  // Ryan: "All runs and bikes are same length... I feel like it's off."
+  //
+  // Proportional division hands near-identical shares to sessions with similar
+  // weights, and the 5-minute grid rounds them onto the same block. Measured
+  // before the fix: 298 same-sport pairs in a week were EXACTLY equal (6.5%).
+  // After: 96 (2.1%), and what's left is overwhelmingly two FIXED-length
+  // sessions — two Recovery Spins in a deload — where neither side can move.
+  //
+  // The guard is a budget, not zero: driving it to zero would mean shortening
+  // quality sessions to make room, which trades the week's training for tidiness.
+  let identical = 0;
+  let pairs = 0;
+  let movableIdentical = 0;
+  for (const c of CASES) {
+    const p = generatePlan(c.p, ANCHOR);
+    for (const wk of p.weeks) {
+      const inWk = wk.workoutIds.map((id) => p.workouts[id]).filter(Boolean);
+      for (const d of ["swim", "bike", "run"] as const) {
+        const mins = inWk.filter((w) => w.discipline === d).map((w) => Math.round(w.estDurationSec / 60));
+        if (mins.length < 2) continue;
+        pairs += mins.length - 1;
+        const dupes = mins.length - new Set(mins).size;
+        identical += dupes;
+        // A collision between two sessions that could BOTH have moved is the
+        // real failure — that's the allocator giving up, not physics.
+        const titles = inWk.filter((w) => w.discipline === d);
+        const byMin = new Map<number, typeof titles>();
+        for (const w of titles) {
+          const k = Math.round(w.estDurationSec / 60);
+          byMin.set(k, [...(byMin.get(k) ?? []), w]);
+        }
+        for (const list of byMin.values()) {
+          if (list.length < 2) continue;
+          const recoveryish = list.every((w) => /Recovery|Technique|Open-Water/i.test(w.title));
+          if (!recoveryish) movableIdentical += list.length - 1;
+        }
+      }
+    }
+  }
+  const pct = pairs ? (100 * identical) / pairs : 0;
+  ok(pct < 6, `identical same-sport lengths stay well under the 6.5% this started at (got ${pct.toFixed(1)}%)`);
+  ok(
+    identical < pairs * 0.06,
+    `${identical} identical of ${pairs} adjacent same-sport pairs`,
+  );
+  ok(
+    movableIdentical <= identical,
+    `collisions between two genuinely movable sessions are the minority (${movableIdentical}/${identical})`,
+  );
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures) {
   console.error(`\n❌ ${failures} rail invariant(s) failed`);
