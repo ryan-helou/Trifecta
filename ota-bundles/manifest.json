@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.28",
+  "latest": "1.0.29",
   "bundles": [
-    {
-      "version": "1.0.26",
-      "sha256": "e1e6628a0baf1f7d85336d654490b314245db207bb9391d976d884ac72b3fc94",
-      "size": 791001,
-      "createdAtISO": "2026-08-11T17:07:30.323Z",
-      "comment": "your existing plan gets the rework too, not just new ones"
-    },
     {
       "version": "1.0.27",
       "sha256": "19386ee9baeb829580a97c086112a21a76ee1b709a854e0c5b75f002b438fdfe",
@@ -21,6 +14,13 @@
       "size": 793559,
       "createdAtISO": "2026-08-11T17:48:40.737Z",
       "comment": "the app no longer opens on a motionless logo"
+    },
+    {
+      "version": "1.0.29",
+      "sha256": "ca008141424cd61b4a3d1dd468b4efb2eaea51196f88daef34efd5ab86246e4e",
+      "size": 793630,
+      "createdAtISO": "2026-08-11T18:09:52.650Z",
+      "comment": "adding a session actually offers you a run"
     }
   ]
 }
