@@ -28,7 +28,7 @@ import { renderShareCard, shareCard, shareCardFilename } from "@/lib/shareCard";
 import { useApp } from "../AppProvider";
 import { LiveStrengthSession } from "./LiveStrengthSession";
 import { RoutineEditor } from "./RoutineEditor";
-import { defaultRoutineName, deleteRoutine, routineForWorkout, routineFromEntries, slotLabel, slotOf, upsertRoutine } from "@/lib/routines";
+import { cardForWorkout, defaultRoutineName, deleteRoutine, routineForWorkout, routineFromEntries, slotLabel, slotOf, upsertRoutine } from "@/lib/routines";
 import { startSession, sessionProgress, type LiveSession } from "@/lib/liveSession";
 import { loadLive, saveLive } from "@/lib/liveStore";
 
@@ -317,7 +317,7 @@ function SessionStructure({ sections, paces, unit }: { sections: { label: string
   );
 }
 
-export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
+export function WorkoutDetail({ workout, plan, autoStartGym }: { workout: Workout; plan: Plan; autoStartGym?: boolean }) {
   const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
   const { profile, updateProfile } = useApp();
   const toast = useToast();
@@ -333,10 +333,26 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
   // both SSR-safe and correct across switching sessions — and it avoids setting
   // state from an effect, which would render the sheet once with a stale "Start"
   // button before flipping it to "Resume".
-  const [live, setLive] = useState<LiveSession | null>(() =>
-    typeof window === "undefined" || workout.discipline !== "strength" ? null : loadLive(workout.id, todayISO()),
-  );
-  const [liveOpen, setLiveOpen] = useState(false);
+  const [live, setLive] = useState<LiveSession | null>(() => {
+    if (typeof window === "undefined" || workout.discipline !== "strength") return null;
+    const existing = loadLive(workout.id, todayISO());
+    if (existing || !autoStartGym || workout.status === "done") return existing;
+    // Arrived via "Start workout" with nothing in progress — begin one now, so the
+    // tracker has a session to show in its very first paint.
+    const started = startSession({
+      workoutId: workout.id,
+      startedISO: new Date().toISOString(),
+      slot: slotOf(workout),
+      name: routineForWorkout(profile, workout)?.name ?? workout.title,
+      from: workout.strengthLog?.length ? workout.strengthLog : cardForWorkout(profile, workout, exerciseHistory(Object.values(plan.workouts))).entries,
+    });
+    saveLive(started);
+    return started;
+  });
+  // Opened via "Start workout": begin (or resume) immediately. Computed in the
+  // initial state rather than an effect so the tracker is on screen in the first
+  // paint — an effect would flash the detail sheet first.
+  const [liveOpen, setLiveOpen] = useState(() => !!autoStartGym && workout.discipline === "strength" && workout.status !== "done");
   const [editRoutine, setEditRoutine] = useState(false);
   const slot = isGym ? slotOf(workout) : null;
   const routine = isGym ? routineForWorkout(profile, workout) : null;
@@ -578,12 +594,18 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                     onClick={() => {
                       haptic("success");
                       if (!live) {
+                        // Open with the athlete's routine when they have one, and
+                        // otherwise with the session the PLAN prescribes — parsed
+                        // out of the circuit it already wrote. Starting empty made
+                        // you type five exercises on the screen that exists to stop
+                        // you typing.
+                        const card = cardForWorkout(profile, workout, exerciseHistory(Object.values(plan.workouts).filter((x) => x.id !== workout.id)));
                         const s = startSession({
                           workoutId: workout.id,
                           startedISO: new Date().toISOString(),
                           slot,
                           name: routine?.name ?? workout.title,
-                          from: workout.strengthLog ?? routine?.exercises ?? [],
+                          from: workout.strengthLog?.length ? workout.strengthLog : card.entries,
                         });
                         saveLive(s);
                         setLive(s);

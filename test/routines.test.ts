@@ -20,9 +20,12 @@ import {
   slotOf,
   slotLabel,
   slotsForProfile,
+  prescribedExercises,
+  cardForWorkout,
   upsertRoutine,
 } from "../lib/routines";
 import { EXERCISE_CATALOG, canonicalName, searchExercises } from "../lib/exerciseCatalog";
+import { exerciseHistory } from "../lib/strength";
 import type { Profile, StrengthEntry, StrengthSlot, Workout } from "../lib/types";
 
 let checks = 0;
@@ -313,6 +316,59 @@ for (const split of ["push-pull-legs", "upper-lower", "full"] as const) {
   // No gym at all ⇒ the bodyweight home circuit is the only day there is.
   const home = { ...profileFor("push-pull-legs"), equipment: { gym: false } } as unknown as Profile;
   ok(slotsForProfile(home).join() === "home", "an athlete with no gym is offered the home circuit, not a push/pull/legs split they can't do");
+}
+
+// ---- a gym day opens with something on it (#212 usability pass) ------------
+//
+// Measured on a fresh account before this: without a saved routine the live
+// session opened on "Nothing on the card yet", and five exercises had to be typed
+// on the screen that exists to stop you typing. The plan already wrote the
+// circuit — "3 rounds: push-up ×12 · overhead press ×10 · …" — so parse it back.
+
+section("a gym day opens with the session the plan prescribes");
+{
+  const plan = generatePlan(profileFor("push-pull-legs"), ANCHOR);
+  const gym = Object.values(plan.workouts).filter((w) => w.discipline === "strength");
+  const bySlot = new Map<string, Workout>();
+  for (const w of gym) if (!bySlot.has(slotOf(w)!)) bySlot.set(slotOf(w)!, w);
+
+  ok(bySlot.size === 3, "three gym days to check");
+  for (const [slot, w] of bySlot) {
+    const ex = prescribedExercises(w);
+    ok(ex.length >= 4, `${slot}: the prescribed circuit parses into ${ex.length} exercises`);
+    ok(ex.every((e) => e.sets.length >= 2 && e.sets.every((x) => x.reps > 0)), `${slot}: every exercise has real sets and reps`);
+    ok(ex.every((e) => e.name && !/×|\d/.test(e.name)), `${slot}: names are clean (${ex.map((e) => e.name).slice(0, 2).join(", ")}…)`);
+  }
+
+  // Canonical names, so the plan's card and hand-logging build ONE PB history.
+  const push = prescribedExercises(bySlot.get("push")!);
+  ok(push.some((e) => e.name === "Push-Up"), "'push-up' is canonicalised to the catalog's 'Push-Up', not left as free text");
+  const pull = prescribedExercises(bySlot.get("pull")!);
+  ok(pull.some((e) => /each side/.test(e.name)), "'×12/side' becomes a per-side note rather than a bogus rep count");
+  ok(pull.every((e) => e.sets.every((x) => x.reps <= 20)), "and no exercise ends up with a nonsense rep count");
+
+  // A saved routine always wins — it's the athlete's own programme.
+  const w = bySlot.get("push")!;
+  const withRoutine = {
+    ...profileFor("push-pull-legs"),
+    routines: [{ id: "r", name: "Mine", slot: "push" as StrengthSlot, exercises: PUSH_DAY }],
+  } as unknown as Profile;
+  ok(cardForWorkout(withRoutine, w).source === "routine", "a saved routine beats the plan's circuit");
+  ok(cardForWorkout(profileFor("push-pull-legs"), w).source === "plan", "and without one, the plan's circuit fills the card");
+
+  // The plan can't know what you lift — but the log can. Second time round, the
+  // card should arrive at your working weights without a routine.
+  const past = [{
+    id: "old", date: "2026-08-01", status: "done", discipline: "strength",
+    strengthLog: [{ name: "Push-Up", sets: [{ reps: 12, weightKg: 20 }] }],
+  }] as unknown as Workout[];
+  const seeded = cardForWorkout(profileFor("push-pull-legs"), w, exerciseHistory(past));
+  const pu = seeded.entries.find((e) => e.name === "Push-Up");
+  ok(pu?.sets.every((x) => x.weightKg === 20) === true, "a lift you've done before arrives at last time's load");
+  ok(pu?.sets.length === push.find((e) => e.name === "Push-Up")?.sets.length,
+     "while the PLAN still decides the sets and reps — history supplies only the number the plan couldn't know");
+  ok(seeded.entries.find((e) => e.name === "Dip")?.sets.every((x) => x.weightKg == null) === true,
+     "and a lift with no history is left blank rather than given an invented weight");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
