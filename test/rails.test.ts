@@ -122,9 +122,20 @@ for (const c of CASES) {
   // volume), so it must be exempt from the per-week ceiling or correct plans fail.
   const plan = generatePlan(profile({ raceType: "half", raceDateISO: weeksFrom(20) }), ANCHOR);
   const taper = plan.weeks.filter((w) => w.phase === "taper" && !w.isRaceWeek);
-  const dense = taper.some((w) => (weekHardShare(plan, w) ?? 0) > WEEK_HARD_MAX);
   ok(taper.length > 0, "the half plan has a taper week to check");
-  ok(dense, "a taper week does exceed the per-week ceiling — which is why the taper is exempt");
+  // This used to assert the taper breaches WEEK_HARD_MAX outright. It no longer does —
+  // now that quality is budgeted rather than left to fall out of the division, the load
+  // weeks around it carry real intensity too, so the taper is no longer an outlier by that
+  // margin. The property the exemption actually rests on is unchanged and is the one worth
+  // pinning: the taper is DENSER than the block it follows, because its volume collapses
+  // while its intensity is held (doc 01 §4 #6). Asserting a specific breach instead would
+  // re-import doc 04's wrong per-week number by the back door.
+  const taperShare = Math.max(...taper.map((w) => weekHardShare(plan, w) ?? 0));
+  const blockShare = blockHardShare(plan) ?? 0;
+  ok(
+    taperShare > blockShare,
+    `the taper is denser than the block (${(taperShare * 100).toFixed(0)}% vs ${(blockShare * 100).toFixed(0)}%)`,
+  );
   ok(checkRails(plan).ok, "and the plan is still clean, because the exemption holds");
 }
 

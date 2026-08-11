@@ -31,21 +31,49 @@
 
 import type { Plan, Week, Workout } from "./types";
 
-/** Block-level share of endurance time at Z4+. The real 80/20 claim.
- *  Measured today: 8-19% across every archetype. */
-export const BLOCK_HARD_MAX = 0.25;
+// WHAT THESE MEASURE, because it is easy to misread. `weekMinutes` buckets a session by its
+// `primaryZone`, so a 115-minute threshold ride counts as 115 hard minutes though only ~60
+// are at threshold. A deliberately coarse proxy — cheap, no segment walk, and drift shows up
+// in it just as clearly — but it runs roughly 2x the true time-in-zone, so these numbers are
+// NOT comparable to the 80/20 literature. They are drift rails, not physiology.
 
-/** Per-week ceiling on Z4+ time share, outside the taper. NOT an 80/20 rule —
- *  a guard against one week becoming an intensity bomb. Measured worst: 48%
- *  (olympic/beginner/5, where base weeks carry no quality at all). */
-export const WEEK_HARD_MAX = 0.55;
+/** Block-level ceiling on the Z4+ share.
+ *
+ *  Was 0.25, set when the engine emitted 8-19% because quality sessions were fixed-size and
+ *  every extra hour landed on easy work. Now that quality scales with the athlete the real
+ *  range is 18-31%, the top being Olympic distance, which is legitimately the sharpest thing
+ *  we program. Set just above that: enough that a correct plan never false-fails, tight
+ *  enough that drift still has somewhere to hit. 0.40 was the first attempt and it was too
+ *  loose — 25 hand edits walked a block from 22% to 37% with nothing refusing any of them.
+ *  This rail catches ADAPTATION drift; it is not a second periodisation engine. */
+export const BLOCK_HARD_MAX = 0.35;
+
+/** Block-level FLOOR on the Z4+ share.
+ *
+ *  New, and the reason it is new: every rail here guarded one direction, and the engine's
+ *  actual defect ran the other way. Plans drifted to 90%+ easy — the fitter the athlete, the
+ *  easier the plan — and nothing noticed, because "too easy" had no bound. Easing is
+ *  deliberately unlimited (doc 03 §4 C, protect fast), so a long enough run of eased weeks
+ *  can hollow a block out entirely. Set well below the measured minimum so ordinary easing
+ *  never trips it, but high enough to catch a block that has stopped containing training. */
+export const BLOCK_HARD_MIN = 0.1;
+
+/** Per-week ceiling on Z4+ time share, outside the taper. NOT an 80/20 rule — a guard
+ *  against one week becoming an intensity bomb.
+ *
+ *  Raised 0.55 -> 0.70. The old figure was measured when base weeks carried no quality at
+ *  all; short-course build weeks now legitimately reach 56-58% on the coarse proxy above
+ *  (a whole threshold session counts as hard minutes, not just its work intervals), and
+ *  Olympic distance is the sharpest thing we program by design — doc 01 §4 #3 asks for
+ *  more threshold/VO2 at short course. Still well below a week that is genuinely a bomb. */
+export const WEEK_HARD_MAX = 0.7;
 
 /** Week-over-week volume ratio between consecutive load weeks. The field
  *  heuristic is ~10%/week; the engine's real worst is 19.6% coming out of a
  *  deload, which is ordinary coaching. Measured today: 7.8%-19.6%. */
 export const RAMP_MAX = 1.25;
 
-export type RailKind = "block-intensity" | "week-intensity" | "ramp";
+export type RailKind = "block-intensity" | "block-too-easy" | "week-intensity" | "ramp";
 
 export interface RailViolation {
   kind: RailKind;
@@ -156,6 +184,16 @@ export function checkRails(plan: Plan): RailReport {
     });
   }
 
+  // The other direction. A block can be wrong by being empty, and until now nothing said so.
+  if (block != null && block < BLOCK_HARD_MIN) {
+    violations.push({
+      kind: "block-too-easy",
+      value: block,
+      limit: BLOCK_HARD_MIN,
+      detail: `block is only ${(block * 100).toFixed(0)}% Z4+ time (floor ${(BLOCK_HARD_MIN * 100).toFixed(0)}%) — this has stopped being a training block`,
+    });
+  }
+
   for (const week of plan.weeks) {
     // the taper is INTENDED to be intensity-dense while volume falls away
     if (week.phase === "taper" || week.isRaceWeek) continue;
@@ -221,14 +259,19 @@ export function railsRegressed(before: Plan, after: Plan): RailViolation[] {
 
   const a = checkRails(before);
   const b = checkRails(after);
+  // `block-too-easy` is a FLOOR, so "worse" means SMALLER — every other rail is a ceiling.
+  // Comparing them all one way would treat a block getting emptier as an improvement.
+  const isFloor = (k: RailKind) => k === "block-too-easy";
   const worst = new Map<string, number>();
   for (const v of a.violations) {
     const key = `${v.kind}:${v.weekIndex ?? "-"}`;
-    worst.set(key, Math.max(worst.get(key) ?? 0, v.value));
+    const had = worst.get(key);
+    worst.set(key, had == null ? v.value : isFloor(v.kind) ? Math.min(had, v.value) : Math.max(had, v.value));
   }
   return b.violations.filter((v) => {
     const key = `${v.kind}:${v.weekIndex ?? "-"}`;
     const had = worst.get(key);
-    return had == null || v.value > had + 1e-9;
+    if (had == null) return true;
+    return isFloor(v.kind) ? v.value < had - 1e-9 : v.value > had + 1e-9;
   });
 }

@@ -9,7 +9,7 @@
  * phases in order, and keep intensity polarized (mostly easy). Thresholds are calibrated
  * to the engine's real output with margin, so a correct plan never false-fails.
  */
-import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts, injuryMods, restDayFor } from "../lib/planEngine";
+import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts, injuryMods, restDayFor, isHardLoading } from "../lib/planEngine";
 import type { Profile, Plan, Injury, Workout, Segment } from "../lib/types";
 import { ZONES } from "../lib/zones";
 import { targetView } from "../lib/targets";
@@ -462,8 +462,12 @@ section("rest-day floor: nobody trains seven days a week");
 // hard swim Wed / hard ride Thu is a well-spaced week, not three hard days in a row.
 section("hard-day spacing: 48h between hard run/bike/brick work");
 {
-  const loadsMsk = (d: string) => d === "run" || d === "bike" || d === "brick";
-  const hardImpact = (w: Workout) => loadsMsk(w.discipline) && (w.primaryZone >= 4 || w.type === "brick");
+  // Use the ENGINE's own predicate rather than a copy. This test carried a duplicate, which
+  // is exactly how the two drifted: the engine learned that sweet-spot/tempo work is
+  // sub-threshold and exempt from 48-hour spacing (it is prescribed *because* it is
+  // repeatable day to day), while the copy went on counting it as a full hard day and
+  // failed correct plans. One definition, one place.
+  const hardImpact = isHardLoading;
   const DAY = 86400000;
 
   // The DEFAULT profile is not a real test of this: with prefDays at Tue/Thu/Sat the

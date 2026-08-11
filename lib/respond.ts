@@ -26,7 +26,7 @@
 
 import { represcribe } from "./prescribe";
 import { respondToEdit } from "./replan";
-import type { Discipline, Plan, Workout } from "./types";
+import type { Plan, Workout } from "./types";
 
 /** What the athlete just did. Distinct cases because the correct answers differ,
  *  not because the code paths do. */
@@ -54,14 +54,16 @@ export interface PlanResponse {
   warnings: string[];
 }
 
-const LOADS_MSK = (d: Discipline) => d === "run" || d === "bike" || d === "brick";
-
-/** A session that stresses bone and tendon hard — the engine's own definition,
- *  kept identical to the one the spacing invariant tests against so the two can't
- *  drift into disagreeing about what "hard" means. */
-export function isHardImpact(w: Workout): boolean {
-  return LOADS_MSK(w.discipline) && (w.primaryZone >= 4 || w.type === "brick");
-}
+/** A session that stresses bone and tendon hard.
+ *
+ *  This was a COPY of the engine's rule, under a comment promising it was "kept identical
+ *  … so the two can't drift into disagreeing about what hard means". It drifted the moment
+ *  the engine's rule changed — sweet-spot and tempo work became exempt from 48-hour spacing
+ *  (they are prescribed precisely because they are repeatable day to day) and this copy
+ *  went on flagging them, so the app warned about clashes the engine had deliberately
+ *  allowed. A comment cannot keep two definitions in sync; an import can. */
+export { isHardLoading as isHardImpact } from "./planEngine";
+import { isHardLoading as isHardImpact } from "./planEngine";
 
 const DAY_MS = 86400000;
 const at = (iso: string) => Date.parse(iso + "T00:00:00Z");
