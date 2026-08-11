@@ -170,7 +170,7 @@ function ModifyPanel({
                 aria-pressed={isNow}
                 className={`chip ${isNow ? "is-selected" : ""}`}
               >
-                {fmtDistance(m, unit)}{isPlanned && !isNow ? " · planned" : ""}
+                {fmtDistance(m, unit, workout.discipline === "swim")}{isPlanned && !isNow ? " · planned" : ""}
               </button>
             );
           })}
@@ -421,7 +421,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           {/* totals */}
           <div className="mb-4 flex gap-2">
             <Stat label="Duration" value={workout.estDurationSec > 0 ? fmtDuration(workout.estDurationSec) : "—"} />
-            {workout.estDistanceM ? <Stat label="Distance" value={fmtDistance(workout.estDistanceM, unit)} /> : null}
+            {workout.estDistanceM ? <Stat label="Distance" value={fmtDistance(workout.estDistanceM, unit, workout.discipline === "swim")} /> : null}
             <Stat label="Intensity" value={ZONES[workout.primaryZone].name} accent />
           </div>
 
@@ -475,7 +475,7 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
                 )}
                 {workout.rpe != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">RPE {workout.rpe}</span>}
                 {workout.actualDurationSec != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDuration(workout.actualDurationSec)}</span>}
-                {workout.actualDistanceM != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDistance(workout.actualDistanceM, unit)}</span>}
+                {workout.actualDistanceM != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDistance(workout.actualDistanceM, unit, workout.discipline === "swim")}</span>}
                 {!!workout.strengthLog?.length && (
                   <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{summarise(workout.strengthLog)}</span>
                 )}

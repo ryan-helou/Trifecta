@@ -346,7 +346,7 @@ function NextUpHero({
             <div className="font-display text-[1.35rem] font-semibold leading-tight">{workout.title}</div>
             <div className="mt-0.5 text-sm text-muted">
               {fmtDuration(workout.estDurationSec)}
-              {workout.estDistanceM ? ` · ${fmtDistance(workout.estDistanceM, unit)}` : ""}
+              {workout.estDistanceM ? ` · ${fmtDistance(workout.estDistanceM, unit, workout.discipline === "swim")}` : ""}
             </div>
           </div>
         </div>
@@ -442,7 +442,7 @@ function TodayHero({ workout }: { workout: Workout }) {
                   {actualDistance != null ? (
                     <>
                       <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
-                      <span className="tabular-nums">{fmtDistance(actualDistance, unit)}</span>
+                      <span className="tabular-nums">{fmtDistance(actualDistance, unit, workout.discipline === "swim")}</span>
                     </>
                   ) : null}
                   {workout.rpe != null && (
@@ -458,7 +458,7 @@ function TodayHero({ workout }: { workout: Workout }) {
                   {workout.estDistanceM ? (
                     <>
                       <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />
-                      <span className="tabular-nums">{fmtDistance(workout.estDistanceM, unit)}</span>
+                      <span className="tabular-nums">{fmtDistance(workout.estDistanceM, unit, workout.discipline === "swim")}</span>
                     </>
                   ) : null}
                   <span aria-hidden className="h-1 w-1 rounded-full bg-muted opacity-50" />

@@ -91,6 +91,45 @@ export function workoutSeconds(w: Workout): number {
   return (w.segments ?? []).reduce((a, s) => a + segmentSeconds(s), 0);
 }
 
+/** Metres a segment covers — the distance-side mirror of `segmentSeconds`. */
+export function segmentMeters(s: Segment): number {
+  const reps = s.repeat ?? 1;
+  const own = s.distanceM ?? 0;
+  const kids = (s.children ?? []).reduce((a, c) => a + segmentMeters(c), 0);
+  return reps * (own + kids);
+}
+
+/**
+ * Seconds-per-metre implied by a session's OWN header, used to price the parts
+ * of it prescribed in metres rather than minutes.
+ *
+ * `segmentSeconds` counts only `durationSec`, which is right for a run or a ride
+ * and reads a 44-minute swim as ~2 minutes: swim sets are prescribed in metres
+ * and only the rests carry a clock. That is why every swim resize was refused
+ * outright (#203) — `scaleWorkout` derived the new header from `segmentSeconds`,
+ * landed under MIN_SESSION_SEC, and bailed.
+ *
+ * Rather than reach for the athlete's pace model (which this layer deliberately
+ * does not have), solve for the rate that makes the session's own header true:
+ *
+ *     secPerM = (headerSeconds − durationParts) / distanceParts
+ *
+ * Zero for a pure-duration session, so applying it changes nothing there.
+ */
+export function metrePace(segments: Segment[], headerSec: number): number {
+  const durSec = segments.reduce((a, s) => a + segmentSeconds(s), 0);
+  const distM = segments.reduce((a, s) => a + segmentMeters(s), 0);
+  if (distM <= 0) return 0;
+  return Math.max(0, (headerSec - durSec) / distM);
+}
+
+/** Total seconds for a structure, with its metres priced at `secPerM`. */
+export function structuralSeconds(segments: Segment[], secPerM: number): number {
+  const durSec = segments.reduce((a, s) => a + segmentSeconds(s), 0);
+  const distM = segments.reduce((a, s) => a + segmentMeters(s), 0);
+  return durSec + distM * secPerM;
+}
+
 /** Rewrite the leading count in a rep-set description: "6 × 100m @ CSS" → "4 × …".
  *  Returns null when the text doesn't lead with a count, so the caller can decline
  *  to touch a segment it cannot describe honestly. */
@@ -180,7 +219,12 @@ export function scaleWorkout(w: Workout, factor: number, opts?: { allowLonger?: 
   // was the only way the two could ever disagree, and a header that contradicts
   // the steps beneath it is exactly the bug that had a session advertising its
   // warm-up as its main set.
-  const estDurationSec = segments.reduce((a, s) => a + segmentSeconds(s), 0);
+  // `structuralSeconds`, not a bare `segmentSeconds` sum: the latter cannot see
+  // metres, so every swim measured ~2 min and was refused (#203). The rate is
+  // calibrated on the BASELINE's own header so before and after are compared in
+  // one currency.
+  const secPerM = metrePace(base.segments, base.estDurationSec);
+  const estDurationSec = Math.round(structuralSeconds(segments, secPerM));
   if (estDurationSec < MIN_SESSION_SEC && base.estDurationSec >= MIN_SESSION_SEC) return null;
   if (estDurationSec === w.estDurationSec) return null;
 

@@ -48,6 +48,7 @@ export const EVENTS = [
   "session_distance_set", // { targetM } — resized by distance instead of time (#185)
   "session_repaced", // { zone } — the athlete set the intensity, moving the zone (#185)
   "duplicates_healed", // { removed } — phantom synced sessions cleaned up on restore (#123)
+  "distances_repaired", // { repaired, baselines } — impossible post-swap distances rebuilt on restore (#201)
   "session_feedback", // { verdict (enum), discipline (enum) } — the one-tap "how did that feel"
   "form_opened", // { band (enum) }
   "coach_opened",

@@ -14,7 +14,7 @@ import { addDays, fmtDayMonth } from "@/lib/dates";
 import { creditedDiscipline, creditedSeconds } from "@/lib/adapt";
 import { fmtDuration } from "@/lib/format";
 import { DISCIPLINE_META } from "@/lib/zones";
-import { Discipline } from "@/lib/types";
+import { Discipline, Workout } from "@/lib/types";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 
 export function ProgressTab() {
@@ -81,11 +81,19 @@ export function ProgressTab() {
   const racing = !isFitnessGoal(plan.profile);
   const raceISO = plan.profile.raceDateISO;
   const daysToRace = racing && raceISO ? daysBetween(today, raceISO) : null;
+  // A session finished EARLY still counts, on both sides of the fraction (#205).
+  // These two used to be bounded by `date <= today` while the SESSIONS tile
+  // (`stats.bankedCount`) had no date bound at all, so ticking off tomorrow's
+  // ride tonight made the screen contradict itself: "47 of 49 sessions due so
+  // far" sitting directly above a tile reading 48. Counting anything done —
+  // whenever it was scheduled — makes `kept` and `bankedCount` the same number
+  // by construction, and it is the honest reading: you did the work.
+  const isKept = (w: Workout) => w.status === "done" || w.status === "swapped";
   const due = Object.values(plan.workouts).filter(
-    (w) => w.discipline !== "rest" && w.date <= today,
+    (w) => w.discipline !== "rest" && (w.date <= today || isKept(w)),
   ).length;
   const kept = Object.values(plan.workouts).filter(
-    (w) => w.discipline !== "rest" && w.date <= today && (w.status === "done" || w.status === "swapped"),
+    (w) => w.discipline !== "rest" && isKept(w),
   ).length;
   const adherence = due > 0 ? Math.round((kept / due) * 100) : null;
   const onTrack =
@@ -236,7 +244,17 @@ export function ProgressTab() {
                     style={{ height: `${Math.min(100, (dh / Math.max(th, 1)) * 100)}%`, background: isCur ? "var(--accent)" : "var(--z2)" }}
                   />
                 </div>
-                {isCur && <div className="absolute -top-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-accent" />}
+                {/* Anchored to the TOP OF ITS BAR, not to the column (#207). The
+                    wrapper is `self-stretch`, so `-top-1.5` pinned the dot to the
+                    top of the chart no matter how short the bar was — in an early
+                    or recovery week it floated most of a card above the thing it
+                    marks and read as a stray artifact. */}
+                {isCur && (
+                  <div
+                    className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-accent"
+                    style={{ bottom: `calc(${th}% + 4px)` }}
+                  />
+                )}
               </div>
             );
           })}

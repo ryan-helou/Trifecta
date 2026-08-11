@@ -11,6 +11,7 @@ import {
 import { Plan, Profile } from "@/lib/types";
 import { profileToPersist, resolveProfile } from "@/lib/session";
 import { dedupeSyncedSessions } from "@/lib/activity";
+import { repairSwappedDistances } from "@/lib/repair";
 import { apiDeleteAccount, apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
 import { clearToken, loadToken, setToken } from "@/lib/tokenStore";
 import { notifyAppReady } from "@/lib/ota";
@@ -173,7 +174,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // means it fixes itself on next open, and the next ordinary save writes it back.
     const healed = r.plan ? dedupeSyncedSessions(r.plan) : null;
     if (healed?.removed) track("duplicates_healed", { removed: healed.removed });
-    setPlan(healed ? healed.plan : r.plan);
+    // Same idea for #201: the swap bug is fixed at the source, but athletes who
+    // already swapped a resized session are carrying an impossible one — Ryan's
+    // was a 15 km run in 35 min. Rebuild the distance from the session's own
+    // structure and drop the stale baseline that caused it, so it heals on next
+    // open and the next ordinary save writes it back.
+    const base = healed ? healed.plan : r.plan;
+    const fixed = base ? repairSwappedDistances(base) : null;
+    if (fixed && (fixed.repaired || fixed.baselinesCleared)) {
+      track("distances_repaired", { repaired: fixed.repaired, baselines: fixed.baselinesCleared });
+    }
+    setPlan(fixed ? fixed.plan : base);
   }, []);
 
   const markEngaged = useCallback(() => {

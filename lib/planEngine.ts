@@ -648,7 +648,15 @@ function pickWeekSlots(
     const min = recover ? 25 : 35;
     const roles: Role[] = [];
     for (let i = 0; i < count; i++) {
-      const idx = i;
+      // The rotation CARRIES ACROSS WEEKS. It used to be `const idx = i`, which
+      // reset every Monday, so the split only ever reached its first `count`
+      // days: a push-pull-legs athlete training twice a week did Push and Pull
+      // and NEVER trained legs — for the whole plan — and at one gym day a week
+      // did nothing but Push. Measured before this fix:
+      //   1 day/wk → push          2 day/wk → push, pull        3 day/wk → all three
+      // Continuing the count across weeks means every day of the split comes
+      // round regardless of how often the athlete gets to the gym.
+      const idx = weekIndex * count + i;
       roles.push({
         prefDay: prefDays[i % prefDays.length],
         discipline: "strength", hard: false, scalable: false, weight: 0.7, minMin: min, maxMin: min,

@@ -18,6 +18,7 @@ import {
   routineForWorkout,
   routineFromEntries,
   slotOf,
+  slotLabel,
   upsertRoutine,
 } from "../lib/routines";
 import { EXERCISE_CATALOG, canonicalName, searchExercises } from "../lib/exerciseCatalog";
@@ -213,6 +214,61 @@ section("Finding an exercise while typing");
     const n = EXERCISE_CATALOG.filter((e) => e.slots.includes(slot)).length;
     ok(n >= 5, `slot "${slot}" has enough exercises to build a session (got ${n})`);
   }
+}
+
+// ---- 5. an athlete's OWN split (#206) --------------------------------------
+
+section("A custom split rotates, and each named day owns its routine");
+{
+  const customPlan = (text: string) =>
+    generatePlan(
+      {
+        ...profileFor("full"),
+        strength: { enabled: true, daysPerWeek: 3, split: "custom", customSplit: text },
+      } as unknown as Profile,
+      ANCHOR,
+    );
+
+  // "push / pull / legs" used to produce ONE slot for every gym day, so a routine
+  // saved on Push pre-filled Pull and Legs too.
+  const p = customPlan("push / pull / legs");
+  const gym = Object.values(p.workouts).filter((w) => w.discipline === "strength");
+  const slots = [...new Set(gym.map((w) => slotOf(w)!))];
+  ok(slots.length === 3, `three typed days give three slots (got ${slots.length}: ${slots.join(", ")})`);
+  ok(slots.every((sl) => sl.startsWith("custom:")), "each is a named custom day");
+  ok(
+    gym.every((w) => /Your Session/.test(w.title) && !/^Your Strength/.test(w.title)),
+    "and each session is titled with the athlete's own word",
+  );
+  ok(slotLabel(slots[0]) === "Push", `the label reads back as they typed it (got "${slotLabel(slots[0])}")`);
+
+  // The whole point: a routine lands on ONE of the three, not all three.
+  const withRoutine = {
+    ...profileFor("full"),
+    routines: [routineFromEntries(slots[0], "R", [{ name: "Bench", sets: [{ reps: 5, weightKg: 60 }] }])!],
+  } as unknown as Profile;
+  const covered = gym.filter((w) => routineForWorkout(withRoutine, w)).length;
+  ok(covered > 0, "the routine fills its own day");
+  ok(covered < gym.length, `and only its own day (${covered}/${gym.length} gym sessions)`);
+  ok(
+    Math.abs(covered / gym.length - 1 / 3) < 0.1,
+    `roughly a third of gym days, one per rotation (got ${covered}/${gym.length})`,
+  );
+
+  // Separators people actually type.
+  for (const [text, want] of [["Chest Day, Back Day, Leg Day", 3], ["upper | lower", 2], ["a / b / c / d", 4]] as [string, number][]) {
+    const n = new Set(
+      Object.values(customPlan(text).workouts).filter((w) => w.discipline === "strength").map((w) => slotOf(w)!),
+    ).size;
+    ok(n === want, `"${text}" → ${want} slots (got ${n})`);
+  }
+
+  // Free text we cannot read must fall back, not invent a rotation.
+  const vague = customPlan("whatever I feel like");
+  const vagueSlots = new Set(
+    Object.values(vague.workouts).filter((w) => w.discipline === "strength").map((w) => slotOf(w)!),
+  );
+  ok(vagueSlots.size === 1 && vagueSlots.has("custom"), "unparseable free text falls back to one generic gym day");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
