@@ -313,20 +313,19 @@ function AppShellInner() {
     if (upgradedRef.current === key) return;
     upgradedRef.current = key;
     const prev = plan;
-    // Two messages, deliberately. The toast is the reassurance and it is transient; the
-    // NOTICE explains what changed and lives on Today until dismissed — a plan that
-    // rearranges itself overnight is unsettling, and "why does my week look different?"
-    // deserves an answer that is still there when they go looking for it.
-    const next = {
-      ...rebuildFromToday(plan, today),
-      engineVersion: ENGINE_VERSION,
-      notice:
-        "Your plan has been rebuilt around where you actually are. The last rework restarted everyone's base phase, which stripped the hard sessions out of the next few weeks — if your plan went quiet, that's why. Your training since day one now counts toward your position in the block, so your intervals, threshold and brick work are back. Everything you'd already completed was kept.",
-    };
+    // ONE transient message. This used to also plant a four-sentence `notice` card
+    // that sat on Today until dismissed, explaining the engine change in the
+    // language of a changelog. Ryan, on seeing it: "your plan pop up. It's not
+    // good." He's right — an athlete opening the app wants their session, not a
+    // release note, and the card arrived unbidden on the one screen that should
+    // answer "what am I doing today". The toast says what happened, offers the
+    // undo, and gets out of the way; anyone who wants the detail can see their
+    // week, which is the actual answer.
+    const next = { ...rebuildFromToday(plan, today), engineVersion: ENGINE_VERSION, notice: undefined };
     track("plan_upgraded", { from: plan.engineVersion ?? 1, to: ENGINE_VERSION });
     applyPlan(next);
     toast({
-      text: "Plan upgraded — your completed sessions were kept.",
+      text: "Your plan's been updated — everything you'd done was kept.",
       tone: "success",
       actionLabel: "Undo",
       // Restore the old plan AND record the refusal, so it survives a reload. Without the

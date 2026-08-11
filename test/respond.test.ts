@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------------------
 
 import { generatePlan } from "../lib/planEngine";
-import { logCheckin, moveWorkout } from "../lib/adapt";
+import { logCheckin, moveWorkout, setStatus, swapDiscipline } from "../lib/adapt";
 import { HORIZON_SESSIONS } from "../lib/prescribe";
 import { hardDayConflicts, isHardImpact, respondTo, type AthleteEvent } from "../lib/respond";
 import type { Plan, Profile, Workout } from "../lib/types";
@@ -187,6 +187,67 @@ section("never throws on degenerate input");
     threw = true;
   }
   ok(!threw, "unknown ids and empty plans never throw");
+}
+
+// ---------------------------------------------------------------------------
+// A SKIP REPORTS. IT DOES NOT REASSIGN.
+//
+// Ryan: "when I skip a session, it should not show up in the home page telling
+// me this is what you're gonna do tomorrow."
+//
+// Measured before the fix: skipping a Tempo Run ran `restoreSport`, which
+// rewrote the FOLLOWING SATURDAY'S Aerobic Endurance Ride into a run — "That
+// leaves you a run short this week, so one of your bike sessions becomes a run"
+// — and toasted it. The responder was applying trade logic to a decision: a swap
+// means the session moved sports, so restoring the mix is right; a skip means the
+// session is gone, and putting it back on another day argues with the athlete.
+// respond.ts already states this rule for the load ledger, quoting doc 02 §4 #11.
+//
+// Asserted by comparing the WHOLE plan before and after, not by reading the
+// headline — the bug was a silent rewrite of a different day, and a headline
+// check would have sailed straight past it.
+{
+  section("skipping a session never rewrites another one");
+
+  const today = addDays(ANCHOR, 2);
+  const plan = generatePlan(profile(), ANCHOR);
+  const shape = (p: Plan) =>
+    Object.values(p.workouts)
+      .map((w) => `${w.id}|${w.discipline}|${w.title}|${w.primaryZone}|${w.estDurationSec}`)
+      .sort()
+      .join("\n");
+
+  const upcoming = Object.values(plan.workouts).filter((w) => w.date >= today && w.discipline !== "rest");
+  ok(upcoming.length > 10, `enough sessions to sweep (${upcoming.length})`);
+
+  let mutated = 0;
+  let announced = 0;
+  for (const w of upcoming) {
+    const before = setStatus(plan, w.id, "skipped");
+    const res = respondTo(before, today, { kind: "skipped", workoutId: w.id });
+    if (res && shape(res.plan) !== shape(before)) mutated++;
+    if (res?.changedIds.length) announced++;
+  }
+  ok(mutated === 0, `no skip rewrites any other session (${mutated} of ${upcoming.length} did)`);
+  ok(announced === 0, `and none reports a change, so nothing pops up claiming the plan moved (${announced})`);
+
+  // The session the athlete skipped stays skipped — the responder mustn't quietly
+  // re-plan it either.
+  const one = upcoming.find((w) => (w.primaryZone ?? 0) >= 3) ?? upcoming[0];
+  const skipped = setStatus(plan, one.id, "skipped");
+  const after = respondTo(skipped, today, { kind: "skipped", workoutId: one.id });
+  ok((after?.plan ?? skipped).workouts[one.id].status === "skipped", "the skipped session is still skipped afterwards");
+
+  // …and the behaviour this deliberately KEEPS: a swap is a trade, so the week's
+  // sport balance is still restored. Removing that would be a different bug.
+  const run = upcoming.find((w) => w.discipline === "run");
+  if (run) {
+    const swapped = swapDiscipline(plan, run.id, "bike");
+    const res = respondTo(swapped, today, { kind: "swapped", workoutId: run.id });
+    ok((res?.changedIds.length ?? 0) > 0, `a SWAP still rebalances the week (${res?.headline})`);
+  } else {
+    ok(false, "precondition: a run to swap");
+  }
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
