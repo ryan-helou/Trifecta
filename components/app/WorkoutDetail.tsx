@@ -6,7 +6,7 @@ import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 import { targetView } from "@/lib/targets";
 import { fmtDistance, fmtDuration, fmtSets, repsSummary } from "@/lib/format";
-import { newPersonalBests, summarise } from "@/lib/strength";
+import { compareLifts, congratulate, exerciseHistory, newPersonalBests, summarise } from "@/lib/strength";
 import { addDays, dayIndexOf, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
@@ -673,9 +673,19 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
         onFinish={(entries) => {
           setLive(null);
           setLiveOpen(false);
+          // The congratulation is computed against history EXCLUDING this session,
+          // so the first time you log a lift it doesn't congratulate you for
+          // beating nothing.
+          const praise = congratulate(
+            compareLifts(entries, exerciseHistory(Object.values(plan.workouts).filter((w) => w.id !== workout.id))),
+          );
           actions.logCheckin(workout.id, { strengthLog: entries });
           close();
-          toast({ text: `${workout.title} logged — nice work.`, tone: "success" });
+          toast({
+            text: praise ? `${praise} 💪` : `${workout.title} logged — nice work.`,
+            tone: "success",
+            duration: praise ? 9000 : 6000,
+          });
         }}
         onDiscard={() => { setLive(null); setLiveOpen(false); }}
         onSaveRoutine={

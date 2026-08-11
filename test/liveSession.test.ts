@@ -22,7 +22,8 @@ import {
   type LiveSession,
 } from "../lib/liveSession";
 import { MAX_AGE_DAYS } from "../lib/liveStore";
-import type { StrengthEntry } from "../lib/types";
+import { compareLifts, congratulate, exerciseHistory, setBeatsLast, topSet } from "../lib/strength";
+import type { StrengthEntry, Workout } from "../lib/types";
 
 let checks = 0;
 let failures = 0;
@@ -176,6 +177,87 @@ section("the staleness rule is a real number");
 {
   ok(MAX_AGE_DAYS >= 1 && MAX_AGE_DAYS <= 7,
      `an abandoned draft expires in ${MAX_AGE_DAYS} days — long enough to survive a phone dying mid-session, short enough that last Tuesday's ghost never lands on this Tuesday`);
+}
+
+// ---------------------------------------------------------------------------
+// "It should compare to what you did last time or congratulate you if you did
+// better." — Ryan.
+//
+// The rule: a congratulation that fires on a lighter day teaches the athlete to
+// ignore the badge, so "better" is load first, then reps AT that load. Nothing
+// else counts, and having no history is its own state rather than a free win.
+// ---------------------------------------------------------------------------
+
+section("what counts as beating last time");
+{
+  const last = [{ reps: 5, weightKg: 100 }, { reps: 5, weightKg: 100 }, { reps: 4, weightKg: 100 }];
+
+  ok(setBeatsLast({ reps: 5, weightKg: 105 }, last) === "weight", "heavier than last time's best set is a win");
+  ok(setBeatsLast({ reps: 6, weightKg: 100 }, last) === "reps", "same weight for more reps than were done at that weight is a win");
+  ok(setBeatsLast({ reps: 5, weightKg: 100 }, last) === null, "matching last time is not a win — it's a match");
+  ok(setBeatsLast({ reps: 4, weightKg: 95 }, last) === null, "a lighter set is never a win");
+
+  // The trap this exists to prevent: rewarding a heavy triple over a hard set of eight.
+  ok(setBeatsLast({ reps: 3, weightKg: 105 }, [{ reps: 8, weightKg: 100 }]) === "weight",
+     "105 × 3 over 100 × 8 IS heavier, so it reads as a load win — deliberate, and only ever on load");
+  ok(setBeatsLast({ reps: 8, weightKg: 95 }, [{ reps: 3, weightKg: 100 }]) === null,
+     "…but more reps at a LIGHTER weight is not, which is the direction that would cheapen the badge");
+
+  ok(setBeatsLast({ reps: 8, weightKg: 60 }, []) === null, "with no history there is nothing to beat");
+  ok(setBeatsLast({ reps: 8, weightKg: 60 }, null) === null, "and a missing history is the same — 'first time' is its own state");
+
+  // Bodyweight: reps are the only axis, and must still work.
+  ok(setBeatsLast({ reps: 22 }, [{ reps: 20 }]) === "reps", "bodyweight progression is measured in reps");
+  ok(setBeatsLast({ reps: 18 }, [{ reps: 20 }]) === null, "and fewer reps is not progression");
+
+  ok(topSet([{ reps: 5, weightKg: 100 }, { reps: 8, weightKg: 100 }])?.reps === 8,
+     "the top set breaks weight ties on reps");
+}
+
+section("the congratulation is specific, or silent");
+{
+  const hist = (name: string, sets: { reps: number; weightKg?: number }[], date = "2026-08-04"): Workout =>
+    ({ id: "old-" + name, date, status: "done", discipline: "strength", strengthLog: [{ name, sets }] }) as unknown as Workout;
+
+  const history = [
+    hist("Back Squat", [{ reps: 5, weightKg: 100 }]),
+    hist("Bench Press", [{ reps: 8, weightKg: 60 }]),
+  ];
+  const past = exerciseHistory(history);
+
+  const better = compareLifts([{ name: "Back Squat", sets: [{ reps: 5, weightKg: 105 }] }], past);
+  ok(better[0].beat === "weight", "a heavier squat is flagged");
+  const msg = congratulate(better);
+  ok(!!msg && msg.includes("Back Squat") && msg.includes("105"), `and named with the number: "${msg}"`);
+  ok(!!msg && msg.includes("5 up"), "including how much better, which is the part worth hearing");
+
+  const same = compareLifts([{ name: "Back Squat", sets: [{ reps: 5, weightKg: 100 }] }], past);
+  ok(congratulate(same) === null, "repeating last week says nothing — silence beats a hollow well-done");
+
+  const worse = compareLifts([{ name: "Back Squat", sets: [{ reps: 3, weightKg: 80 }] }], past);
+  ok(congratulate(worse) === null, "and a lighter day is never congratulated");
+
+  // First time on a lift: real, but not a personal best over nothing.
+  const firstTime = compareLifts([{ name: "Front Squat", sets: [{ reps: 5, weightKg: 60 }] }], past);
+  ok(firstTime[0].last === null, "a lift never done before reports no 'last time'");
+  ok(congratulate(firstTime) === null, "and doesn't congratulate you for beating nothing");
+
+  // The biggest jump leads, and the rest are counted rather than listed.
+  const many = compareLifts(
+    [
+      { name: "Back Squat", sets: [{ reps: 5, weightKg: 102.5 }] },
+      { name: "Bench Press", sets: [{ reps: 8, weightKg: 70 }] },
+    ],
+    past,
+  );
+  const m2 = congratulate(many);
+  ok(!!m2 && m2.startsWith("Bench Press"), `the biggest gain leads (${m2})`);
+  ok(!!m2 && m2.includes("1 more lift"), "and the others are counted, not recited");
+
+  // Reps progression reads as reps, not as a weight gain of zero.
+  const repsWin = compareLifts([{ name: "Bench Press", sets: [{ reps: 10, weightKg: 60 }] }], past);
+  const m3 = congratulate(repsWin);
+  ok(!!m3 && m3.includes("10 reps") && m3.includes("up from 8"), `a reps win says so: "${m3}"`);
 }
 
 console.log(`\n${checks - failures}/${checks} live-session invariants passed`);
