@@ -32,7 +32,6 @@ import type { Plan, Week, Workout } from "./types";
 export type CoachTriggerKind =
   | "weekly-briefing" // #43
   | "ease-today" // #44
-  | "miss-absorbed" // #45
   | "race-week" // #46
   | "milestone"; // #47
 
@@ -60,7 +59,6 @@ export interface CoachMessage {
 const PRIORITY: Record<CoachTriggerKind, number> = {
   "ease-today": 100,
   "race-week": 80,
-  "miss-absorbed": 60,
   "weekly-briefing": 40,
   milestone: 20,
 };
@@ -180,27 +178,12 @@ function easeToday(ctx: CoachContext): CoachMessage | null {
   };
 }
 
-/** #45 — the plan rebuilt itself around a bad week. Say so, in the athlete's
- *  terms, rather than letting them discover a quietly different plan. */
-function missAbsorbed(ctx: CoachContext): CoachMessage | null {
-  const { plan, todayISO } = ctx;
-  const latest = (plan.adaptations ?? []).filter((a) => a.cause === "missed").sort((a, b) => b.weekIndex - a.weekIndex)[0];
-  if (!latest) return null;
-  const wk = plan.weeks.find((w) => w.index === latest.weekIndex);
-  if (!wk) return null;
-  // Only while it's still the current or next week — a month-old absorption is history.
-  const d = daysBetween(todayISO, wk.startDate);
-  if (d < -7 || d > 7) return null;
-
-  return {
-    kind: "miss-absorbed",
-    key: `absorbed:${latest.weekIndex}`,
-    title: "I've adjusted your plan",
-    body: `${latest.reason} Week ${latest.weekIndex + 1} is lighter now — nothing to make up, and race day hasn't moved.`,
-    action: { tab: "plan" },
-    priority: PRIORITY["miss-absorbed"],
-  };
-}
+// #45 (miss-absorbed) is deliberately GONE. It opened with "I've adjusted your plan"
+// over "You've missed N of M sessions", which is the app telling an athlete it quietly
+// rewrote their week and then leading with the count of what they failed to do. Ryan,
+// 2026-08-11: "remove the ive adjusted your plan ... please delete this popup." The
+// adaptation itself still happens and is still explained where the change is — on the
+// week it changed — rather than as an unprompted card that reads like a scolding.
 
 /**
  * #46 — race week. The messages an athlete actually needs here are reassurance,
@@ -271,7 +254,7 @@ function milestone(ctx: CoachContext): CoachMessage | null {
   return null;
 }
 
-const TRIGGERS = [easeToday, raceWeek, missAbsorbed, weeklyBriefing, milestone];
+const TRIGGERS = [easeToday, raceWeek, weeklyBriefing, milestone];
 
 /**
  * Everything the coach could say today, best first.
