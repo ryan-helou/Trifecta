@@ -1113,6 +1113,11 @@ function assignDays(roles: Role[], restDayOfWeek: number): Slot[] {
       minMin: r.minMin,
       maxMin: r.maxMin,
       build: r.build,
+      // Carried explicitly, like every other field. This rebuilds the Slot rather than
+      // spreading the Role, so anything not named here is silently dropped — which is
+      // what happened to `demote` the first time, and the only symptom was a demotion
+      // pass that found zero candidates and quietly changed nothing at all.
+      demote: r.demote,
     });
   }
   // greedy is single-shot; give the hard days an exact second look
@@ -1730,9 +1735,28 @@ function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slo
   // than both.
   const inZoneBudget = targetSec * qualityShare(tgt);
 
+  // THE HARD END IS RESERVED, NOT POOLED.
+  //
+  // `IntensityTarget` has always carried `threshold` and `hard` as separate fields, and
+  // spending them from one pot is wrong in a way that only appears once volume work counts
+  // against the budget: a brick and a long run are Z3, so on a small block they ate the
+  // whole allowance and the week's one Z4 session was shrunk to pay for them. Measured —
+  // olympic/beginner/4 fell to 8.5% Z4+ against the 10% floor, caught by `checkRails`.
+  // Threshold volume may crowd out other threshold work; it may not buy out the sharp end,
+  // which is the band a block stops being a training block without.
+  const hardBudget = targetSec * tgt.hard;
+
   // Everything the week is already committed to before a single interval is sized: the
   // non-scalable sessions, built at their intrinsic durations.
   const fixedInZone = [...built.values()].reduce((a, d) => a + inZoneSec(d), 0);
+  const fixedHardSec = [...built.values()].reduce((a, d) => a + inZoneSec(d, 4), 0);
+
+  /** What the quality slots may spend, given what the rest of the week already costs. */
+  const budgetLeft = (volumeInZone: number, volumeHard: number) =>
+    Math.max(
+      Math.max(0, inZoneBudget - fixedInZone - volumeInZone),
+      Math.max(0, hardBudget - fixedHardSec - volumeHard),
+    );
 
   const sizeVolume = (qualitySec: number) => {
     const volumeBudget = Math.max(0, remainingSec - qualitySec);
@@ -1744,7 +1768,10 @@ function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slo
     }
     redistributeCappedMinutes(volumeSlots, mins, volumeBudget / 60);
     for (const s of volumeSlots) built.set(s, s.build(mins.get(s)!));
-    return volumeSlots.reduce((a, s) => a + inZoneSec(built.get(s)!), 0);
+    return {
+      inZone: volumeSlots.reduce((a, s) => a + inZoneSec(built.get(s)!), 0),
+      hard: volumeSlots.reduce((a, s) => a + inZoneSec(built.get(s)!, 4), 0),
+    };
   };
 
   const scaleQuality = (budget: number) => {
@@ -1777,10 +1804,8 @@ function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slo
   // in-zone time the volume slots emit. Two passes is enough — the second only refines
   // volume lengths by the minutes quality gave back, and a third moves nothing anyone can
   // measure. Deterministic and cheap either way: the builders are pure.
-  let qualitySec = scaleQuality(Math.max(0, inZoneBudget - fixedInZone));
+  let qualitySec = scaleQuality(budgetLeft(0, 0));
   for (let pass = 0; pass < 2; pass++) {
-    const volumeInZone = sizeVolume(qualitySec);
-    let left = Math.max(0, inZoneBudget - fixedInZone - volumeInZone);
 
     // DEMOTE WHEN SCALING HAS NOWHERE LEFT TO GO.
     //
