@@ -629,7 +629,10 @@ function AppShellInner() {
           <BottomNav tab={tab} onChange={setTab} badges={{ friends: unread }} />
         </div>
 
-      {detail && <WorkoutDetail workout={detail} plan={plan} />}
+      {/* Keyed per session: WorkoutDetail restores an in-progress gym session in a
+          lazy initializer (#212), and without a key React would reuse the instance
+          when the athlete opens a different workout and carry the wrong draft in. */}
+      {detail && <WorkoutDetail key={detail.id} workout={detail} plan={plan} />}
       {checkin && <CheckinSheet workout={checkin} plan={plan} today={today} onClose={() => setCheckinId(null)} />}
       {settingsOpen && profile && <EditSettings profile={profile} onClose={() => setSettingsOpen(false)} />}
       {logOpen && <LogWorkoutSheet plan={plan} today={today} onClose={() => setLogOpen(false)} />}

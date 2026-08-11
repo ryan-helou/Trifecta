@@ -15,7 +15,9 @@ import { Wordmark } from "../Wordmark";
 import { currentBundleVersion } from "@/lib/ota";
 import { legalHref } from "@/lib/runtime";
 import { resolveProfile } from "@/lib/session";
-import { slotLabel, deleteRoutine } from "@/lib/routines";
+import { slotLabel, deleteRoutine, slotsForProfile, upsertRoutine } from "@/lib/routines";
+import { RoutineEditor } from "./RoutineEditor";
+import type { StrengthRoutine, StrengthSlot } from "@/lib/types";
 import { summarise } from "@/lib/strength";
 
 export function ProfileTab() {
@@ -23,6 +25,10 @@ export function ProfileTab() {
   const { actions, today, openSettings } = useUI();
   const toast = useToast();
   const [confirmReset, setConfirmReset] = useState(false);
+  // The routine editor (#212): `editing` holds an existing routine, `createSlot`
+  // the gym day a blank one is being built for. Never both.
+  const [editing, setEditing] = useState<StrengthRoutine | null>(null);
+  const [createSlot, setCreateSlot] = useState<StrengthSlot | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // The OTA bundle actually booted, which the native build number can't tell you.
@@ -116,33 +122,54 @@ export function ProfileTab() {
         <ActionRow onClick={openSettings} label="Change any of this" />
       </Section>
 
-      {/* Gym routines you built. Visible here because state the athlete created
-          and can't see or delete is state they will eventually distrust — the
-          same complaint that drove "Your setup" above. */}
-      {!!profile.routines?.length && (
-        <Section title="Your gym routines">
-          {profile.routines.map((r, i) => (
-            <div key={r.slot} className={`flex items-center justify-between gap-3 px-4 py-3 ${i ? "border-t border-line" : ""}`}>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">{r.name}</div>
-                <div className="text-xs text-muted">
-                  {slotLabel(r.slot)} · {summarise(r.exercises)}
-                </div>
+      {/* Your gym days. This is the "create workouts" section (#212): build a
+          Push day here once and every Push day on the plan opens as it. It used
+          to be read-and-delete only — the only way to make one was to log a
+          session first, which meant you had to DO the workout before you could
+          plan it. */}
+      <Section title="Your gym routines">
+        {(profile.routines ?? []).map((r, i) => (
+          <button
+            key={r.slot}
+            onClick={() => setEditing(r)}
+            className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition active:bg-surface-2 ${i ? "border-t border-line" : ""}`}
+          >
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{r.name}</div>
+              <div className="text-xs text-muted">
+                {slotLabel(r.slot)} · {summarise(r.exercises)}
               </div>
-              <button
-                onClick={() => updateProfile({ ...profile, routines: deleteRoutine(profile.routines, r.slot) })}
-                className="shrink-0 rounded-lg px-2 py-1 text-sm leading-none text-muted transition active:scale-90 hover:text-danger"
-                aria-label={`Delete ${r.name}`}
-              >
-                ✕
-              </button>
             </div>
-          ))}
-          <div className="border-t border-line px-4 pb-3 pt-2.5 text-xs text-muted">
-            Edit one by changing the sets on a gym session and saving it again.
-          </div>
-        </Section>
-      )}
+            <span className="shrink-0 text-xs font-semibold text-accent-soft">Edit</span>
+          </button>
+        ))}
+
+        {/* The days of their split with nothing built yet — named, so it's a
+            choice ("build my Leg day") rather than a blank form. */}
+        {(() => {
+          const built = new Set((profile.routines ?? []).map((r) => r.slot));
+          const spare = slotsForProfile(profile).filter((sl) => !built.has(sl));
+          if (!spare.length) return null;
+          return (
+            <div className={`px-4 py-3 ${profile.routines?.length ? "border-t border-line" : ""}`}>
+              <div className="mb-2 text-xs text-muted">
+                {profile.routines?.length ? "Not built yet" : "Build a gym day and it'll be waiting every time that day comes round."}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {spare.map((sl) => (
+                  <button
+                    key={sl}
+                    onClick={() => { setCreateSlot(sl); setEditing(null); }}
+                    className="rounded-xl border border-dashed border-accent/45 px-3 py-2 text-xs font-semibold text-accent-soft transition active:scale-95"
+                  >
+                    ＋ {slotLabel(sl)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </Section>
 
       <Section title="Manage your plan">
         <ActionRow first onClick={recalibrate} label="Recalibrate paces from my sessions" />
@@ -261,6 +288,30 @@ export function ProfileTab() {
       <div className="eyebrow pb-4 text-center text-[0.66rem]">
         <Wordmark /> · your path to the finish line
       </div>
+
+      {(editing || createSlot) && profile && (
+        <RoutineEditor
+          profile={profile}
+          existing={editing}
+          initialSlot={createSlot}
+          history={plan ? Object.values(plan.workouts) : []}
+          unit={unit}
+          nowISO={today}
+          onClose={() => { setEditing(null); setCreateSlot(null); }}
+          onSave={(r) => {
+            updateProfile({ ...profile, routines: upsertRoutine(profile.routines, r) });
+            setEditing(null);
+            setCreateSlot(null);
+            toast({ text: `${r.name} saved — every ${slotLabel(r.slot)} opens as this.`, tone: "success" });
+          }}
+          onDelete={(sl) => {
+            updateProfile({ ...profile, routines: deleteRoutine(profile.routines, sl) });
+            setEditing(null);
+            setCreateSlot(null);
+            toast({ text: "Routine deleted.", tone: "success" });
+          }}
+        />
+      )}
     </div>
   );
 }

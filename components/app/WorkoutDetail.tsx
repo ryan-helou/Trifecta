@@ -25,6 +25,12 @@ import { haptic } from "@/lib/haptics";
 import { useUI, type UIActions } from "./ui";
 import { useToast } from "./Toast";
 import { renderShareCard, shareCard, shareCardFilename } from "@/lib/shareCard";
+import { useApp } from "../AppProvider";
+import { LiveStrengthSession } from "./LiveStrengthSession";
+import { RoutineEditor } from "./RoutineEditor";
+import { defaultRoutineName, deleteRoutine, routineForWorkout, routineFromEntries, slotLabel, slotOf, upsertRoutine } from "@/lib/routines";
+import { startSession, sessionProgress, type LiveSession } from "@/lib/liveSession";
+import { loadLive, saveLive } from "@/lib/liveStore";
 
 function RepeatGlyph() {
   return (
@@ -313,7 +319,27 @@ function SessionStructure({ sections, paces, unit }: { sections: { label: string
 
 export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan }) {
   const { openWorkout, openCheckin, openCoach, actions, unit } = useUI();
+  const { profile, updateProfile } = useApp();
   const toast = useToast();
+
+  // ---- the gym session, live (#212) --------------------------------------
+  // A gym day can be TRACKED rather than remembered: start it, tick sets off as
+  // you do them, finish. The draft lives in localStorage (lib/liveStore) so it
+  // survives the phone locking between sets — see that file for why it isn't on
+  // the plan. `live` mirrors it so the button can say "Resume · 6/16".
+  const isGym = workout.discipline === "strength";
+  // Restored once, on mount. The sheet is only ever mounted by a tap (so we are
+  // past hydration) and AppShell keys it by workout id, so a lazy initializer is
+  // both SSR-safe and correct across switching sessions — and it avoids setting
+  // state from an effect, which would render the sheet once with a stale "Start"
+  // button before flipping it to "Resume".
+  const [live, setLive] = useState<LiveSession | null>(() =>
+    typeof window === "undefined" || workout.discipline !== "strength" ? null : loadLive(workout.id, todayISO()),
+  );
+  const [liveOpen, setLiveOpen] = useState(false);
+  const [editRoutine, setEditRoutine] = useState(false);
+  const slot = isGym ? slotOf(workout) : null;
+  const routine = isGym ? routineForWorkout(profile, workout) : null;
   const [mode, setMode] = useState<null | "log" | "modify">(null);
   const [note, setNote] = useState("");
   const meta = DISCIPLINE_META[workout.discipline];
@@ -543,12 +569,53 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           {/* actions */}
           {!isRace ? (
             <div className="space-y-2">
+              {/* A gym session gets tracked, not remembered (#212). This is the
+                  primary action for one — "Mark complete" is still there below,
+                  for the day you did it and just want it ticked. */}
+              {isGym && !done && (
+                <>
+                  <button
+                    onClick={() => {
+                      haptic("success");
+                      if (!live) {
+                        const s = startSession({
+                          workoutId: workout.id,
+                          startedISO: new Date().toISOString(),
+                          slot,
+                          name: routine?.name ?? workout.title,
+                          from: workout.strengthLog ?? routine?.exercises ?? [],
+                        });
+                        saveLive(s);
+                        setLive(s);
+                      }
+                      setLiveOpen(true);
+                    }}
+                    className="btn btn-primary w-full py-3.5 text-base"
+                  >
+                    {live
+                      ? `Resume workout · ${sessionProgress(live).done}/${sessionProgress(live).total} sets`
+                      : "Start workout"}
+                  </button>
+                  {/* Starting with an empty card is a fine way to train, but it's
+                      also the moment the athlete most wants to build the day once. */}
+                  {!routine && !live && (
+                    <button onClick={() => setEditRoutine(true)} className="btn btn-ghost w-full py-2.5 text-sm">
+                      ＋ Build a routine for {slot ? slotLabel(slot) : "this day"}
+                    </button>
+                  )}
+                  {routine && !live && (
+                    <button onClick={() => setEditRoutine(true)} className="btn btn-ghost w-full py-2.5 text-sm">
+                      Edit {routine.name}
+                    </button>
+                  )}
+                </>
+              )}
               <button
                 onClick={() => {
                   if (done) { haptic("light"); actions.toggleDone(workout.id); }
                   else { haptic("success"); actions.toggleDone(workout.id); close(); openCheckin(workout.id); }
                 }}
-                className={`btn w-full py-3.5 text-base ${done ? "btn-ghost" : "btn-primary"}`}
+                className={`btn w-full py-3.5 text-base ${done || (isGym && !done) ? "btn-ghost" : "btn-primary"}`}
               >
                 {done ? "✓ Completed — undo" : "Mark complete"}
               </button>
@@ -592,6 +659,62 @@ export function WorkoutDetail({ workout, plan }: { workout: Workout; plan: Plan 
           )}
         </div>
     </Sheet>
+
+    {/* The gym session as it happens (#212). Closing it does NOT end it — the
+        draft stays in storage and the button above becomes "Resume". */}
+    {liveOpen && live && (
+      <LiveStrengthSession
+        session={live}
+        history={Object.values(plan.workouts)}
+        unit={unit}
+        routineName={routine?.name ?? null}
+        onChange={setLive}
+        onClose={() => setLiveOpen(false)}
+        onFinish={(entries) => {
+          setLive(null);
+          setLiveOpen(false);
+          actions.logCheckin(workout.id, { strengthLog: entries });
+          close();
+          toast({ text: `${workout.title} logged — nice work.`, tone: "success" });
+        }}
+        onDiscard={() => { setLive(null); setLiveOpen(false); }}
+        onSaveRoutine={
+          slot && profile
+            ? (entries) => {
+                const next = routineFromEntries(slot, routine?.name ?? defaultRoutineName(slot), entries, todayISO());
+                if (!next) return;
+                updateProfile({ ...profile, routines: upsertRoutine(profile.routines, next) });
+                toast({ text: `Saved as ${next.name}.`, tone: "success" });
+              }
+            : undefined
+        }
+      />
+    )}
+
+    {editRoutine && profile && (
+      <RoutineEditor
+        profile={profile}
+        existing={routine}
+        // Opened from THIS gym day, so it opens on this gym day. Without it the
+        // picker defaulted to the first unbuilt slot — tapping "Build a routine
+        // for Legs" landed you on Push.
+        initialSlot={slot}
+        history={Object.values(plan.workouts)}
+        unit={unit}
+        nowISO={todayISO()}
+        onClose={() => setEditRoutine(false)}
+        onSave={(r) => {
+          updateProfile({ ...profile, routines: upsertRoutine(profile.routines, r) });
+          setEditRoutine(false);
+          toast({ text: `${r.name} saved — every ${slotLabel(r.slot)} opens as this.`, tone: "success" });
+        }}
+        onDelete={(sl) => {
+          updateProfile({ ...profile, routines: deleteRoutine(profile.routines, sl) });
+          setEditRoutine(false);
+          toast({ text: "Routine deleted.", tone: "success" });
+        }}
+      />
+    )}
     </>
   );
 }

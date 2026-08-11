@@ -23,6 +23,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Profile, StrengthEntry, StrengthRoutine, StrengthSlot, StrengthSlotBase, Workout } from "./types";
+import { customSlotFor, parseCustomSplit } from "./workouts";
 
 /** Title → slot, for plans generated before `strengthSlot` was written onto the
  *  session. Ordered longest-distinguishing-word first so "Upper-Body & Core"
@@ -150,4 +151,33 @@ export function upsertRoutine(routines: StrengthRoutine[] | undefined, routine: 
 
 export function deleteRoutine(routines: StrengthRoutine[] | undefined, slot: StrengthSlot): StrengthRoutine[] {
   return (routines ?? []).filter((r) => r.slot !== slot);
+}
+
+/**
+ * The gym days this athlete's split actually contains — what a routine editor
+ * may offer, and in the order the plan rotates through them.
+ *
+ * Derived from the same inputs `buildStrengthRoles` feeds to `strengthFor`
+ * (planEngine.ts), so the days offered are exactly the days that will appear on
+ * the calendar. Offering "Push" to an upper/lower athlete would let them build a
+ * routine that never attaches to anything.
+ */
+export function slotsForProfile(profile: Profile | null | undefined): StrengthSlot[] {
+  // No gym ⇒ every strength day is the bodyweight home circuit, one slot.
+  if (profile?.equipment?.gym === false) return ["home"];
+  const split = profile?.strength?.split ?? "full";
+  switch (split) {
+    case "custom": {
+      const days = parseCustomSplit(profile?.strength?.customSplit);
+      // One unparseable line is not a split — the engine falls back to a single
+      // generic session, and so must we (see strengthFor).
+      return days.length > 1 ? days.map(customSlotFor) : ["custom"];
+    }
+    case "upper-lower":
+      return ["lower", "upper"]; // the rotation starts on lower — strengthFor, index 0
+    case "push-pull-legs":
+      return ["push", "pull", "legs"];
+    default:
+      return ["full"];
+  }
 }
