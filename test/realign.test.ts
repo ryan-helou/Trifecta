@@ -13,8 +13,8 @@
  *
  * Run: `npm test`.
  */
-import { generatePlan } from "../lib/planEngine";
-import { easeUpcoming, rebuildFromToday, missedSince } from "../lib/adapt";
+import { ENGINE_VERSION, generatePlan } from "../lib/planEngine";
+import { easeUpcoming, rebuildFromToday, missedSince, shouldUpgradePlan, UPGRADE_RACE_GUARD_DAYS } from "../lib/adapt";
 import type { Profile, Plan } from "../lib/types";
 import { addDays, mondayOf, todayISO } from "../lib/dates";
 
@@ -211,6 +211,51 @@ section("easing reports what it actually changed");
   if (early.length === 0) {
     ok(countSoftened(plan, noneEased) === 0, "an all-easy week reports zero softened, not a false success");
   }
+}
+
+// ---------------------------------------------------------------------------
+section("the engine upgrade knows when NOT to touch a plan");
+{
+  const V = ENGINE_VERSION;
+  const stale = (over: Partial<Plan> = {}): Plan => ({ ...plan, engineVersion: 1, ...over });
+
+  ok(generatePlan(base, ANCHOR).engineVersion === V, `a fresh plan is stamped v${V}`);
+  ok(shouldUpgradePlan(stale(), daysFrom(10), V), "a stale plan mid-block upgrades");
+  ok(shouldUpgradePlan({ ...plan, engineVersion: undefined }, daysFrom(10), V), "an UNSTAMPED plan upgrades — that is the commonest stale case");
+  ok(!shouldUpgradePlan({ ...plan, engineVersion: V }, daysFrom(10), V), "a current plan is left alone (it converges)");
+  ok(!shouldUpgradePlan({ ...plan, engineVersion: V + 1 }, daysFrom(10), V), "a NEWER plan is never downgraded");
+  ok(!shouldUpgradePlan({ ...stale(), upgradeDeclinedVersion: V }, daysFrom(10), V), "a declined upgrade stays declined across a reload");
+  ok(shouldUpgradePlan({ ...stale(), upgradeDeclinedVersion: V - 1 }, daysFrom(10), V), "declining v1 does not decline v2");
+
+  // never mid-taper or in race week — the one case where a better plan is a worse outcome
+  const half = generatePlan({ ...base, raceType: "half", raceDateISO: daysFrom(20 * 7) }, ANCHOR);
+  const taperWk = half.weeks.find((w) => w.phase === "taper" && !w.isRaceWeek);
+  ok(!!taperWk, "precondition: the 70.3 plan has a non-race taper week");
+  if (taperWk) ok(!shouldUpgradePlan({ ...half, engineVersion: 1 }, taperWk.startDate, V), "never rebuilt during the taper");
+  const raceWk = half.weeks.find((w) => w.isRaceWeek);
+  if (raceWk) ok(!shouldUpgradePlan({ ...half, engineVersion: 1 }, raceWk.startDate, V), "…nor during race week");
+
+  // …nor in the run-up, whatever phase the label claims
+  const race = plan.raceDateISO;
+  const before = (n: number) => { const d = new Date(race + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+  ok(!shouldUpgradePlan(stale(), before(1), V), "not the day before the race");
+  ok(!shouldUpgradePlan(stale(), before(UPGRADE_RACE_GUARD_DAYS - 1), V), `not ${UPGRADE_RACE_GUARD_DAYS - 1} days out`);
+  ok(shouldUpgradePlan(stale(), before(UPGRADE_RACE_GUARD_DAYS + 1), V), `but yes ${UPGRADE_RACE_GUARD_DAYS + 1} days out`);
+
+  // A race already RUN must not upgrade: regenerating on a past date collapses to a
+  // zero-week plan, so the "upgrade" would delete their plan outright. Verified, not assumed.
+  const after = (n: number) => { const d = new Date(race + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  ok(!shouldUpgradePlan(stale(), after(3), V), "a race three days ago does not trigger an upgrade");
+  const past = generatePlan({ ...base, raceDateISO: daysFrom(-3) }, ANCHOR);
+  ok(past.weeks.length === 0, `regenerating on a past race date really does collapse to nothing (${past.weeks.length} weeks) — which is what that guard prevents shipping`);
+
+  // and the upgrade keeps history, exactly as a realign does
+  const done: Plan = { ...stale(), workouts: Object.fromEntries(Object.entries(plan.workouts).map(([id, w]) =>
+    [id, w.date < daysFrom(5) && w.discipline !== "rest" ? { ...w, status: "done" as const } : w])) };
+  const n0 = Object.values(done.workouts).filter((w) => w.status === "done").length;
+  ok(n0 > 0, `precondition: completed sessions exist (${n0})`);
+  ok(Object.values(rebuildFromToday(done, daysFrom(10)).workouts).filter((w) => w.status === "done").length === n0,
+     "an upgrade keeps every completed session");
 }
 
 console.log(`\n${checks - failures}/${checks} realign invariants passed`);

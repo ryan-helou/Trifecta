@@ -504,6 +504,41 @@ export function missedSince(plan: Plan, todayISO: string): Workout[] {
   );
 }
 
+/** Never restructure a plan inside this many days of race day. */
+export const UPGRADE_RACE_GUARD_DAYS = 21;
+
+/**
+ * Should this plan be rebuilt onto the current engine?
+ *
+ * Plans are STORED, not recomputed, so an athlete who onboarded before an engine change
+ * trains off the old one forever. Waiting for them to happen to edit a setting is not a
+ * migration strategy — it is how an improvement reaches new users only.
+ *
+ * Lives here, not in the component that calls it, because "is it safe to rewrite this
+ * athlete's training right now?" is a domain question with real consequences, and one
+ * embedded in a `useEffect` is one no test can reach.
+ *
+ * The guards are the whole reason this isn't a one-line version check:
+ *  • Not in the taper or race week. Restructuring the last weeks before an A-race is the
+ *    single case where a better plan is a worse outcome — they have arranged their life
+ *    around those sessions and surprises cost the most there.
+ *  • Not within three weeks of race day, whatever phase the calendar claims: a compressed
+ *    plan can still read "build" a fortnight out, so the DATE decides, not the label.
+ *  • Not for a race already run. `generatePlan` on a past race date returns a ZERO-week,
+ *    zero-workout plan, so upgrading there would DELETE the athlete's plan rather than
+ *    improve it. They lose nothing by waiting — the block is over.
+ * All of these defer the upgrade rather than cancelling it.
+ */
+export function shouldUpgradePlan(plan: Plan, todayISO: string, engineVersion: number): boolean {
+  if ((plan.engineVersion ?? 1) >= engineVersion) return false;
+  // they already said no to this one — see `upgradeDeclinedVersion`
+  if (plan.upgradeDeclinedVersion === engineVersion) return false;
+  const wk = plan.weeks.find((w) => todayISO >= w.startDate && todayISO < addDays(w.startDate, 7));
+  if (wk?.phase === "taper" || wk?.isRaceWeek) return false;
+  if (plan.raceDateISO && plan.raceDateISO <= addDays(todayISO, UPGRADE_RACE_GUARD_DAYS)) return false;
+  return true;
+}
+
 /** Which trigger eased a session — the why must distinguish "missed because life"
  *  from "felt too hard" from a low morning check-in (doc 02 §4 #11). */
 export type EaseCause = "readiness" | "missed" | "strain" | "form" | "manual";

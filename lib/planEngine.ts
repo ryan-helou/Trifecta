@@ -52,6 +52,17 @@ const PLAN_MIN: Record<Cat, number> = { olympic: 8, half: 12, full: 16 };
 // MAX_PLAN_WEEKS the structured plan starts closer to the race (the sole `delayedStart` case).
 const MAX_PLAN_WEEKS = 104; // ~2 years — a guardrail for bad dates, not real race lead times
 
+
+/**
+ * Which generation of the engine built a plan. Bump it when a change makes stored plans
+ * materially worse than what the engine would produce today, and athletes carrying an older
+ * plan are rebuilt once, around today, with their completed history kept.
+ *
+ * 2 — quality is budgeted before easy volume and in time-in-zone, so intensity scales with
+ *     the athlete instead of being diluted by their volume; weekly hours report what is
+ *     actually prescribed; injury caps hold in every sport.
+ */
+export const ENGINE_VERSION = 2;
 // The build/"specific-prep" phase is a *bounded* block (~6–12 wk in Friel/traditional
 // periodization; even shorter, rotated, under block periodization). It carries near-peak
 // load, so it must NOT grow with lead time — the aerobic base does that instead. These
@@ -1293,6 +1304,7 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
     generatedAtISO: new Date().toISOString(),
     compressed,
     delayedStart,
+    engineVersion: ENGINE_VERSION,
     notice,
   };
 }
@@ -1369,6 +1381,7 @@ function generateFitnessPlan(profile: Profile, anchorISO?: string): Plan {
     generatedAtISO: new Date().toISOString(),
     compressed: false,
     delayedStart: false,
+    engineVersion: ENGINE_VERSION,
     notice:
       "Fitness mode — a rolling block to build all-round triathlon fitness. No race on the calendar; add one any time and we'll periodise toward it.",
   };

@@ -463,6 +463,19 @@ export interface Plan {
    *  counting them again would make an automatic realign re-fire forever — see
    *  `missedSince` in lib/adapt.ts. */
   realignedAtISO?: string;
+  /** Which generation of the engine built this plan (see `ENGINE_VERSION`).
+   *
+   *  Absent means "before the field existed", which is exactly the case that needs
+   *  upgrading. Plans are STORED, not recomputed — so without this, an engine improvement
+   *  reaches new athletes only, and everyone already training keeps the old plan forever. */
+  engineVersion?: number;
+  /** The engine version whose upgrade this athlete declined (tapped Undo on).
+   *
+   *  Without it the Undo lasts exactly as long as the tab: reverting restores the old
+   *  version, so the next launch sees a stale plan and upgrades it straight back. That makes
+   *  the button a lie. Declining is respected until they ask for a rebuild themselves —
+   *  editing settings or realigning both regenerate on the current engine. */
+  upgradeDeclinedVersion?: number;
   /** why each eased week was softened — the applied suggestion's trigger + numbers (survives rebuilds) */
   adaptations?: { weekIndex: number; cause: "missed" | "strain" | "form"; reason: string; missed: number; scheduled: number }[];
 }

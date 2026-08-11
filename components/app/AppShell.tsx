@@ -29,6 +29,7 @@ import {
   missedSince,
   moveWorkout,
   rebuildFromToday,
+  shouldUpgradePlan,
   sessionStrain,
   setStatus,
   STRAIN_OFFER_EASE,
@@ -36,6 +37,7 @@ import {
   unswapDiscipline,
 } from "@/lib/adapt";
 import { respondTo, type AthleteEvent } from "@/lib/respond";
+import { ENGINE_VERSION } from "@/lib/planEngine";
 import { adjustSession } from "@/lib/prescribe";
 import { apiMarkNotificationsRead, apiNotifications } from "@/lib/api";
 import { repaceSession, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
@@ -283,6 +285,49 @@ function AppShellInner() {
       actionLabel: "Undo",
       onAction: () => applyPlan(prev),
       duration: 9000,
+    });
+  }, [plan, today, applyPlan, toast]);
+
+  // The plan UPGRADES itself when the engine that built it is out of date.
+  //
+  // Plans are STORED, not recomputed. Ship an engine improvement and it reaches new
+  // athletes only — everyone already training keeps the plan the old engine wrote, forever,
+  // unless they happen to edit a setting. That is not a migration; it is a silent
+  // two-tier product, and it is what happened when 1.0.25 went out without this.
+  //
+  // Safe to automate for the same reason the realign is: `rebuildFromToday` keeps every
+  // completed session as `kept-` history, the version stamp means it converges after
+  // exactly one run, and it is undoable. `shouldUpgradePlan` (lib/adapt.ts) holds the
+  // guards — taper, race week, the run-up to a race, and a race already run.
+  const upgradedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!plan) return;
+    if (!shouldUpgradePlan(plan, today, ENGINE_VERSION)) return;
+    const key = plan.id;
+    if (upgradedRef.current === key) return;
+    upgradedRef.current = key;
+    const prev = plan;
+    // Two messages, deliberately. The toast is the reassurance and it is transient; the
+    // NOTICE explains what changed and lives on Today until dismissed — a plan that
+    // rearranges itself overnight is unsettling, and "why does my week look different?"
+    // deserves an answer that is still there when they go looking for it.
+    const next = {
+      ...rebuildFromToday(plan, today),
+      engineVersion: ENGINE_VERSION,
+      notice:
+        "Your plan has been reworked. Your key sessions now scale with your fitness instead of being crowded out by easy volume, and each week's stated hours match what it actually prescribes. Everything you'd already completed was kept.",
+    };
+    track("plan_upgraded", { from: plan.engineVersion ?? 1, to: ENGINE_VERSION });
+    applyPlan(next);
+    toast({
+      text: "Plan upgraded — your completed sessions were kept.",
+      tone: "success",
+      actionLabel: "Undo",
+      // Restore the old plan AND record the refusal, so it survives a reload. Without the
+      // stamp the plan reverts to its old version and the very next launch upgrades it
+      // again — they tap Undo, close the app, and come back to the change they rejected.
+      onAction: () => applyPlan({ ...prev, upgradeDeclinedVersion: ENGINE_VERSION }),
+      duration: 10000,
     });
   }, [plan, today, applyPlan, toast]);
 
