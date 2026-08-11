@@ -4,6 +4,7 @@ import { createContext, useContext } from "react";
 import { Discipline, Feel, Plan, ReadinessInput, StrengthEntry, Unit } from "@/lib/types";
 import type { CalibrationResult } from "@/lib/calibrate";
 import type { AdaptationSuggestion, LoggedWorkout, LogResult } from "@/lib/adapt";
+import type { AddChoice, AddOutcome } from "@/lib/addSession";
 
 export interface CheckinEntry {
   rpe?: number;
@@ -31,6 +32,12 @@ export interface UIActions {
   logCheckin(id: string, entry: CheckinEntry): void;
   /** log a workout the athlete actually did; matches/ticks/swaps against the plan */
   logWorkout(input: LoggedWorkout): Omit<LogResult, "plan">;
+  /** "I've got a spare hour" — ADD a session the plan chooses, prospectively (#209).
+   *  Distinct from logWorkout, which records what already happened. Returns the
+   *  outcome so the sheet can preview it, including a refusal and its alternative. */
+  addSession(dateISO: string, choice: AddChoice): AddOutcome;
+  /** commit the previewed session; null when nothing could be added */
+  commitSession(dateISO: string, choice: AddChoice): string | null;
   rebuild(): void;
   ease(days: number, cause?: "strain" | "manual"): void;
   /** resize one session to a target duration, because the athlete asked */
@@ -69,6 +76,8 @@ export interface UICtxValue {
   openSettings(): void;
   /** open the "log a workout" sheet */
   openLog(): void;
+  /** open the "add a session" sheet (#209) */
+  openAddSession(): void;
   goTab(tab: TabKey): void;
   actions: UIActions;
 }
