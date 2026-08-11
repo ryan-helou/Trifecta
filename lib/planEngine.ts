@@ -1,5 +1,7 @@
 import {
+  Cat,
   Discipline,
+  Segment,
   Level,
   Phase,
   Plan,
@@ -11,6 +13,7 @@ import {
 } from "./types";
 import { applyTerrainToWeek, pacingNote, TERRAIN_TIME_FACTOR, terrainOf } from "./terrain";
 import { derivePaces } from "./paces";
+import { intensityTarget, qualityShare } from "./intensity";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
 import {
@@ -27,7 +30,8 @@ import {
 // 3:1 (or 2:1) load:deload cycles, 80/20 intensity, long-session caps, taper.
 // ---------------------------------------------------------------------------
 
-type Cat = "olympic" | "half" | "full";
+// `Cat` lives in types.ts so lib/intensity.ts can key off it without a cycle.
+export type { Cat };
 
 export const RACE_DISTANCES: Record<Cat, { swim: number; bike: number; run: number; name: string }> = {
   olympic: { swim: 1500, bike: 40000, run: 10000, name: "Olympic" },
@@ -174,8 +178,27 @@ function baseFraction(phase: Phase, idxInPhase: number, phaseLen: number, taperP
 
 // ---- the scheduler ------------------------------------------------------
 
+/**
+ * How a slot draws on the week's time.
+ *
+ * `quality` sessions are budgeted FIRST, from the intensity target, and easy volume takes
+ * what is left. That order is the whole point: the old single proportional division gave
+ * every scalable slot a weight-share, and because a quality session's ceiling is small
+ * while a long ride's is huge, every extra hour of an athlete's week landed on easy work.
+ * Measured, it inverted the plan — a 70.3 intermediate got 13.1% threshold while an elite
+ * Ironman athlete got 6.2%. The fitter you were, the easier your plan.
+ */
+type BudgetClass = "quality" | "volume";
+
 interface Slot {
   day: number; // 0=Mon..6=Sun
+  /** defaults to "volume" — only key sessions claim the intensity budget */
+  budget?: BudgetClass;
+  /** does this session claim the 48-hour rule? True hard weight-bearing work does; a
+   *  sweet-spot ride does not (see `isHardLoading`), and neither does swimming. Only three
+   *  such sessions fit in a week that also protects a rest day, so this is what decides
+   *  whether the schedule is solvable at all. */
+  spaced?: boolean;
   discipline: Discipline;
   hard: boolean;
   scalable: boolean;
@@ -490,6 +513,38 @@ function pickWeekSlots(
   const mods = injuryMods(p);
   const counts = weekSportCounts(p, phase, isRecovery, mods);
 
+  /**
+   * How much longer one key session may run for this athlete, and how many they get.
+   *
+   * Elite triathletes do six or seven interval sessions a week. One quality slot per sport
+   * with a fixed ceiling cannot carry a quarter of a twenty-hour week no matter how long
+   * you make it — the answer is more sessions, not absurdly long ones. The bike takes the
+   * extra deliberately: it is the lowest-impact way to accumulate threshold time, which is
+   * exactly why the Norwegian programme puts its biggest threshold volume there. Running
+   * is capped at two even in a big week, because run quality is where injuries come from
+   * (doc 03 §4).
+   */
+  const qMax = p.level === "elite" ? 1.4 : p.level === "advanced" ? 1.2 : 1;
+  const strong = p.level === "advanced" || p.level === "elite";
+  const qualityBikes =
+    recover || p.level === "beginner"
+      ? 1
+      : // Base is where a strong athlete's block mostly LIVES — on a long runway it is two
+        // thirds of the plan — so holding base to a single key ride is what kept the elite
+        // intensity share below a beginner's however much the build phase did. A second
+        // sweet-spot/tempo ride is ordinary base work, not a build session.
+        phase === "base"
+        ? strong && baseQualityOk
+          ? 2
+          : 1
+        : counts.bike >= 5 || (p.level === "elite" && counts.bike >= 4)
+        ? 3
+        : counts.bike >= 3
+        ? 2
+        : 1;
+  const qualityRuns =
+    phase === "base" || recover ? 1 : counts.run >= 4 || (strong && counts.run >= 3) ? 2 : 1;
+
   // The day the athlete has most time for long sessions (default Saturday). The
   // long ride/brick anchors here; the long run lands the day after.
   const longDay = ((((p.longSessionDay ?? 5) % 7) + 7) % 7);
@@ -503,26 +558,42 @@ function pickWeekSlots(
   const bikeRacePace = mods.bike.capZone >= 3;
   const longAnchor: Role = brickOk
     ? {
-        discipline: "brick", hard: !recover, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap + runOff, prefDay: longDay,
+        discipline: "brick", hard: !recover, scalable: true, spaced: !recover, weight: 3.0, minMin: 45, maxMin: rideCap + runOff, prefDay: longDay,
         build: (min) => W.brick(ctx, Math.max(30, min - runOff), runOff, bikeRacePace && phase === "peak"),
       }
     : {
-        discipline: "bike", hard: false, scalable: true, weight: 3.0, minMin: 45, maxMin: rideCap, prefDay: longDay,
+        discipline: "bike", hard: false, scalable: true, spaced: false, weight: 3.0, minMin: 45, maxMin: rideCap, prefDay: longDay,
         build: (min) => W.bikeLong(ctx, min, phase !== "base" && !recover && bikeRacePace),
       };
   // when a sport is off-limits (severe injury), keep only gentle, short sessions
   const bikeList: Role[] = mods.bike.avoid
     ? [easyBike(5, 1.0, 55), easyBike(2, 0.9, 50), easyBike(1, 0.8, 45), easyBike(0, 0.7, 40)]
-    : [longAnchor, bikeQualityRole(), easyBike(2, 1.2), easyBike(1, 1.0, 60), easyBike(0, 0.8, 55), easyBike(4, 0.7, 50)];
+    : [
+        longAnchor,
+        ...Array.from({ length: qualityBikes }, (_, i) => bikeQualityRole(i)),
+        easyBike(2, 1.2), easyBike(1, 1.0, 60), easyBike(0, 0.8, 55), easyBike(4, 0.7, 50),
+      ];
 
   // ---- RUN ----------------------------------------------------------------
   const longRun: Role = {
-    discipline: "run", hard: false, scalable: true, weight: 2.2, minMin: 30, maxMin: runCap, prefDay: longRunDay,
+    discipline: "run", hard: false, scalable: true, spaced: false, weight: 2.2, minMin: 30, maxMin: runCap, prefDay: longRunDay,
     build: (min) => W.runLong(ctx, min, phase === "peak" && !recover && mods.run.capZone >= 3),
   };
   const runList: Role[] = mods.run.avoid
     ? [easyRun(0, 0.9, 40), easyRun(3, 0.8, 35), easyRun(6, 0.7, 30), easyRun(1, 0.6, 30)]
-    : [longRun, runQualityRole(), easyRun(0, 1.0), easyRun(3, 0.9, 50), easyRun(6, 0.8, 45), easyRun(1, 0.7, 40)];
+    : [
+        longRun,
+        runQualityRole(),
+        // The SECOND run quality slot is tempo, not another threshold or VO2 session. Only
+        // three sessions can sit 48 h apart in a week that also protects a rest day, and
+        // the brick plus the threshold ride already claim two — a second maximal run would
+        // have to sit next to one of them. Nobody programs two VO2 runs in the same week as
+        // a long brick anyway.
+        ...(qualityRuns >= 2 && mods.run.capZone >= 3
+          ? [quality(6, "run", true, (min) => W.runTempo(ctx, min), 1.2, 40, 70)]
+          : []),
+        easyRun(0, 1.0), easyRun(3, 0.9, 50), easyRun(6, 0.8, 45), easyRun(1, 0.7, 40),
+      ];
 
   // ---- SWIM ---------------------------------------------------------------
   const noPool = p.equipment?.pool === false;
@@ -586,8 +657,12 @@ function pickWeekSlots(
     if (cap >= 4 && (phase === "peak" || phase === "taper")) return W.swimThreshold(ctx);
     return W.swimEndurance(ctx, W.swimMainMetersFor(ctx, min));
   }
-  function bikeQualityRole(): Role {
+  /** `slot` is which of the week's bike interval sessions this is (0-based) — it shifts the
+   *  preferred day and the threshold/sweet-spot alternation, so two quality rides in one
+   *  week are a different pair of sessions rather than the same one twice. */
+  function bikeQualityRole(slot = 0): Role {
     const cap = mods.bike.capZone;
+    const day = [3, 1, 5][slot % 3];
     // BASE IS NO LONGER 100% AEROBIC (#195, Ryan's call). Measured before this,
     // base ran Z2:100% — not one tempo, threshold or interval session, which is
     // stricter than our own guidance: doc 01 §4 #3 says base is "aerobic +
@@ -624,9 +699,11 @@ function pickWeekSlots(
     // ABOVE this cap — routing here used to hand a hurting athlete near-threshold
     // work from the very guard meant to prevent it. bikeTempo is the real Z3 answer,
     // and the cap has to be checked before the taper branch or taper leaks it back in.
-    if (cap === 3) return quality(3, "bike", true, () => W.bikeTempo(ctx, phase === "taper" ? 50 : 70), 1.3, 40, 75);
-    if (phase === "taper") return quality(3, "bike", true, () => W.bikeSweetSpot(ctx, 55), 1.3, 40, 60);
-    return quality(3, "bike", true, even ? () => W.bikeThreshold(ctx) : () => W.bikeSweetSpot(ctx), 1.5, 55, 85);
+    if (cap === 3) return quality(day, "bike", true, (min) => W.bikeTempo(ctx, phase === "taper" ? 50 : min), 1.3, 40, 85);
+    if (phase === "taper") return quality(day, "bike", true, () => W.bikeSweetSpot(ctx, 55), 1.3, 40, 60);
+    if (slot >= 2) return quality(day, "bike", true, (min) => W.bikeSweetSpot(ctx, min), 1.4, 55, 110);
+    const sharp = slot % 2 === 0 ? even : !even;
+    return quality(day, "bike", true, sharp ? (min) => W.bikeThreshold(ctx, min) : (min) => W.bikeSweetSpot(ctx, min), 1.5, 55, 115);
   }
   function runQualityRole(): Role {
     const cap = mods.run.capZone;
@@ -671,6 +748,19 @@ function pickWeekSlots(
     return roles;
   }
 
+  /**
+   * A key session.
+   *
+   * `scalable` now defaults TRUE and the ceiling scales with the athlete. Both matter: a
+   * fixed-size quality session is why intensity fell as fitness rose, and a fixed CEILING
+   * re-creates the same defect one level up — give an elite and a beginner the same ten
+   * sessions and the same 85-minute cap on a threshold ride, and the elite's extra hours
+   * have nowhere to go but easy volume. The Norwegian reference for a single bike session
+   * is 2 x 40-60 min at threshold, so an elite ceiling near two hours is the real number.
+   *
+   * `budget` is "volume" only where the role has resolved to aerobic work (early base, a
+   * deload, an injury cap) — that session is easy volume whatever its slot is called.
+   */
   function quality(
     day: number,
     disc: Discipline,
@@ -679,9 +769,19 @@ function pickWeekSlots(
     weight: number,
     minMin: number,
     maxMin: number,
-    scalable = false,
+    aerobic = false,
   ): Role {
-    return { prefDay: day, discipline: disc, hard, scalable, weight, minMin, maxMin, build };
+    const top = aerobic ? maxMin : Math.round(maxMin * qMax);
+    // Builders are pure, so evaluating one to read what it actually produces is safe and
+    // cheap — and it is the only way `spaced` can be right, since the same slot resolves to
+    // a threshold session or a sweet-spot one depending on phase and injury caps.
+    const d = build(top);
+    return {
+      prefDay: day, discipline: disc, hard, scalable: true,
+      budget: aerobic ? "volume" : "quality",
+      spaced: loads(disc) && d.type !== "tempo" && (d.primaryZone >= 4 || d.type === "brick"),
+      weight, minMin, maxMin: top, build,
+    };
   }
   function swim(prefDay: number, build: (min: number) => Draft, weight: number, scalable = false): Role {
     // Hardness has to reflect what the builder actually produces. Swim roles used to
@@ -717,8 +817,9 @@ function clearDayBeforeRace(raceDateISO: string, weeks: Week[], workouts: Record
 
 /** Is this a session the 48-hour rule cares about? Hard work that loads the
  *  musculoskeletal system — a Z4+ run/ride, or any brick. */
-function isHardLoading(w: Workout): boolean {
+export function isHardLoading(w: Workout): boolean {
   if (w.type === "race_prep" || w.discipline === "rest") return false;
+  if (w.type === "tempo") return false; // sweet spot / tempo — sub-threshold by design
   return loads(w.discipline) && (w.primaryZone >= 4 || w.type === "brick");
 }
 
@@ -889,7 +990,7 @@ export function restDayFor(p: Profile): number {
  * within its bound, and it leaves every other session exactly where the greedy put it.
  */
 function repairHardSpacing(out: Slot[], restDay: number | undefined): void {
-  const movable = out.map((s, i) => ({ s, i })).filter(({ s }) => s.hard && loads(s.discipline));
+  const movable = out.map((s, i) => ({ s, i })).filter(({ s }) => s.spaced);
   if (movable.length < 2 || movable.length > 6) return; // nothing to do / too big to enumerate
 
   const isMovable = new Set(movable.map((m) => m.i));
@@ -903,7 +1004,7 @@ function repairHardSpacing(out: Slot[], restDay: number | undefined): void {
     // Only weight-bearing hard work reserves a day. A hard CSS swim sharing a day with a
     // hard ride is an ordinary AM/PM double; blocking it would strand the repair and force
     // a 48-hour violation instead, which is the far worse trade.
-    if (s.hard && loads(s.discipline)) fixedHard[s.day] = true;
+    if (s.spaced) fixedHard[s.day] = true;
   });
 
   const prefOf = movable.map(({ s }) => s.day); // greedy's answer doubles as the preference to stay near
@@ -955,7 +1056,7 @@ function repairHardSpacing(out: Slot[], restDay: number | undefined): void {
 // keep sports apart, stay near each session's preferred day, and always keep one
 // day completely clear.
 function assignDays(roles: Role[], restDayOfWeek: number): Slot[] {
-  const day: { hard: boolean; disc: Discipline }[][] = Array.from({ length: 7 }, () => []);
+  const day: { hard: boolean; spaced: boolean; disc: Discipline }[][] = Array.from({ length: 7 }, () => []);
   const out: Slot[] = [];
   // Only a week that genuinely cannot fit inside six days gives the day back.
   const restDay = roles.length > REST_DAY_FEASIBLE_MAX ? undefined : restDayOfWeek;
@@ -966,12 +1067,14 @@ function assignDays(roles: Role[], restDayOfWeek: number): Slot[] {
       const s = score(d, r);
       if (s > bestScore) { bestScore = s; best = d; }
     }
-    day[best].push({ hard: r.hard, disc: r.discipline });
+    day[best].push({ hard: r.hard, spaced: !!r.spaced, disc: r.discipline });
     out.push({
       day: best,
       discipline: r.discipline,
       hard: r.hard,
       scalable: r.scalable,
+      budget: r.budget,
+      spaced: r.spaced,
       weight: r.weight,
       minMin: r.minMin,
       maxMin: r.maxMin,
@@ -1009,10 +1112,10 @@ function assignDays(roles: Role[], restDayOfWeek: number): Slot[] {
     // Weighted above the same-day term's junior partner but below it, so stacking on
     // one day stays worse than adjacency, and well above the prefDay pull (+100) so
     // spacing wins that argument rather than losing it.
-    if (r.hard && loads(r.discipline)) {
+    if (r.spaced) {
       const prev = day[(d + 6) % 7];
       const next = day[(d + 1) % 7];
-      const hardNeighbour = (c: typeof cur) => c.some((x) => x.hard && loads(x.disc));
+      const hardNeighbour = (c: typeof cur) => c.some((x) => x.spaced);
       if (hardNeighbour(prev)) s -= 250;
       if (hardNeighbour(next)) s -= 250;
     }
@@ -1349,6 +1452,33 @@ function buildNormalWeek(
 const SEPARATION_GRID_MIN = 5;
 
 /**
+ * Seconds a session actually spends at Z3 or above — the numerator the intensity
+ * distribution is measured on, and therefore the only honest thing to budget in.
+ *
+ * Budgeting SESSION time would deliver about half what it claims: a 115-minute threshold
+ * ride is only ~60 minutes at threshold, the rest being warm-up, the easy valleys between
+ * reps, and cool-down. Rest intervals are excluded — the 90-second jog between threshold
+ * kilometres is recovery, however the parent block is labelled.
+ */
+function inZoneSec(d: Draft): number {
+  const walk = (segs: Segment[]): number => {
+    let sec = 0;
+    for (const s of segs) {
+      const reps = s.repeat ?? 1;
+      if (s.children?.length) { sec += reps * walk(s.children); continue; }
+      if (s.kind === "rest") continue;
+      if ((s.zone ?? 2) >= 3) sec += reps * (s.durationSec ?? 0);
+    }
+    return sec;
+  };
+  // distance-prescribed work (every swim set) carries no durationSec — fall back to the
+  // session's own estimate when the walk finds nothing but the session IS hard
+  const walked = walk(d.segments ?? []);
+  if (walked > 0) return walked;
+  return d.primaryZone >= 3 ? d.estDurationSec * 0.5 : 0;
+}
+
+/**
  * Hand back the minutes the per-session caps refused, instead of dropping them.
  *
  * The week's time is divided once, proportionally, and each share is then clamped to its
@@ -1462,17 +1592,61 @@ function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slo
   const scalables = slots.filter((s) => s.scalable);
   const targetSec = targetHours * 3600;
   const remainingSec = Math.max(0, targetSec - fixedSec);
-  const wsum = scalables.reduce((a, s) => a + s.weight, 0) || 1;
   // Allocate minutes FIRST, separate them, and only then build — a Draft is
   // expensive to rebuild and the separation pass needs to see the whole week.
   const mins = new Map<Slot, number>();
-  for (const s of scalables) {
-    const share = (s.weight / wsum) * remainingSec;
+
+  // ---- quality first, easy volume second ----------------------------------------
+  //
+  // The week used to be divided ONCE, weight-proportionally, across every scalable slot.
+  // Because a quality session's ceiling is small and a long ride's is enormous, every extra
+  // hour an athlete could train landed on easy work — so the plan got EASIER the fitter you
+  // were. Measured: a 70.3 intermediate ran 13.1% threshold, an elite Ironman athlete 6.2%.
+  //
+  // Now the intensity target (lib/intensity.ts — level x phase x distance) claims its share
+  // up front, and easy volume takes what remains. Solved by bisecting one scale factor
+  // across the quality slots rather than algebraically, because session length is lumpy
+  // (whole reps) — builders are pure and cheap, so this costs nothing worth counting and
+  // stays correct on its own if the session shapes change underneath it.
+  const tgt = intensityTarget(cat, profile.level, phase, isRecovery);
+  const qualitySlots = scalables.filter((s) => s.budget === "quality");
+  const volumeSlots = scalables.filter((s) => s.budget !== "quality");
+  const inZoneBudget = targetSec * qualityShare(tgt);
+
+  let qualitySec = 0;
+  if (qualitySlots.length) {
+    const atScale = (k: number) => {
+      let zone = 0;
+      let total = 0;
+      for (const s of qualitySlots) {
+        const m = Math.round(s.minMin + k * (s.maxMin - s.minMin));
+        mins.set(s, m);
+        const d = s.build(m);
+        built.set(s, d);
+        zone += inZoneSec(d);
+        total += d.estDurationSec;
+      }
+      return { zone, total };
+    };
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      if (atScale(mid).zone > inZoneBudget) hi = mid;
+      else lo = mid;
+    }
+    qualitySec = atScale(lo).total; // rebuild at the chosen scale so `built`/`mins` hold it
+  }
+
+  const volumeBudget = Math.max(0, remainingSec - qualitySec);
+  const vsum = volumeSlots.reduce((a, s) => a + s.weight, 0) || 1;
+  for (const s of volumeSlots) {
+    const share = (s.weight / vsum) * volumeBudget;
     const min = Math.round(share / 60);
     mins.set(s, Math.max(s.minMin, Math.min(s.maxMin, min)));
   }
-  redistributeCappedMinutes(scalables, mins, remainingSec / 60);
-  for (const s of scalables) built.set(s, s.build(mins.get(s)!));
+  redistributeCappedMinutes(volumeSlots, mins, volumeBudget / 60);
+  for (const s of volumeSlots) built.set(s, s.build(mins.get(s)!));
   separateWithinSport(slots, built, mins);
 
   // Hard-enforce an explicit weeklyHoursCap. targetHours already respects the cap,

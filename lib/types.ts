@@ -8,6 +8,11 @@ export type RaceType = "olympic" | "half" | "full" | "custom" | "fitness";
 
 export type Level = "beginner" | "intermediate" | "advanced" | "elite";
 
+/** The distance category the engine periodises against. A custom race is classified by its
+ *  run leg, and fitness mode borrows "olympic" volumes (see `categoryOf`). Lives here so
+ *  lib/intensity.ts can key off it without importing the engine that imports it. */
+export type Cat = "olympic" | "half" | "full";
+
 // Distance/pace display system. Swim pace stays per-100m in both; imperial
 // affects run/bike distances (miles) and run pace (min/mi).
 export type Unit = "metric" | "imperial";
