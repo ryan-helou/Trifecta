@@ -1798,28 +1798,35 @@ function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slo
     // first, so one demotion does as much work as possible. At least one quality session
     // always survives — a block with none is the opposite failure, and `BLOCK_HARD_MIN`
     // exists to catch it.
-    const order = [...qualitySlots].sort((a, b) => {
+    // Candidates are every slot that HAS an aerobic version, not only the ones labelled
+    // "quality". The label decides who competes for the budget; it does not decide who
+    // spends it. A peak week's key swims are volume-class and still put 38 in-zone
+    // minutes on the board — a third of the whole budget — so a demotion pass that
+    // ignored them left the week over no matter how far the intervals were shaved.
+    const order = [...qualitySlots, ...volumeSlots].filter((s) => s.demote).sort((a, b) => {
       const rank = (s: Slot) => (s.discipline === "swim" ? 0 : s.discipline === "bike" ? 1 : 2);
       if (rank(a) !== rank(b)) return rank(a) - rank(b);
       return inZoneSec(b.build(b.minMin)) - inZoneSec(a.build(a.minMin));
     });
     for (const s of order) {
-      if (qualitySlots.length <= 1) break;
+      // committed = what the week already owes before the intervals are sized, plus those
+      // intervals at their shortest. If that fits, scaling can finish the job.
       const atMin = qualitySlots.reduce((a, q) => a + inZoneSec(q.build(q.minMin)), 0);
-      if (atMin <= left) break;
-      if (!s.demote) continue;
-      s.build = s.demote;
-      s.budget = "volume";
+      if (fixedInZone + sizeVolume(qualitySec) + atMin <= inZoneBudget) break;
+      // never demote the last hard session — a block with none is the opposite failure
+      if (s.budget === "quality" && qualitySlots.length <= 1) continue;
+      s.build = s.demote!;
       s.hard = false;
       s.spaced = false;
-      qualitySlots = qualitySlots.filter((q) => q !== s);
-      volumeSlots.push(s);
-      // A demoted session is aerobic now, so the week's committed in-zone total changes:
-      // re-measure rather than carrying the stale figure into the next candidate.
-      left = Math.max(0, inZoneBudget - fixedInZone - sizeVolume(qualitySec));
+      if (s.budget === "quality") {
+        s.budget = "volume";
+        qualitySlots = qualitySlots.filter((q) => q !== s);
+        volumeSlots.push(s);
+      }
+      s.demote = undefined; // demoted once; it is its own fallback now
     }
 
-    qualitySec = scaleQuality(left);
+    qualitySec = scaleQuality(Math.max(0, inZoneBudget - fixedInZone - sizeVolume(qualitySec)));
   }
   sizeVolume(qualitySec);
   separateWithinSport(slots, built, mins);
