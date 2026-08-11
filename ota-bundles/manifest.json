@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.40",
+  "latest": "1.0.41",
   "bundles": [
-    {
-      "version": "1.0.38",
-      "sha256": "4d6136d76f745dadf3542813296a0230235700b017e4574697e7a50c70afdf91",
-      "size": 801767,
-      "createdAtISO": "2026-08-11T21:37:18.280Z"
-    },
     {
       "version": "1.0.39",
       "sha256": "441ac93de5421482e03b39c90d2d88d77fb2ad3d0863e7a98c697502a8378501",
@@ -19,6 +13,13 @@
       "size": 801793,
       "createdAtISO": "2026-08-11T21:49:27.258Z",
       "comment": "restore the quality budget 1.0.39 shipped half-finished"
+    },
+    {
+      "version": "1.0.41",
+      "sha256": "9c51bc5c741c074ab0a6c641fabed262bb7994550aaa6c98d881307e201699b6",
+      "size": 801706,
+      "createdAtISO": "2026-08-11T21:57:16.317Z",
+      "comment": "remove the adjusted-your-plan card"
     }
   ]
 }
