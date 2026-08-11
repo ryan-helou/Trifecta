@@ -433,6 +433,25 @@ hold for all of them, shrink counterexamples." `[ZetCode-PBT, arXiv-PBT]`
 18. **Rebuild preserves history.** `rebuildFromToday` never drops or overwrites a completed past
     session (the `kept-` id namespacing must hold; regression-test the "same relative index" collision
     the code comments call out).
+19. **Rebuild preserves PERIODIZATION.** — **ENFORCED (2026-08-11)**, `test/realign.test.ts`
+    "rebuild keeps the athlete's place in the arc". `generatePlan` only ever saw the runway
+    *remaining*, so it laid base first: an athlete ten weeks into a twenty-week block who realigned
+    (or saved a setting, or received an engine upgrade) was handed a fresh base week one, and
+    `baseQualityOk` then withheld quality for its first two weeks. Reported from the field as "i
+    dont see any high intensity workouts now its the same plan just aerobic and endurance
+    runs/bikes". The arc is now computed over the **whole** block — `GenerateOpts.weeksBanked` plus
+    the weeks remaining — and only the remainder is emitted.
+    - Banked weeks are **discounted by adherence** (`weeksBanked` in `lib/adapt.ts`): elapsed time
+      alone is the wrong credit, because an athlete who missed the block hasn't banked that base and
+      fast-forwarding them into build is the ramp §4 of doc 03 forbids.
+    - The elapsed span is read from the **earliest session on record**, not `weeks[0].startDate` — a
+      rebuild rewrites the week grid to start today, so reading the grid makes rebuilding
+      non-idempotent and silently restarts base on the *next* rebuild. Asserted as a fixed point.
+    - The taper is sized off the full block, since it is measured back from race day and must not
+      depend on when a rebuild happened to fire.
+    - **Assert on emitted sessions, never on phase labels.** A week can be labelled `build` while
+      prescribing nothing above Z2; that gap is exactly how this shipped past review and a green
+      suite. Count sessions with `primaryZone >= 3`.
 
 ### 4.2 Concrete bug found by tracing: the 3-week taper was non-monotone — **FIXED (2026-07-22)**
 
