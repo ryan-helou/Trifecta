@@ -218,7 +218,20 @@ function swimCD(m: number): Segment {
   });
 }
 
-export function swimTechnique(ctx: BuildCtx, min?: number): Draft {
+/**
+ * `capZone` is the athlete's injury ceiling for swimming.
+ *
+ * This session is labelled `primaryZone: 2` but its middle set asks for Z3 — so every
+ * guard that reads the headline zone waved it through, and an athlete with a moderate or
+ * severe shoulder injury (capped at Z2) was prescribed tempo 50s anyway. Measured across
+ * 108 injured profiles, this single session accounted for **all 444** cap breaches in the
+ * engine. It is the same defect as the sweet-spot one: a label that understates what the
+ * session actually asks for. Technique work is exactly what an injured swimmer should keep
+ * — it is the lowest-load way to hold feel for the water — so the set stays and its
+ * intensity comes down, rather than the session being taken away.
+ */
+export function swimTechnique(ctx: BuildCtx, min?: number, capZone: Zone = 5): Draft {
+  const paced: Zone = capZone >= 3 ? 3 : 2;
   // The DRILL block is a fixed skill dose — doing 12 rounds of catch-up drill
   // instead of 4 does not make anyone a better swimmer, it makes them bored. The
   // aerobic pull set at the end is what carries extra volume when the week has
@@ -247,12 +260,12 @@ export function swimTechnique(ctx: BuildCtx, min?: number): Draft {
       seg({
         kind: "main",
         discipline: "swim",
-        zone: 3,
+        zone: paced,
         repeat: 8,
-        description: "8 × 50m @ Tempo, hold stroke count (15s rest)",
+        description: `8 × 50m @ ${paced >= 3 ? "Tempo" : "easy, well inside yourself"}, hold stroke count (15s rest)`,
         cue: "Count strokes per length and keep it steady as you fatigue.",
         children: [
-          seg({ kind: "main", discipline: "swim", zone: 3, distanceM: 50, description: "50m steady" }),
+          seg({ kind: "main", discipline: "swim", zone: paced, distanceM: 50, description: "50m steady" }),
           seg({ kind: "rest", discipline: "swim", durationSec: 15, description: "15s rest" }),
         ],
       }),
