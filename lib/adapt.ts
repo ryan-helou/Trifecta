@@ -1,6 +1,6 @@
 import { coachSafeTitle } from "./stravaPrivacy";
 import { Discipline, Feel, Plan, StrengthEntry, Week, Workout, Zone } from "./types";
-import { addDays, dayIndexOf, fromISO, mondayOf } from "./dates";
+import { addDays, dayIndexOf, fromISO, mondayOf, weeksBetween } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
 import { generatePlan, isFitnessGoal } from "./planEngine";
@@ -429,8 +429,41 @@ export function unswapDiscipline(plan: Plan, id: string): Plan {
  * when you've fallen behind). Past workouts + their statuses are preserved;
  * future weeks are regenerated to still land on race day.
  */
+/**
+ * How much of the arc this athlete has already climbed, in weeks.
+ *
+ * A rebuild regenerates the plan from today, and `generatePlan` only ever saw the runway
+ * REMAINING — so it laid base first and handed someone ten weeks into their block a fresh
+ * base week one. Realigning, saving a setting or receiving an engine upgrade would wipe
+ * every quality session for a fortnight. Ryan, ten weeks in: "i dont see any high intensity
+ * workouts now its the same plan just aerobic and endurance runs/bikes."
+ *
+ * Elapsed time alone would be the wrong credit: an athlete who missed most of the block has
+ * not banked that base, and dropping them into build would be exactly the ramp doc 03 §4
+ * tells us not to build. So elapsed weeks are discounted by what they actually did. Do it
+ * all, keep your place; do nothing, start again; do half, move half.
+ */
+export function weeksBanked(plan: Plan, todayISO: string): number {
+  const first = plan.weeks[0]?.startDate;
+  if (!first) return 0;
+  const elapsed = weeksBetween(mondayOf(first), mondayOf(todayISO));
+  if (elapsed <= 0) return 0;
+
+  const cutoff = fromISO(todayISO).getTime();
+  let done = 0;
+  let total = 0;
+  for (const w of Object.values(plan.workouts)) {
+    if (fromISO(w.date).getTime() >= cutoff) continue;
+    total++;
+    if (w.status === "done" || w.status === "swapped") done++;
+  }
+  // no history to judge (a plan rebuilt the same week it started) → credit the calendar
+  const adherence = total > 0 ? done / total : 1;
+  return Math.round(elapsed * Math.min(1, adherence));
+}
+
 export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
-  const fresh = generatePlan(plan.profile);
+  const fresh = generatePlan(plan.profile, undefined, { weeksBanked: weeksBanked(plan, todayISO) });
   const cutoff = fromISO(todayISO).getTime();
 
   // keep old workouts strictly before today (with their statuses). Their ids

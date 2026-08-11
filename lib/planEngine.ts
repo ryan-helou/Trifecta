@@ -1141,7 +1141,13 @@ function assignDays(roles: Role[], restDayOfWeek: number): Slot[] {
 
 // ---- assemble the whole plan --------------------------------------------
 
-export function generatePlan(profile: Profile, anchorISO?: string): Plan {
+/** Weeks of the arc the athlete has ALREADY completed, when a plan is being rebuilt
+ *  part-way through one. See `weeksBanked` in the phase split below. */
+export interface GenerateOpts {
+  weeksBanked?: number;
+}
+
+export function generatePlan(profile: Profile, anchorISO?: string, opts: GenerateOpts = {}): Plan {
   // No race on the calendar → a rolling fitness block instead of a countdown.
   if (isFitnessGoal(profile)) return generateFitnessPlan(profile, anchorISO);
 
@@ -1190,7 +1196,7 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
   // phase" (doc 04 §4.4) and avoids stacking many weeks of near-peak build load (an
   // overtraining trap). base ramps gently (0.6→0.85 of peak, `baseFraction`) with 3:1/2:1
   // recovery cycles, so a long base is a slow aerobic build, not monotonic overload.
-  const taperWeeks = Math.min(TAPER_WEEKS[cat], Math.max(1, Math.floor(totalWeeks * 0.18)));
+  let taperWeeks = Math.min(TAPER_WEEKS[cat], Math.max(1, Math.floor(totalWeeks * 0.18)));
   // The phases MUST sum to totalWeeks, or the week loop below never reaches the taper
   // branch and the race week inherits whatever phase ran off the end. That's what used
   // to happen on a short runway: a race ≤13 days out got NO taper phase, and race week
@@ -1206,6 +1212,63 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
     baseWeeks = 1;
     buildWeeks = Math.max(0, remaining - baseWeeks - peakWeeks);
     peakWeeks = Math.max(0, remaining - baseWeeks - buildWeeks);
+  }
+
+  // ---- where in the arc this athlete already is -----------------------------
+  //
+  // A rebuild used to restart periodization from scratch. `generatePlan` lays base first
+  // because it only ever saw the runway REMAINING — so an athlete ten weeks into base who
+  // realigned (or saved a setting, or got an engine upgrade) was handed a fresh plan
+  // beginning at base week one, and spent another fortnight on nothing but aerobic work.
+  // Measured: rebuilding at week 10 of 20 produced 0 quality sessions in weeks 1–2 and
+  // dropped the athlete back to the start of the arc they had already climbed.
+  //
+  // So the arc is computed over the WHOLE block — what has been banked plus what remains —
+  // and only the remaining part is emitted. Ten weeks in with ten to go now yields weeks
+  // 11–20 of that arc: late base, build, peak, taper. Which is what the athlete was
+  // actually owed.
+  const banked = Math.max(0, Math.floor(opts.weeksBanked ?? 0));
+  // weeks of BASE already served, so the emitted base weeks keep their place on the ramp
+  let bankedInBase = 0;
+  if (banked > 0) {
+    // re-split across the full arc, then skip forward to where they are
+    const full = banked + totalWeeks;
+    const fullTaper = Math.min(TAPER_WEEKS[cat], Math.max(1, Math.floor(full * 0.18)));
+    const fullRemaining = Math.max(0, full - fullTaper);
+    let fullPeak = fullRemaining >= 6 ? Math.min(2, Math.max(1, Math.round(fullRemaining * 0.12))) : fullRemaining >= 4 ? 1 : 0;
+    let fullBuild = fullRemaining > 0 ? Math.min(BUILD_MAX[cat], Math.max(1, Math.round(fullRemaining * 0.35))) : 0;
+    let fullBase = fullRemaining - fullBuild - fullPeak;
+    if (fullRemaining > 0 && fullBase < 1) {
+      fullBase = 1;
+      fullBuild = Math.max(0, fullRemaining - fullBase - fullPeak);
+      fullPeak = Math.max(0, fullRemaining - fullBase - fullBuild);
+    }
+    // what's LEFT of each phase once `banked` weeks are consumed off the front
+    baseWeeks = Math.max(0, fullBase - banked);
+    const spent = Math.min(banked, fullBase);
+    bankedInBase = spent;
+    buildWeeks = Math.max(0, fullBuild - Math.max(0, banked - spent));
+    const spent2 = spent + Math.min(Math.max(0, banked - spent), fullBuild);
+    peakWeeks = Math.max(0, fullPeak - Math.max(0, banked - spent2));
+    // The taper is measured back from RACE DAY, so its length belongs to the whole block,
+    // not to whatever runway happened to be left when the rebuild fired. Sized off the
+    // remainder alone, rebuilding at week 10 of 20 shrank a three-week taper to one.
+    taperWeeks = fullTaper;
+    const emitted = baseWeeks + buildWeeks + peakWeeks + taperWeeks;
+    if (emitted !== totalWeeks) {
+      // Absorb the rounding into the phase the athlete is actually IN. Spare weeks used to
+      // fall into base unconditionally, which handed someone who had already graduated base
+      // a stray aerobic-only week before their build — the very symptom this fix is for.
+      const delta = totalWeeks - emitted;
+      if (delta > 0) {
+        if (baseWeeks > 0) baseWeeks += delta;
+        else buildWeeks += delta;
+      } else if (delta < 0) {
+        const off = Math.min(baseWeeks, -delta);
+        baseWeeks -= off;
+        buildWeeks = Math.max(0, buildWeeks - (-delta - off));
+      }
+    }
   }
 
   const baseEnd = baseWeeks;
@@ -1228,9 +1291,12 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
     // recovery weeks only within base/build
     const isRecovery = (phase === "base" || phase === "build") && (i + 1) % cycleLen === 0 && i > 0;
 
-    // phase-local index + label
-    let idxInPhase = i;
-    let phaseLen = baseWeeks;
+    // Phase-local index + label. `bankedInPhase` carries forward the weeks of THIS phase
+    // the athlete already completed before a rebuild, so a lone leftover base week reads as
+    // (say) base week 10 of 10 rather than base week 1 — it keeps its quality work and its
+    // position on the ramp instead of being demoted to a first week of aerobic-only.
+    let idxInPhase = i + bankedInBase;
+    let phaseLen = baseWeeks + bankedInBase;
     if (phase === "build") { idxInPhase = i - baseEnd; phaseLen = buildWeeks; }
     else if (phase === "peak") { idxInPhase = i - buildEnd; phaseLen = peakWeeks; }
     else if (phase === "taper") { idxInPhase = i - peakEnd; phaseLen = taperWeeks; }

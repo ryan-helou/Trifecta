@@ -258,6 +258,67 @@ section("the engine upgrade knows when NOT to touch a plan");
      "an upgrade keeps every completed session");
 }
 
+// ---------------------------------------------------------------------------
+// A rebuild must not throw the athlete back to the start of the arc.
+//
+// `generatePlan` only ever saw the runway REMAINING, so it laid base first: an athlete ten
+// weeks into their block who realigned (or saved a setting, or got the engine upgrade) was
+// handed a fresh base week one and lost every quality session for a fortnight. Ryan, ten
+// weeks in and looking at his own phone: "i dont see any high intensity workouts now its
+// the same plan just aerobic and endurance runs/bikes."
+//
+// Measured on emitted sessions, not on phase labels — a label can say "build" while the
+// week prescribes nothing above Z2, which is precisely how this survived review.
+{
+  section("rebuild keeps the athlete's place in the arc");
+
+  const WEEKS_IN = 10;
+  const started = addDays(ANCHOR, -7 * WEEKS_IN);
+  const p0 = generatePlan({ ...base, raceDateISO: addDays(ANCHOR, 7 * WEEKS_IN) }, started);
+  // shift the plan back so "today" (ANCHOR) really is ten weeks into it
+  const shifted: Plan = {
+    ...p0,
+    weeks: p0.weeks.map((w) => ({ ...w, startDate: addDays(w.startDate, -7 * WEEKS_IN) })),
+    workouts: Object.fromEntries(Object.entries(p0.workouts).map(([id, w]) =>
+      [id, { ...w, date: addDays(w.date, -7 * WEEKS_IN) }])),
+  };
+
+  // mark the past at a given adherence, then rebuild
+  const rebuiltAt = (adherence: number) => {
+    let n = 0;
+    const marked: Plan = { ...shifted, workouts: Object.fromEntries(Object.entries(shifted.workouts).map(([id, w]) =>
+      [id, w.date < ANCHOR && w.discipline !== "rest"
+        ? { ...w, status: (n++ % 100) < adherence * 100 ? ("done" as const) : ("missed" as const) }
+        : w])) };
+    return rebuildFromToday(marked, ANCHOR);
+  };
+  const hardWeeks = (pl: Plan) => pl.weeks.map((w) =>
+    w.workoutIds.map((i) => pl.workouts[i]).filter((x) => x && (x.primaryZone ?? 0) >= 3).length);
+
+  const kept = rebuiltAt(1);
+  const h = hardWeeks(kept);
+  ok(h[0] > 0, `a compliant athlete's very next week still has quality (${h[0]} sessions at Z3+)`);
+  ok(h.slice(0, 4).every((n) => n > 0) || h.slice(0, 4).filter((n) => n > 0).length >= 3,
+     `and it doesn't dry up straight after (first four weeks: ${h.slice(0, 4).join(", ")})`);
+  ok(kept.weeks[0].phase !== "base" || kept.weeks.filter((w) => w.phase === "base").length <= 2,
+     `they are not dropped back into a full base block (${kept.weeks.filter((w) => w.phase === "base").length} base weeks left)`);
+
+  // …but someone who did none of it HASN'T banked that base, and must not be
+  // fast-forwarded into build on the strength of the calendar alone (doc 03 §4).
+  const lapsed = rebuiltAt(0);
+  ok(lapsed.weeks.filter((w) => w.phase === "base").length > kept.weeks.filter((w) => w.phase === "base").length,
+     "an athlete who missed the whole block restarts more base than one who did it all");
+  ok(lapsed.weeks[0].phase === "base", "and begins in base, not build");
+
+  // the taper belongs to the block, not to whatever runway was left at rebuild time
+  const fresh = generatePlan({ ...base, raceDateISO: addDays(ANCHOR, 7 * WEEKS_IN) }, started);
+  ok(kept.weeks.filter((w) => w.phase === "taper").length === fresh.weeks.filter((w) => w.phase === "taper").length,
+     `rebuilding mid-block doesn't shrink the taper (${kept.weeks.filter((w) => w.phase === "taper").length}w vs ${fresh.weeks.filter((w) => w.phase === "taper").length}w)`);
+
+  // and it still lands on race day
+  ok(kept.weeks[kept.weeks.length - 1].isRaceWeek, "the rebuilt plan still ends on race week");
+}
+
 console.log(`\n${checks - failures}/${checks} realign invariants passed`);
 if (failures > 0) {
   console.error(`\n❌ ${failures} realign invariant(s) FAILED`);
