@@ -318,7 +318,7 @@ function AppShellInner() {
       ...rebuildFromToday(plan, today),
       engineVersion: ENGINE_VERSION,
       notice:
-        "Your plan has been reworked. Your key sessions now scale with your fitness instead of being crowded out by easy volume, and each week's stated hours match what it actually prescribes. Everything you'd already completed was kept.",
+        "Your plan has been rebuilt around where you actually are. The last rework restarted everyone's base phase, which stripped the hard sessions out of the next few weeks — if your plan went quiet, that's why. Your training since day one now counts toward your position in the block, so your intervals, threshold and brick work are back. Everything you'd already completed was kept.",
     };
     track("plan_upgraded", { from: plan.engineVersion ?? 1, to: ENGINE_VERSION });
     applyPlan(next);

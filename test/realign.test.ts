@@ -14,8 +14,8 @@
  * Run: `npm test`.
  */
 import { ENGINE_VERSION, generatePlan } from "../lib/planEngine";
-import { easeUpcoming, rebuildFromToday, missedSince, shouldUpgradePlan, UPGRADE_RACE_GUARD_DAYS } from "../lib/adapt";
-import type { Profile, Plan } from "../lib/types";
+import { easeUpcoming, rebuildFromToday, missedSince, shouldUpgradePlan, weeksBanked, UPGRADE_RACE_GUARD_DAYS } from "../lib/adapt";
+import type { Profile, Plan, Workout } from "../lib/types";
 import { addDays, mondayOf, todayISO } from "../lib/dates";
 
 let checks = 0;
@@ -286,9 +286,9 @@ section("the engine upgrade knows when NOT to touch a plan");
   // mark the past at a given adherence, then rebuild
   const rebuiltAt = (adherence: number) => {
     let n = 0;
-    const marked: Plan = { ...shifted, workouts: Object.fromEntries(Object.entries(shifted.workouts).map(([id, w]) =>
+    const marked: Plan = { ...shifted, workouts: Object.fromEntries(Object.entries(shifted.workouts).map(([id, w]): [string, Workout] =>
       [id, w.date < ANCHOR && w.discipline !== "rest"
-        ? { ...w, status: (n++ % 100) < adherence * 100 ? ("done" as const) : ("missed" as const) }
+        ? { ...w, status: (n++ % 100) < adherence * 100 ? ("done" as const) : ("skipped" as const) }
         : w])) };
     return rebuildFromToday(marked, ANCHOR);
   };
@@ -317,6 +317,19 @@ section("the engine upgrade knows when NOT to touch a plan");
 
   // and it still lands on race day
   ok(kept.weeks[kept.weeks.length - 1].isRaceWeek, "the rebuilt plan still ends on race week");
+
+  // THE PRODUCTION CASE: rebuilding is not a one-off. A rebuild rewrites the week grid to
+  // start today, so a second rebuild that read `weeks[0].startDate` would see zero elapsed
+  // weeks and send the athlete back to base after all — undoing this fix on the next
+  // settings save. The elapsed span is read from the kept history instead, which keeps its
+  // original dates, so it survives any number of rebuilds.
+  ok(weeksBanked(kept, ANCHOR) >= WEEKS_IN - 1,
+     `a plan that has ALREADY been rebuilt still remembers the block start (${weeksBanked(kept, ANCHOR)} of ${WEEKS_IN} weeks banked)`);
+  const twice = rebuildFromToday(kept, ANCHOR);
+  const h2 = hardWeeks(twice);
+  ok(h2[0] > 0, `and rebuilding a second time keeps the quality (${h2[0]} at Z3+ in week 1)`);
+  ok(twice.weeks.filter((w) => w.phase === "base").length === kept.weeks.filter((w) => w.phase === "base").length,
+     "a second rebuild is a fixed point — the arc doesn't creep");
 }
 
 console.log(`\n${checks - failures}/${checks} realign invariants passed`);
