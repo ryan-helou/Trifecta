@@ -277,7 +277,29 @@ function candidates(plan: Plan, week: Week, todayISO: string, exceptId?: string)
  *
  * Returns null when the honest answer is "nothing", which is most of the time.
  */
-export function respondToEdit(plan: Plan, todayISO: string, exceptId: string): EditResponse | null {
+export function respondToEdit(
+  plan: Plan,
+  todayISO: string,
+  exceptId: string,
+  /**
+   * A SKIP is not an edit — it's a decision, and the responder must not undo it.
+   *
+   * Everything below was written for a TRADE: you turned a run into a ride, so
+   * the week is a run short and one of your rides becomes a run to put the mix
+   * back. Correct for a swap; wrong for a skip, where nothing was traded and the
+   * session was removed on purpose.
+   *
+   * Measured before this flag existed — skipping a Tempo Run rewrote the
+   * following Saturday's Aerobic Endurance Ride into a run, and announced it.
+   * Ryan: "when I skip a session, it should not show up in the home page telling
+   * me this is what you're gonna do tomorrow." Which is also the rule respond.ts
+   * already states for the load ledger, quoting doc 02 §4 #11 — a life-miss is
+   * not a reason to change the plan around it. It is a reason to say the week is
+   * lighter, and stop there.
+   */
+  opts: { reassign?: boolean } = {},
+): EditResponse | null {
+  const reassign = opts.reassign !== false;
   const edited = plan.workouts[exceptId];
   if (!edited) return null;
   const week = plan.weeks.find((w) => w.index === edited.weekIndex);
@@ -288,7 +310,7 @@ export function respondToEdit(plan: Plan, todayISO: string, exceptId: string): E
   //    so it acts rather than asks, and it runs before the others because putting
   //    the sport back changes what the quality branch has to work with.
   let working = plan;
-  const restoredSport = restoreSport(plan, week, todayISO, exceptId);
+  const restoredSport = reassign ? restoreSport(plan, week, todayISO, exceptId) : null;
   let sportLine: string | null = null;
   const sportIds: string[] = [];
   if (restoredSport) {
@@ -345,7 +367,7 @@ export function respondToEdit(plan: Plan, todayISO: string, exceptId: string): E
   //    same week rather than letting the week quietly become all-aerobic.
   if (drift.hardPct < -EDIT_HARD_DEADBAND) {
     const lostSec = drift.designedHardSec - drift.currentHardSec;
-    const restored = restoreQuality(working, week, todayISO, exceptId, edited);
+    const restored = reassign ? restoreQuality(working, week, todayISO, exceptId, edited) : null;
     if (restored) {
       if (railsRegressed(working, restored.plan).length) return null;
       return {

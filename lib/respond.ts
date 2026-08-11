@@ -125,7 +125,10 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   // Run on the plan the ledger already adjusted, so the two compose instead of
   // fighting: whichever has something to say, says it, and both can.
   const afterLedger = re?.plan ?? plan;
-  const edit = respondToEdit(afterLedger, todayISO, event.workoutId);
+  // A skip REPORTS; it never reassigns. See respondToEdit's `reassign` doc.
+  const edit = respondToEdit(afterLedger, todayISO, event.workoutId, {
+    reassign: event.kind !== "skipped",
+  });
 
   // An edit response that changed NOTHING is a note, not an action — "that drops
   // your only hard session and there's nowhere to move it". It must not be
