@@ -444,19 +444,25 @@ export function unswapDiscipline(plan: Plan, id: string): Plan {
  * all, keep your place; do nothing, start again; do half, move half.
  */
 export function weeksBanked(plan: Plan, todayISO: string): number {
-  const first = plan.weeks[0]?.startDate;
-  if (!first) return 0;
-  const elapsed = weeksBetween(mondayOf(first), mondayOf(todayISO));
-  if (elapsed <= 0) return 0;
-
+  // The block's true start is the EARLIEST session on record, not `weeks[0].startDate` —
+  // a rebuild rewrites the week grid to begin today, so reading the grid would report zero
+  // elapsed weeks and restart base all over again on the next rebuild. The kept- history
+  // holds its original dates, so it remembers when the athlete actually began.
   const cutoff = fromISO(todayISO).getTime();
+  let earliest = Infinity;
   let done = 0;
   let total = 0;
   for (const w of Object.values(plan.workouts)) {
-    if (fromISO(w.date).getTime() >= cutoff) continue;
+    const t = fromISO(w.date).getTime();
+    if (t < earliest) earliest = t;
+    if (t >= cutoff) continue;
+    if (w.discipline === "rest") continue;
     total++;
     if (w.status === "done" || w.status === "swapped") done++;
   }
+  if (!Number.isFinite(earliest)) return 0;
+  const elapsed = weeksBetween(mondayOf(new Date(earliest).toISOString().slice(0, 10)), mondayOf(todayISO));
+  if (elapsed <= 0) return 0;
   // no history to judge (a plan rebuilt the same week it started) → credit the calendar
   const adherence = total > 0 ? done / total : 1;
   return Math.round(elapsed * Math.min(1, adherence));

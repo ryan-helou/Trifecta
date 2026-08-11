@@ -62,7 +62,7 @@ const MAX_PLAN_WEEKS = 104; // ~2 years — a guardrail for bad dates, not real 
  *     the athlete instead of being diluted by their volume; weekly hours report what is
  *     actually prescribed; injury caps hold in every sport.
  */
-export const ENGINE_VERSION = 2;
+export const ENGINE_VERSION = 3;
 // The build/"specific-prep" phase is a *bounded* block (~6–12 wk in Friel/traditional
 // periodization; even shorter, rotated, under block periodization). It carries near-peak
 // load, so it must NOT grow with lead time — the aerobic base does that instead. These
