@@ -181,3 +181,101 @@ export function slotsForProfile(profile: Profile | null | undefined): StrengthSl
       return ["full"];
   }
 }
+
+// ---------------------------------------------------------------------------
+// What a gym day OPENS WITH when the athlete hasn't built a routine for it.
+//
+// Ryan's ask was "it has the list of all the sets and exercises I need to do for
+// this day". Measured on a fresh account, it didn't: without a saved routine the
+// live session opened on "Nothing on the card yet", and every exercise had to be
+// typed from scratch — on the exact screen that exists to stop you typing.
+//
+// The plan already knows. `gym()` in lib/workouts.ts writes the session as
+// "3 rounds: push-up ×12 · overhead press ×10 · dips ×10 · …" — real exercises,
+// real reps, real round count — and we were throwing all of it away. Parsing it
+// back gives every athlete a full card on day one, before they've built anything.
+//
+// Names are canonicalised through the exercise catalog so a parsed "push-up"
+// lands as the same "Push-Up" the athlete would have picked by hand — otherwise
+// the plan's card and their own logging would build two separate PB histories
+// for the same lift.
+// ---------------------------------------------------------------------------
+
+import { canonicalName } from "./exerciseCatalog";
+import type { ExerciseHistory } from "./strength";
+
+/** "3 rounds: push-up ×12 · single-arm row ×12/side" → exercises × sets. */
+export function prescribedExercises(w: Workout): StrengthEntry[] {
+  if (w.discipline !== "strength") return [];
+  for (const seg of w.segments ?? []) {
+    const d = seg.description ?? "";
+    const m = /^(?:(\d+)\s*rounds?\s*:\s*)(.+)$/i.exec(d.trim());
+    if (!m) continue;
+    const rounds = Math.max(1, Math.min(6, parseInt(m[1], 10) || seg.repeat || 3));
+    const items = m[2]
+      .split("·")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const out: StrengthEntry[] = [];
+    for (const item of items) {
+      // "single-arm row ×12/side" — the /side is a coaching note, not a rep count
+      const hit = /^(.+?)\s*[×x]\s*(\d+)\s*(\/\s*side)?$/i.exec(item);
+      if (!hit) continue;
+      const raw = hit[1].trim();
+      const reps = parseInt(hit[2], 10);
+      if (!raw || !reps) continue;
+      const perSide = !!hit[3];
+      // Title-case only when the catalog doesn't know it. Small words stay lower
+      // so "lat pulldown or pull-up" doesn't come back as "…Or Pull-Up".
+      const name =
+        canonicalName(raw) ??
+        raw.replace(/\b[a-z]/g, (c, i) => (i > 0 && /^(or|and|the|to)$/.test(raw.slice(i, i + 3).trim()) ? c : c.toUpperCase()));
+      out.push({
+        name: perSide ? `${name} (each side)` : name,
+        // No load: the plan can't know what this athlete lifts, and inventing a
+        // number would be worse than an empty field they fill once and reuse.
+        sets: Array.from({ length: rounds }, () => ({ reps })),
+      });
+    }
+    if (out.length) return out;
+  }
+  return [];
+}
+
+/** Where a gym session's opening card comes from — shown to the athlete, so
+ *  "this is your routine" and "this is what the plan suggested" never blur. */
+export type CardSource = "routine" | "plan" | "empty";
+
+export function cardForWorkout(
+  profile: Profile | null | undefined,
+  w: Workout,
+  /** Everything logged before, so the plan's card arrives at YOUR working weights. */
+  history?: ExerciseHistory[],
+): { entries: StrengthEntry[]; source: CardSource } {
+  const routine = routineForWorkout(profile, w);
+  if (routine?.exercises.length) return { entries: routine.exercises, source: "routine" };
+  const prescribed = prescribedExercises(w);
+  if (prescribed.length) return { entries: withKnownLoads(prescribed, history), source: "plan" };
+  return { entries: [], source: "empty" };
+}
+
+/**
+ * The plan prescribes movements and reps; it cannot know what this athlete
+ * lifts. So the FIRST Push day asks for five weights. From the second onward it
+ * shouldn't have to — the log already knows, and re-typing 60 kg every week is
+ * the most avoidable work in the app.
+ *
+ * The prescription keeps its structure (which exercises, how many sets, target
+ * reps) and history supplies only the load, which is the one number the plan was
+ * never in a position to supply. An athlete who wants their own rep scheme saves
+ * a routine, and that wins outright.
+ */
+function withKnownLoads(entries: StrengthEntry[], history: ExerciseHistory[] | undefined): StrengthEntry[] {
+  if (!history?.length) return entries;
+  return entries.map((e) => {
+    const prior = history.find((p) => p.name.trim().toLowerCase() === e.name.trim().toLowerCase());
+    const kg = prior?.lastSets.reduce((m, x) => Math.max(m, x.weightKg ?? 0), 0) ?? 0;
+    if (kg <= 0) return e;
+    return { ...e, sets: e.sets.map((x) => ({ ...x, weightKg: kg })) };
+  });
+}

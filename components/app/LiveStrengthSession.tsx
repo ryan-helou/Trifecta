@@ -114,6 +114,7 @@ export function LiveStrengthSession({
   const past = useMemo(() => exerciseHistory(history.filter((w) => w.id !== session.workoutId)), [history, session.workoutId]);
   const alreadyIn = new Set(session.exercises.map((e) => e.name.trim().toLowerCase()));
   const typed = searchExercises(adding, session.slot ?? undefined).filter((n) => !alreadyIn.has(n.toLowerCase()));
+  const suggestions = past.filter((p) => !alreadyIn.has(p.name.toLowerCase())).slice(0, 6);
 
   const add = (name: string) => {
     const clean = name.trim();
@@ -173,6 +174,27 @@ export function LiveStrengthSession({
               style={{ width: total ? `${(done / total) * 100}%` : "0%" }}
             />
           </div>
+        </div>
+      }
+      footer={
+        /* Pinned, because it was measured at y=1238 in an 812px viewport: ending
+           your session meant scrolling past every exercise to find the button.
+           Discard is deliberately the smaller, quieter half — it's the
+           destructive one, and it already asks before doing anything. */
+        <div className="flex gap-2 border-t border-line px-5 py-3">
+          <button
+            onClick={() => setConfirmDiscard(true)}
+            className="rounded-2xl border border-line px-4 py-3 text-sm font-semibold text-muted transition active:scale-[0.99]"
+          >
+            Discard
+          </button>
+          <button
+            onClick={() => { haptic("success"); clearLive(session.workoutId); onFinish(logged); }}
+            disabled={loggedSets === 0}
+            className="flex-1 rounded-2xl bg-foreground py-3 text-sm font-semibold text-background transition active:scale-[0.99] disabled:opacity-40"
+          >
+            {loggedSets === 0 ? "Tick a set to finish" : complete ? "Finish workout" : `Finish · ${loggedSets} set${loggedSets === 1 ? "" : "s"}`}
+          </button>
         </div>
       }
     >
@@ -333,6 +355,25 @@ export function LiveStrengthSession({
         {/* Add something that isn't on the card — the session you actually did
             beats the session you planned. */}
         <div>
+          {/* One tap to bring back a lift you already do, with last session's
+              numbers — the same bargain StrengthLog strikes. Typing a name you've
+              typed twenty times is the most avoidable work on this screen. */}
+          {suggestions.length > 0 && (
+            <div className="mb-2.5">
+              <div className="mb-1.5 text-[0.68rem] text-muted">Add again</div>
+              <div className="flex flex-wrap gap-1.5">
+                {suggestions.map((p) => (
+                  <button
+                    key={p.name}
+                    onClick={() => add(p.name)}
+                    className="rounded-full border border-line bg-surface-2 px-2.5 py-1.5 text-[0.72rem] font-semibold transition active:scale-95"
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-1.5">
             <input
               className="input min-w-0 flex-1 py-2.5"
@@ -394,22 +435,6 @@ export function LiveStrengthSession({
             {routineName ? `Update ${routineName} to match this` : "Save this as my routine for this day"}
           </button>
         )}
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => setConfirmDiscard(true)}
-            className="flex-1 rounded-2xl border border-line py-3 text-sm font-semibold text-muted transition active:scale-[0.99]"
-          >
-            Discard
-          </button>
-          <button
-            onClick={() => { haptic("success"); clearLive(session.workoutId); onFinish(logged); }}
-            disabled={loggedSets === 0}
-            className="flex-[2] rounded-2xl bg-foreground py-3 text-sm font-semibold text-background transition active:scale-[0.99] disabled:opacity-40"
-          >
-            Finish workout
-          </button>
-        </div>
 
         {/* Destructive and unrecoverable, so it asks — the one confirmation on
             this screen, and it names what is being thrown away. */}

@@ -84,6 +84,9 @@ function AppShellInner() {
   useAppleHealthAutoSync(plan, applyPlan);
   const [tab, setTab] = useState<TabKey>("today");
   const [detailId, setDetailId] = useState<string | null>(null);
+  // "Start workout" from Today opens the session sheet AND its live gym tracker,
+  // so the athlete lands where they were going instead of on a page to scroll.
+  const [startGym, setStartGym] = useState(false);
   const [checkinId, setCheckinId] = useState<string | null>(null);
   const [coach, setCoach] = useState<{ open: boolean; prefill?: string }>({ open: false });
   const [coachMsgs, setCoachMsgs] = useState<CoachMsg[]>([COACH_GREETING]);
@@ -599,7 +602,10 @@ function AppShellInner() {
       value={{
         today,
         unit,
-        openWorkout: setDetailId,
+        openWorkout: (id, opts) => {
+          setStartGym(!!opts?.startGym);
+          setDetailId(id);
+        },
         openCheckin: setCheckinId,
         openCoach: (prefill) => setCoach({ open: true, prefill }),
         openSettings: () => setSettingsOpen(true),
@@ -632,7 +638,7 @@ function AppShellInner() {
       {/* Keyed per session: WorkoutDetail restores an in-progress gym session in a
           lazy initializer (#212), and without a key React would reuse the instance
           when the athlete opens a different workout and carry the wrong draft in. */}
-      {detail && <WorkoutDetail key={detail.id} workout={detail} plan={plan} />}
+      {detail && <WorkoutDetail key={detail.id} workout={detail} plan={plan} autoStartGym={startGym} />}
       {checkin && <CheckinSheet workout={checkin} plan={plan} today={today} onClose={() => setCheckinId(null)} />}
       {settingsOpen && profile && <EditSettings profile={profile} onClose={() => setSettingsOpen(false)} />}
       {logOpen && <LogWorkoutSheet plan={plan} today={today} onClose={() => setLogOpen(false)} />}

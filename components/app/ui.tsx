@@ -69,7 +69,9 @@ export type TabKey = "today" | "plan" | "progress" | "friends" | "profile";
 export interface UICtxValue {
   today: string;
   unit: Unit;
-  openWorkout(id: string | null): void;
+  /** Open a session. `startGym` jumps straight into the live gym tracker, so a
+   *  gym day is one tap from Today rather than a tap plus a 500px scroll. */
+  openWorkout(id: string | null, opts?: { startGym?: boolean }): void;
   openCheckin(id: string | null): void;
   openCoach(prefill?: string): void;
   /** open the edit-settings sheet (race/training/PRs) from anywhere */

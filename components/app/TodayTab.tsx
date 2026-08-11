@@ -536,9 +536,21 @@ function TodayHero({ workout }: { workout: Workout }) {
           </button>
         ) : (
           <>
-            <button onClick={complete} className="btn btn-primary flex-1 py-3.5 text-base">
-              I did it
-            </button>
+            {/* A gym day's primary action is to TRACK it, not to declare it done.
+                Measured before this: from Today you tapped the card, scrolled ~500px
+                past duration / shape / why-it-matters, and only then found "Start
+                workout" — while "I did it" sat right here inviting you to skip the
+                tracker entirely. Now it's one tap, and "I did it" stays for the day
+                you trained without the phone. */}
+            {workout.discipline === "strength" ? (
+              <button onClick={() => openWorkout(workout.id, { startGym: true })} className="btn btn-primary flex-1 py-3.5 text-base">
+                Start workout
+              </button>
+            ) : (
+              <button onClick={complete} className="btn btn-primary flex-1 py-3.5 text-base">
+                I did it
+              </button>
+            )}
             <button
               onClick={() => {
                 actions.skip(workout.id);
