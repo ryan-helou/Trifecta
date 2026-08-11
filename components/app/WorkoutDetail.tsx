@@ -258,7 +258,11 @@ function ModifyPanel({
           className="btn btn-ghost w-full py-2.5 text-sm"
           style={{ color: workout.status === "skipped" ? undefined : "var(--danger)" }}
         >
-          {workout.status === "skipped" ? "Un-skip this session" : "Skip this session"}
+          {workout.status === "skipped"
+            ? workout.absorbedBy
+              ? "Put this session back anyway"
+              : "Un-skip this session"
+            : "Skip this session"}
         </button>
       </div>
     </div>
@@ -438,28 +442,38 @@ export function WorkoutDetail({ workout, plan, autoStartGym }: { workout: Workou
 
   return (
     <>
-    <Sheet onClose={close} label={workout.title}>
-      <div className="px-5 pb-8 pt-1">
-          {/* header */}
-          <div className="mb-3 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: `color-mix(in oklab, var(${meta.colorVar}) 18%, transparent)`, color: `var(${meta.colorVar})` }}>
-              <DisciplineIcon discipline={workout.discipline} size={24} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className={`font-display text-xl font-semibold leading-tight ${isRace ? "text-accent" : ""}`}>{workout.title}</h2>
-              <div className="text-sm capitalize text-muted">{meta.label} · {workout.type.replace("_", " ")}{reps ? ` · ${reps}` : ""}</div>
-            </div>
-            {/* Every other sheet has one; this was the only way out being a swipe,
-                which is exactly the affordance problem (#173). */}
-            <button
-              onClick={close}
-              aria-label="Close"
-              className="-mr-1 shrink-0 self-start p-1 text-muted transition hover:text-foreground"
-            >
-              ✕
-            </button>
+    <Sheet
+      onClose={close}
+      label={workout.title}
+      /* PINNED, not scrolled (#214). This block used to be the first thing inside the
+         scroll region, so on a long session — a gym day with a dozen exercises is the
+         case Ryan hit — scrolling down took the close button off screen with it, and
+         content drag-to-dismiss only engages when the scroll is already at the top.
+         That left the 44px grab strip as the sole way out of the sheet you were
+         deepest inside. As a header it is always on screen, and Sheet makes headers
+         draggable, so "slide down out of it" works from anywhere in the session. */
+      header={
+        <div className="flex items-center gap-3 border-b border-line px-5 pb-3 pt-1">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: `color-mix(in oklab, var(${meta.colorVar}) 18%, transparent)`, color: `var(${meta.colorVar})` }}>
+            <DisciplineIcon discipline={workout.discipline} size={24} />
           </div>
-
+          <div className="min-w-0 flex-1">
+            <h2 className={`truncate font-display text-xl font-semibold leading-tight ${isRace ? "text-accent" : ""}`}>{workout.title}</h2>
+            <div className="text-sm capitalize text-muted">{meta.label} · {workout.type.replace("_", " ")}{reps ? ` · ${reps}` : ""}</div>
+          </div>
+          {/* Every other sheet has one; this was the only way out being a swipe,
+              which is exactly the affordance problem (#173). */}
+          <button
+            onClick={close}
+            aria-label="Close"
+            className="-mr-1 shrink-0 self-start p-1 text-muted transition hover:text-foreground"
+          >
+            ✕
+          </button>
+        </div>
+      }
+    >
+      <div className="px-5 pb-8 pt-4">
           {/* totals */}
           <div className="mb-4 flex gap-2">
             <Stat label="Duration" value={workout.estDurationSec > 0 ? fmtDuration(workout.estDurationSec) : "—"} />

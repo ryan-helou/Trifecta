@@ -51,6 +51,10 @@ interface Ctx {
   applyPlanAndProfile(plan: Plan, profile: Profile): void;
   updateProfile(profile: Profile): void;
   resetPlan(): void;
+  /** Pull the server's copy and fold in anything that landed there while we weren't
+   *  looking — a Strava webhook completing a session is the case that matters (#213).
+   *  Resolves to true when the refresh reached the server, false when it didn't. */
+  refresh(): Promise<boolean>;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -536,6 +540,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     persist(username, null, null);
   }, [username, persist]);
 
+  /**
+   * Pull-to-refresh (#213). Ryan: "id like to be able to pull down on the screen
+   * and refresh the app."
+   *
+   * Deliberately NOT a reload. The obvious implementation — `location.reload()` —
+   * is wrong here twice over: it throws away unsaved local edits, and in the
+   * Capacitor WebView it re-runs the whole OTA boot handshake for what the athlete
+   * meant as "check for my ride". So this re-runs the same fetch the app boots
+   * with and folds the result in through `mergeServerPlan`, the merge the 409 path
+   * already trusts: server completions land, local work is never clobbered.
+   *
+   * Never signs anyone out. A refresh that comes back unauthenticated means the
+   * network or the session hiccuped, and dropping the athlete on the login screen
+   * because they pulled down on their plan would be a far worse bug than a stale
+   * card. It reports the failure and leaves everything where it was.
+   */
+  const refresh = useCallback(async (): Promise<boolean> => {
+    const uname = latestRef.current.username;
+    if (!uname) return false;
+    try {
+      const me = await apiMe();
+      if (latestRef.current.username !== uname) return false; // switched account mid-flight
+      if (!me.authenticated || !me.user) return false;
+      if (me.version != null) versionRef.current = me.version;
+      const cur = latestRef.current;
+      const merged = mergeServerPlan(cur.plan, (me.state?.plan as Plan) ?? null);
+      if (merged && merged !== cur.plan) {
+        latestRef.current = { ...cur, plan: merged };
+        setPlan(merged);
+        writeCache(uname, cur.profile, merged);
+      }
+      setOffline(false);
+      return true;
+    } catch {
+      setOffline(true);
+      return false;
+    }
+  }, []);
+
   const screen: Screen = !booted
     ? "loading"
     : !username
@@ -546,7 +589,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider
-      value={{ screen, username, profile, plan, offline, pendingSession, adoptPendingSession, dismissPendingSession, markEngaged, signup, login, signupAndStart, logout, deleteAccount, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan }}
+      value={{ screen, username, profile, plan, offline, pendingSession, adoptPendingSession, dismissPendingSession, markEngaged, signup, login, signupAndStart, logout, deleteAccount, startPlan, applyPlan, applyPlanAndProfile, updateProfile, resetPlan, refresh }}
     >
       {children}
     </AppCtx.Provider>

@@ -146,6 +146,16 @@ export interface Workout {
    *  raise the ceiling that authorises the next one — a ratchet that hands out longer and
    *  longer bonus sessions the more you take. */
   addedByAthlete?: boolean;
+  /** The id of an unplanned session the athlete already did that this one gave way
+   *  to (#215). Set alongside `status: "skipped"` when the work was an adequate
+   *  equivalent, and on its own when the session was merely shortened.
+   *
+   *  Load-bearing rather than decorative: "you already did this" and "you didn't do
+   *  this" are the same status but opposite facts, and everything that counts
+   *  misses — the fortnightly ease in `assessAdaptation`, the week dots in
+   *  `stats.ts` — has to tell them apart. Without it, training MORE would read as
+   *  falling behind and soften the block. See lib/absorb.ts. */
+  absorbedBy?: string;
   /** filled when a connected device (Strava) auto-completed this session */
   actuals?: WorkoutActuals;
 }

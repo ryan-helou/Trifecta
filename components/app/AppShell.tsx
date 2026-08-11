@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { UICtx, UIActions, TabKey, CoachMsg } from "./ui";
 import { BottomNav } from "./BottomNav";
+import { PullToRefresh } from "./PullToRefresh";
 import { TabDeck } from "./TabDeck";
 import { ToastProvider, useToast } from "./Toast";
 import { TodayTab } from "./TodayTab";
@@ -78,7 +79,7 @@ export function AppShell() {
 }
 
 function AppShellInner() {
-  const { plan, profile, applyPlan, applyPlanAndProfile } = useApp();
+  const { plan, profile, applyPlan, applyPlanAndProfile, refresh } = useApp();
   const toast = useToast();
   // once Apple Health is connected, auto-complete matching sessions on open + foreground
   useAppleHealthAutoSync(plan, applyPlan);
@@ -620,13 +621,17 @@ function AppShellInner() {
                 Plan/Progress/League all opened with the home screen's nagging stapled to
                 the top. The adaptation prompt now competes for Today's single prompt slot
                 (see TodayTab), and realignment is automatic. */}
-            <TabDeck tab={tab} onChange={setTab}>
-              {tab === "today" && <TodayTab />}
-              {tab === "plan" && <PlanTab />}
-              {tab === "progress" && <ProgressTab />}
-              {tab === "friends" && <FriendsTab />}
-              {tab === "profile" && <ProfileTab />}
-            </TabDeck>
+            {/* Pull-to-refresh wraps the deck rather than each tab, so the gesture
+                works everywhere and there is one indicator rather than five (#213). */}
+            <PullToRefresh onRefresh={refresh}>
+              <TabDeck tab={tab} onChange={setTab}>
+                {tab === "today" && <TodayTab />}
+                {tab === "plan" && <PlanTab />}
+                {tab === "progress" && <ProgressTab />}
+                {tab === "friends" && <FriendsTab />}
+                {tab === "profile" && <ProfileTab />}
+              </TabDeck>
+            </PullToRefresh>
           </div>
 
           <PlanUpdating state={recalc} />

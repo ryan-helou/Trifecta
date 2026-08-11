@@ -166,6 +166,17 @@ export function LiveStrengthSession({
               </div>
               <div className="text-[0.68rem] text-muted">sets</div>
             </div>
+            {/* The one sheet that had no way out but the grab strip (#214), and the
+                one you're most likely to be scrolled deep inside — mid-session, phone
+                in hand, between sets. Sets are saved as you tick them, so closing
+                loses nothing and the session is still there when you come back. */}
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="-mr-1 shrink-0 self-start p-1 text-muted transition hover:text-foreground"
+            >
+              ✕
+            </button>
           </div>
           {/* Proportional, no axis — doc 07 §4.8 #4. */}
           <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-surface-2">

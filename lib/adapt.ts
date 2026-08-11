@@ -54,7 +54,16 @@ export function setStatus(plan: Plan, id: string, status: Workout["status"], not
   const p = clonePlan(plan);
   const w = p.workouts[id];
   if (!w) return p;
-  p.workouts[id] = { ...w, status, note: note ?? (status === "planned" ? undefined : w.note) };
+  p.workouts[id] = {
+    ...w,
+    status,
+    note: note ?? (status === "planned" ? undefined : w.note),
+    // Putting a session back overrides the absorption that took it away (#215).
+    // Leaving the mark on would keep the card reading "Covered" while the session
+    // is live again, and would keep it out of the miss count if it were then
+    // genuinely skipped — a session that quietly never counts against you.
+    absorbedBy: status === "planned" ? undefined : w.absorbedBy,
+  };
   return p;
 }
 
@@ -675,7 +684,12 @@ export function assessAdaptation(plan: Plan, todayISO: string): AdaptationSugges
     (w) => w.discipline !== "rest" && w.date >= from && w.date < todayISO,
   );
   const scheduled = past.length;
-  const missed = past.filter((w) => w.status === "skipped" || w.status === "planned").length;
+  // A session that gave way to work the athlete had ALREADY done is not a miss
+  // (#215). It carries `status: "skipped"` because nothing more will happen to it,
+  // but the athlete did the training — counting it here would let riding MORE than
+  // the plan asked push the miss rate over the 40% ease trigger and soften the
+  // block as a reward for training harder. See lib/absorb.ts.
+  const missed = past.filter((w) => !w.absorbedBy && (w.status === "skipped" || w.status === "planned")).length;
   const strains = past.map(sessionStrain).filter((s): s is number => s != null);
   const avgStrain = strains.length ? strains.reduce((a, b) => a + b, 0) / strains.length : null;
   const missRate = scheduled ? missed / scheduled : 0;
@@ -774,6 +788,12 @@ export interface ComplianceColor {
 }
 
 export function complianceOf(w: Workout): ComplianceColor {
+  // A session that gave way to unplanned work the athlete already did (#215) shares
+  // its status with a skip and shares nothing else with one. Showing it in the
+  // danger colour under the word "Skipped" would tell someone who trained MORE than
+  // the plan asked that they failed — so it reads as covered, in the swapped
+  // colour, which is what actually happened to it.
+  if (w.absorbedBy) return { status: w.status, color: "var(--z3)", label: "Covered" };
   switch (w.status) {
     case "done":
       return { status: w.status, color: "var(--success)", label: "Completed" };
