@@ -406,6 +406,54 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 /* swipe-reveal action tray sitting behind a card */
 .swipe-action-face { transition: opacity .12s ease; }
 
+/* --- boot splash (#210) -----------------------------------------------------
+   The app used to open on three motionless things — a PNG, a wordmark, a caption —
+   which on a cold start reads as hung rather than working. This is the app's own
+   swim → bike → run language, shrunk to something legible at 3mm and cheap enough to
+   run before hydration: pure CSS, no timers, no state competing with React booting.
+
+   The loop has to read at ANY frame, because it is usually on screen for a few hundred
+   milliseconds and almost nobody sees it complete. */
+.boot-track {
+  position: relative;
+  display: flex;
+  gap: 3px;
+  width: 148px;
+  margin-inline: auto;
+  overflow: hidden;
+  border-radius: 999px;
+}
+.boot-seg {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  opacity: 0.28; /* the course, unlit — the baton is what draws the eye */
+}
+/* The baton: a soft highlight travelling the three legs in race order. Wider than a
+   segment so it bridges the gaps and reads as one continuous journey rather than three
+   blinking lights. */
+.boot-baton {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 46px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--foreground) 45%, var(--foreground) 55%, transparent);
+  opacity: 0.85;
+  animation: boot-baton 1.5s cubic-bezier(.45,0,.55,1) infinite;
+}
+@keyframes boot-baton {
+  0%   { transform: translateX(-46px); }
+  100% { transform: translateX(148px); }
+}
+/* The mark breathes, barely. Enough that the screen is alive; not so much that it
+   competes with the baton or draws attention to itself. */
+.boot-mark { animation: boot-breathe 2.8s ease-in-out infinite; }
+@keyframes boot-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.035); }
+}
+
 /* respect reduced-motion: kill ambient + entrance animation everywhere */
 @media (prefers-reduced-motion: reduce) {
   .animate-rise,
@@ -421,4 +469,10 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
     animation: none !important;
   }
   .nav-indicator { transition: none !important; }
+  /* The boot splash must still look FINISHED rather than frozen mid-sweep, so the
+     baton is removed entirely and the course is shown fully lit. A stopped animation
+     reads as a hang, which is the exact impression this screen exists to avoid. */
+  .boot-mark { animation: none !important; }
+  .boot-baton { display: none !important; }
+  .boot-seg { opacity: 0.9 !important; }
 }

@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.27",
+  "latest": "1.0.28",
   "bundles": [
-    {
-      "version": "1.0.25",
-      "sha256": "fdf2e31fe4301c816eeb59179b13d131a15ee6780be48c4fb8bc5ac10ec87a42",
-      "size": 790618,
-      "createdAtISO": "2026-08-11T16:32:03.567Z",
-      "comment": "quality now scales with the athlete instead of being diluted by volume"
-    },
     {
       "version": "1.0.26",
       "sha256": "e1e6628a0baf1f7d85336d654490b314245db207bb9391d976d884ac72b3fc94",
@@ -21,6 +14,13 @@
       "size": 793142,
       "createdAtISO": "2026-08-11T17:33:49.184Z",
       "comment": "add a session the plan picks for you"
+    },
+    {
+      "version": "1.0.28",
+      "sha256": "b8cef9f9d529335b2abbde9a4463f12f23c3df53fc703038072b9d3848161e8b",
+      "size": 793559,
+      "createdAtISO": "2026-08-11T17:48:40.737Z",
+      "comment": "the app no longer opens on a motionless logo"
     }
   ]
 }
