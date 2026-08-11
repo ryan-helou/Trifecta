@@ -15,7 +15,7 @@ import { Wordmark } from "../Wordmark";
 import { currentBundleVersion } from "@/lib/ota";
 import { legalHref } from "@/lib/runtime";
 import { resolveProfile } from "@/lib/session";
-import { SLOT_LABEL, deleteRoutine } from "@/lib/routines";
+import { slotLabel, deleteRoutine } from "@/lib/routines";
 import { summarise } from "@/lib/strength";
 
 export function ProfileTab() {
@@ -126,7 +126,7 @@ export function ProfileTab() {
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">{r.name}</div>
                 <div className="text-xs text-muted">
-                  {SLOT_LABEL[r.slot]} · {summarise(r.exercises)}
+                  {slotLabel(r.slot)} · {summarise(r.exercises)}
                 </div>
               </div>
               <button

@@ -9,7 +9,7 @@ import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
 import { useUI } from "./ui";
 import { StrengthLog } from "./StrengthLog";
-import { SLOT_LABEL } from "@/lib/routines";
+import { slotLabel } from "@/lib/routines";
 import { useApp } from "../AppProvider";
 import { fmtFullDate, addDays } from "@/lib/dates";
 import { parseClock } from "@/lib/format";
@@ -249,7 +249,7 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
                         fromRoutine === r.slot ? "border-accent bg-accent/10 text-accent" : "border-line bg-surface-2"
                       }`}
                     >
-                      {SLOT_LABEL[r.slot]}
+                      {slotLabel(r.slot)}
                     </button>
                   ))}
                 </div>

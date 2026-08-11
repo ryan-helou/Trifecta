@@ -43,8 +43,24 @@ import {
   scaleWorkout,
   segmentSeconds,
   workoutSeconds,
+  metrePace,
+  structuralSeconds,
 } from "../lib/prescribe";
 import type { Plan, Profile, Segment, Workout } from "../lib/types";
+
+/**
+ * Does a session's header agree with the structure under it?
+ *
+ * `workoutSeconds` counts only `durationSec` — the whole session for a run or a
+ * ride, but only the rests for a swim, whose sets are prescribed in metres. That
+ * was invisible until #203, because `scaleWorkout` refused swims outright and no
+ * swim ever reached these assertions. Price the metres against the session's own
+ * original header so both sides are measured the same way.
+ */
+function headerMatchesStructure(before: Workout, after: Workout): boolean {
+  const rate = metrePace(before.segments, before.estDurationSec);
+  return Math.abs(after.estDurationSec - structuralSeconds(after.segments, rate)) <= 1;
+}
 
 let checks = 0;
 let failures = 0;
@@ -161,9 +177,15 @@ section("estDurationSec is derived from the segments, never scaled beside them")
     const scaled = scaleWorkout(w, 0.75);
     if (!scaled) continue;
     checkedAny = true;
+    // Measured in ONE currency. `workoutSeconds` counts only `durationSec`, which
+    // is the whole session for a run or a ride but only the rests for a swim —
+    // swim sets are prescribed in metres. This assertion never saw a swim before
+    // #203, because `scaleWorkout` refused them outright; now that they resize,
+    // the structure has to be priced with its metres included or the invariant
+    // fails on a session that is perfectly self-consistent.
     ok(
-      scaled.estDurationSec === workoutSeconds(scaled),
-      `"${w.title}": header ${scaled.estDurationSec}s must equal the sum of its segments ${workoutSeconds(scaled)}s`,
+      headerMatchesStructure(w, scaled),
+      `"${w.title}": header ${scaled.estDurationSec}s must equal its structure`,
     );
     ok(scaled.estDurationSec <= w.estDurationSec, `"${w.title}": scaling down never lengthens the session`);
   }
@@ -189,7 +211,7 @@ section("re-prescribing twice does not cut twice");
   ok(!!restored, "a session eased earlier can be restored");
   if (restored) {
     ok(restored.estDurationSec === w.estDurationSec, `restoring returns the original ${w.estDurationSec}s (got ${restored.estDurationSec}s)`);
-    ok(restored.estDurationSec === workoutSeconds(restored), "and the restored header still matches its structure");
+    ok(headerMatchesStructure(w, restored), "and the restored header still matches its structure");
   }
 
   // ten passes at the same factor land exactly where one pass did
@@ -232,7 +254,7 @@ section("represcribe: quiet when it should be, and bounded when it acts");
       ok(after.date >= today, `only future sessions move (${after.date} ≥ ${today})`);
       ok(before.status === "planned", "only untouched sessions move");
       ok(raceWeek == null || after.weekIndex < raceWeek, "race week is never touched");
-      ok(after.estDurationSec === workoutSeconds(after), "every changed session's header matches its structure");
+      ok(headerMatchesStructure(before, after), "every changed session's header matches its structure");
     }
 
     // running it again on its own output must not compound
@@ -268,7 +290,7 @@ section("adjustSession: the athlete's own change, honest and still bounded");
   ok(!!shorter, "an athlete can shorten a session");
   if (shorter) {
     ok(shorter.workout.estDurationSec < w.estDurationSec, "and it really is shorter");
-    ok(shorter.workout.estDurationSec === workoutSeconds(shorter.workout), "header still equals the structure");
+    ok(headerMatchesStructure(w, shorter.workout), "header still equals the structure");
     ok(shorter.summary.length > 0, "and it says what it did");
   }
 
@@ -276,7 +298,7 @@ section("adjustSession: the athlete's own change, honest and still bounded");
   const longer = adjustSession(plan, w.id, Math.round(w.estDurationSec * 1.3));
   if (longer) {
     ok(longer.workout.estDurationSec > w.estDurationSec, "an athlete can also lengthen a session");
-    ok(longer.workout.estDurationSec === workoutSeconds(longer.workout), "and the header still equals the structure");
+    ok(headerMatchesStructure(w, longer.workout), "and the header still equals the structure");
   }
 
   // the automatic path is UNCHANGED — it still may never add
@@ -321,7 +343,7 @@ section("an athlete under budget gets load back — bounded, and never while inj
       const before = light.workouts[id];
       if (before.estDurationSec === after.estDurationSec) continue;
       ok(after.estDurationSec >= before.estDurationSec, `${id} got longer, not shorter`);
-      ok(after.estDurationSec === workoutSeconds(after), `${id} header still matches its structure`);
+      ok(headerMatchesStructure(before, after), `${id} header still matches its structure`);
     }
     // the rails still bound it — this is doc 04, untouched by the override
     ok(railsRegressed(light, res.plan).length === 0, "an automatic increase never breaches the rails");

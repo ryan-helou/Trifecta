@@ -22,7 +22,7 @@
 // Pure — no clock, no I/O. Callers pass `nowISO` when they want a timestamp.
 // ---------------------------------------------------------------------------
 
-import type { Profile, StrengthEntry, StrengthRoutine, StrengthSlot, Workout } from "./types";
+import type { Profile, StrengthEntry, StrengthRoutine, StrengthSlot, StrengthSlotBase, Workout } from "./types";
 
 /** Title → slot, for plans generated before `strengthSlot` was written onto the
  *  session. Ordered longest-distinguishing-word first so "Upper-Body & Core"
@@ -46,6 +46,8 @@ const TITLE_HINTS: [RegExp, StrengthSlot][] = [
 export function slotOf(w: Workout): StrengthSlot | null {
   if (w.discipline !== "strength") return null;
   if (w.strengthSlot) return w.strengthSlot;
+  // A custom day the athlete named themselves ("Chest Day · Your Session") must
+  // not be matched by the generic title hints below (#206).
   for (const [re, slot] of TITLE_HINTS) if (re.test(w.title)) return slot;
   return "full";
 }
@@ -91,7 +93,7 @@ export function routineFromEntries(
   };
 }
 
-export const SLOT_LABEL: Record<StrengthSlot, string> = {
+export const SLOT_LABEL: Record<StrengthSlotBase, string> = {
   full: "Full body",
   upper: "Upper body",
   lower: "Lower body",
@@ -104,7 +106,7 @@ export const SLOT_LABEL: Record<StrengthSlot, string> = {
 
 /** SLOT_LABEL is sentence case because it reads as a chip ("Full body"), which
  *  makes "My Full body Day" when dropped into a title. Names get their own map. */
-const SLOT_TITLE: Record<StrengthSlot, string> = {
+const SLOT_TITLE: Record<StrengthSlotBase, string> = {
   full: "Full Body",
   upper: "Upper Body",
   lower: "Lower Body",
@@ -115,8 +117,27 @@ const SLOT_TITLE: Record<StrengthSlot, string> = {
   custom: "Gym",
 };
 
+/** Turn `custom:chest-day` back into "Chest Day" for display (#206). */
+function customName(slot: StrengthSlot): string | null {
+  if (!slot.startsWith("custom:")) return null;
+  const slug = slot.slice("custom:".length);
+  if (!slug) return null;
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/** The chip label for a gym day, including an athlete's own named day. */
+export function slotLabel(slot: StrengthSlot): string {
+  return customName(slot) ?? SLOT_LABEL[slot as StrengthSlotBase] ?? "Gym";
+}
+
 export function defaultRoutineName(slot: StrengthSlot): string {
-  return `My ${SLOT_TITLE[slot]} Day`;
+  const own = customName(slot);
+  if (own) return `My ${own}`;
+  return `My ${SLOT_TITLE[slot as StrengthSlotBase]} Day`;
 }
 
 /** Save or replace the routine for its slot. Returns a NEW array — the profile

@@ -56,7 +56,7 @@ function speed(ctx: BuildCtx, disc: Discipline, zone: Zone): number {
   return 0; // strength / rest
 }
 
-function measure(
+export function measure(
   ctx: BuildCtx,
   segments: Segment[],
 ): { durationSec: number; distanceM: number } {
@@ -916,14 +916,47 @@ export function strengthHome(ctx: BuildCtx, min = 35): Draft {
 
 // The athlete brings their own resistance plan — we reserve the time and keep it
 // clear of their hardest swim/bike/run days, but leave the session itself to them.
-export function strengthCustom(ctx: BuildCtx, min = 35, note?: string): Draft {
+/**
+ * The athlete's own split, as an ordered rotation (#206).
+ *
+ * `customSplit` is free text they typed — "push / pull / legs", "Chest, Back,
+ * Legs", "upper | lower". It was stored and never read, so every custom gym day
+ * came out as the same undifferentiated "Your Strength Session" and, once
+ * routines shipped, they all shared ONE routine: save your Push day and it
+ * pre-filled your Leg day too.
+ *
+ * Split on the separators people actually type, trim, drop empties, cap at 7
+ * (a week). Returns [] when there is nothing usable, and the caller falls back
+ * to the old single generic session — a split we can't read is not a reason to
+ * invent one.
+ */
+export function parseCustomSplit(text: string | undefined): string[] {
+  if (!text) return [];
+  return text
+    .split(/[/,|·>\n]+|\s+then\s+|\s+\+\s+/i)
+    .map((x) => x.trim().replace(/\s+/g, " "))
+    .filter((x) => x.length > 0 && x.length <= 32)
+    .slice(0, 7);
+}
+
+/** A slug for one named custom day, stable enough to key a routine on. */
+export function customSlotFor(name: string): StrengthSlot {
+  return `custom:${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
+export function strengthCustom(ctx: BuildCtx, min = 35, note?: string, dayName?: string): Draft {
   const own = note?.trim();
+  // The athlete typed "push / pull / legs"; the session header shouldn't shout
+  // their lowercase back at them.
+  const shown = dayName
+    ? dayName.replace(/\S+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1))
+    : undefined;
   return finish(ctx, {
     discipline: "strength",
     type: "strength",
-    title: "Your Strength Session",
+    title: shown ? `${shown} · Your Session` : "Your Strength Session",
     purpose: "Your own resistance plan — we've reserved the time and slotted it clear of your hardest swim, bike and run days.",
-    strengthSlot: "custom",
+    strengthSlot: dayName ? customSlotFor(dayName) : "custom",
     primaryZone: 3,
     segments: [
       seg({ kind: "warmup", discipline: "strength", zone: 2, durationSec: M(8), description: "8 min dynamic mobility — leg swings, hip openers, band walks" }),
@@ -959,7 +992,17 @@ export function strengthFor(
   const min = recover ? 25 : 35;
   // Only an explicit "core" split gets the core session. Recovery is expressed
   // through `min` above, not by replacing the athlete's chosen work.
-  if (split === "custom") return strengthCustom(ctx, min, note);
+  if (split === "custom") {
+    // Rotate through the athlete's own named days the way push-pull-legs does,
+    // so day 1 is their first entry, day 2 their second, and a routine saved on
+    // one lands only on that one (#206).
+    const days = parseCustomSplit(note);
+    if (days.length > 1) {
+      const name = days[((index % days.length) + days.length) % days.length];
+      return strengthCustom(ctx, min, note, name);
+    }
+    return strengthCustom(ctx, min, note);
+  }
   if (home) return strengthHome(ctx, min);
   switch (split) {
     case "upper-lower":

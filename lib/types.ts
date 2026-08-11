@@ -246,7 +246,10 @@ export interface StrengthEntry {
 /** Which gym day this is, in the athlete's split. Written onto the session by the
  *  builders in lib/workouts.ts so a saved routine can attach to "every Push day"
  *  rather than to one dated workout — the plan regenerates, the routine shouldn't. */
-export type StrengthSlot = "full" | "upper" | "lower" | "push" | "pull" | "legs" | "home" | "custom";
+export type StrengthSlotBase = "full" | "upper" | "lower" | "push" | "pull" | "legs" | "home" | "custom";
+/** A gym day. `custom:<slug>` is one named day of an athlete's OWN split, so a
+ *  routine can attach to "Chest Day" and not to every custom session (#206). */
+export type StrengthSlot = StrengthSlotBase | `custom:${string}`;
 
 /** A gym session the athlete built themselves, saved and reused (#199 follow-up).
  *  Lives on the PROFILE, not the plan: a rebuild replaces every workout, and
