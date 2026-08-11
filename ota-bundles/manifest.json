@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.31",
+  "latest": "1.0.32",
   "bundles": [
-    {
-      "version": "1.0.29",
-      "sha256": "ca008141424cd61b4a3d1dd468b4efb2eaea51196f88daef34efd5ab86246e4e",
-      "size": 793630,
-      "createdAtISO": "2026-08-11T18:09:52.650Z",
-      "comment": "adding a session actually offers you a run"
-    },
     {
       "version": "1.0.30",
       "sha256": "d1a4c9071f19936c634d1d11c72e5af65e593e1728e604b76eeb233538f764d6",
@@ -19,6 +12,12 @@
       "sha256": "e2d74e1cbfce5012bd1da21a72bd3a2770ebf32bb34e70da57dc981add1f37d5",
       "size": 798096,
       "createdAtISO": "2026-08-11T19:12:19.551Z"
+    },
+    {
+      "version": "1.0.32",
+      "sha256": "756c4045fe140e9ad50228a92b485c13e31d6f0d895d42fe2a82598b35580e21",
+      "size": 799302,
+      "createdAtISO": "2026-08-11T19:53:01.497Z"
     }
   ]
 }
