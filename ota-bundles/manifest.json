@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.32",
+  "latest": "1.0.33",
   "bundles": [
-    {
-      "version": "1.0.30",
-      "sha256": "d1a4c9071f19936c634d1d11c72e5af65e593e1728e604b76eeb233538f764d6",
-      "size": 794043,
-      "createdAtISO": "2026-08-11T18:33:13.382Z"
-    },
     {
       "version": "1.0.31",
       "sha256": "e2d74e1cbfce5012bd1da21a72bd3a2770ebf32bb34e70da57dc981add1f37d5",
@@ -18,6 +12,12 @@
       "sha256": "756c4045fe140e9ad50228a92b485c13e31d6f0d895d42fe2a82598b35580e21",
       "size": 799302,
       "createdAtISO": "2026-08-11T19:53:01.497Z"
+    },
+    {
+      "version": "1.0.33",
+      "sha256": "2e507feccc6e366baf4a8e4fc5d3ae90090d434335dc177ced989e2fdd680e81",
+      "size": 799946,
+      "createdAtISO": "2026-08-11T20:14:30.162Z"
     }
   ]
 }
