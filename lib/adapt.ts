@@ -3,7 +3,7 @@ import { Discipline, Feel, Plan, StrengthEntry, Week, Workout, Zone } from "./ty
 import { addDays, dayIndexOf, fromISO, mondayOf, weeksBetween } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
-import { generatePlan, isFitnessGoal } from "./planEngine";
+import { ENGINE_VERSION, generatePlan, isFitnessGoal } from "./planEngine";
 import { ZONES } from "./zones";
 import { fmtDuration } from "./format";
 import { creditedDiscipline, creditedSeconds } from "./credit";
@@ -548,6 +548,23 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
     // date is what lets `missedSince` stop counting it — without this an automatic
     // realign would see the same misses forever and never converge.
     realignedAtISO: todayISO,
+    // A rebuild IS the current engine's output — `generatePlan` just wrote it — so it
+    // carries the current stamp. Without this the field was silently dropped, because
+    // `fresh` has no `engineVersion` and the spread above wins.
+    //
+    // That one omission is why the migration never landed. Measured on production:
+    // `plan_upgraded` had fired 15 times, `shouldUpgradePlan` returned true for 16 of
+    // 19 plans, and exactly 2 plans carried the stamp. The upgrade ran, stamped the
+    // plan, and then the very next automatic realign — which fires at 3 missed
+    // sessions, and had fired 25 times — rebuilt the plan and dropped the stamp again.
+    // Every launch re-upgraded, every realign un-upgraded, and athletes stayed on the
+    // engine that built them forever. Ryan's own plan: engineVersion undefined, 63.6%
+    // adherence, 8% Z4+ against a 10% floor.
+    //
+    // A refusal is carried too: an athlete who declined this version must not be asked
+    // again just because their week got realigned.
+    engineVersion: ENGINE_VERSION,
+    ...(plan.upgradeDeclinedVersion != null ? { upgradeDeclinedVersion: plan.upgradeDeclinedVersion } : {}),
     notice: "Plan rebuilt around today — you're realigned to hit race day.",
   };
   reindexWeeks(merged);

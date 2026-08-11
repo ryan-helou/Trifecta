@@ -332,6 +332,43 @@ section("the engine upgrade knows when NOT to touch a plan");
      "a second rebuild is a fixed point — the arc doesn't creep");
 }
 
+// ---------------------------------------------------------------------------
+// A REBUILD CARRIES THE ENGINE STAMP.
+//
+// This is why the v3 migration never landed. Measured on production 2026-08-11:
+// `plan_upgraded` had fired 15 times, `shouldUpgradePlan` returned true for 16 of
+// 19 plans, and exactly 2 plans carried the stamp. `rebuildFromToday` spreads
+// `...fresh`, and a freshly generated plan has no `engineVersion`, so every
+// automatic realign — which fires at 3 missed sessions, and had fired 25 times —
+// quietly un-upgraded the athlete. Upgrade on launch, un-upgrade on realign,
+// forever. Ryan's own plan sat at engineVersion undefined with 8% Z4+ against a
+// 10% floor.
+{
+  section("a rebuild keeps the engine stamp, so the upgrade converges");
+
+  const plan = generatePlan(base, ANCHOR);
+  const upgraded: Plan = { ...plan, engineVersion: ENGINE_VERSION };
+
+  const rebuilt = rebuildFromToday(upgraded, daysFrom(10));
+  ok(rebuilt.engineVersion === ENGINE_VERSION,
+     `a realign after an upgrade keeps the stamp (got ${rebuilt.engineVersion})`);
+  ok(!shouldUpgradePlan(rebuilt, daysFrom(10), ENGINE_VERSION),
+     "so the next launch does NOT upgrade it all over again — the migration converges");
+
+  // An un-stamped plan that gets realigned is now current too: `generatePlan` just
+  // wrote it, so claiming the current version is a fact, not a promise.
+  const old: Plan = { ...plan, engineVersion: undefined };
+  ok(rebuildFromToday(old, daysFrom(10)).engineVersion === ENGINE_VERSION,
+     "and a realign of an OLD plan stamps it, because the rebuild used this engine");
+
+  // A refusal must survive a realign, or declining is meaningless for anyone who
+  // misses three sessions.
+  const declined: Plan = { ...plan, engineVersion: undefined, upgradeDeclinedVersion: ENGINE_VERSION };
+  const afterDecline = rebuildFromToday(declined, daysFrom(10));
+  ok(afterDecline.upgradeDeclinedVersion === ENGINE_VERSION,
+     "a declined upgrade stays declined through a realign");
+}
+
 console.log(`\n${checks - failures}/${checks} realign invariants passed`);
 if (failures > 0) {
   console.error(`\n❌ ${failures} realign invariant(s) FAILED`);
