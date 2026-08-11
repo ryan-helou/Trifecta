@@ -179,4 +179,28 @@ export function fmtKm(n: number): string {
   return String(rounded);
 }
 
+/**
+ * A span of elapsed time for the Hall of Fame — days, hours, minutes. No seconds.
+ *
+ * Ryan: "don't put it in days… days and then hours and then minutes and then
+ * seconds. I actually removed seconds, just days, hours, minutes." Seconds are
+ * false precision on a record that spans a training week, and they make the
+ * number jitter for no reader benefit.
+ *
+ * Zero components are dropped rather than padded, so a mark reads "2d 30m" and
+ * not "2d 0h 30m". Anything under a minute is "<1m" — the only case where the
+ * true value can't be shown without the unit we just removed.
+ */
+export function fmtSpan(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds / 60)); // whole minutes; seconds are not shown
+  const d = Math.floor(total / 1440);
+  const h = Math.floor((total % 1440) / 60);
+  const m = total % 60;
+  const parts: string[] = [];
+  if (d) parts.push(`${d}d`);
+  if (h) parts.push(`${h}h`);
+  if (m) parts.push(`${m}m`);
+  return parts.length ? parts.join(" ") : "<1m";
+}
+
 export const SPORT_ORDER = SPORTS;

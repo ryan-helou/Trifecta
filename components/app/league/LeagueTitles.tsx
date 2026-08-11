@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { LeagueMember } from "@/lib/league/types";
-import { fmtKm, fmtPoints } from "@/lib/league/scoring";
+import { fmtKm, fmtPoints, fmtSpan } from "@/lib/league/scoring";
 import { apiLeagueTitles, type TitlesPayload } from "@/lib/api";
 import type { Badge } from "@/lib/league/achievements";
 import { Avatar, EmptyLine, SportMark } from "./shared";
@@ -145,13 +145,26 @@ export function TitlesPanel({
               </div>
               {r.holderId && (
                 <span className="tnum text-sm font-semibold">
-                  {r.unit === "km" ? fmtKm(r.value) : fmtPoints(r.value)}
-                  <span className="ml-1 text-[0.68rem] font-normal text-muted">{r.unit}</span>
+                  {r.unit === "time" ? fmtSpan(r.value) : r.unit === "km" ? fmtKm(r.value) : fmtPoints(r.value)}
+                  {/* A span already carries its own units ("2d 5h 30m"); appending
+                      "time" after it would read as nonsense. */}
+                  {r.unit !== "time" && (
+                    <span className="ml-1 text-[0.68rem] font-normal text-muted">{r.unit}</span>
+                  )}
                 </span>
               )}
             </li>
           ))}
         </ul>
+        {/* Said plainly, because the number would otherwise be read as training
+            time. Activities are date-only, so the only sub-day clock available is
+            when the session was entered — which means this record partly rewards
+            logging promptly. Better to say so than to let someone work it out. */}
+        {data.records.some((r) => r.unit === "time" && r.holderId) && (
+          <p className="mt-2 text-[0.68rem] leading-relaxed text-muted">
+            Fastest-to-goal is timed from when sessions were logged, not when they were done.
+          </p>
+        )}
       </section>
 
       {/* badges */}
