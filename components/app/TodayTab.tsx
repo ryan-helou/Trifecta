@@ -85,8 +85,12 @@ export function TodayTab() {
   const form = formStateFor(plan, today);
   const fitness = isFitnessGoal(plan.profile);
 
-  const hero = todays[0];
-  const rest = todays.slice(1);
+  // A skipped session has left the day. It stays in `todays` (the plan still records it,
+  // and Plan/Progress still show it) but Today is the "what now" screen, and what now is
+  // never a session the athlete has already decided against.
+  const live = todays.filter((w) => w.status !== "skipped");
+  const hero = live[0];
+  const rest = live.slice(1);
   const doneToday = todays.filter((w) => w.status === "done" || w.status === "swapped");
   const next = upcomingAfter(plan, today, 1)[0];
 
@@ -98,10 +102,17 @@ export function TodayTab() {
   // the NEXT session instead, today's work collapses to one confirmation line,
   // and one true insight rides underneath (his choice: next + one insight).
   //
-  // A skipped session does NOT count as settled — that day still has an open
-  // decision, and quietly moving on would hide it.
+  // A skip IS settled. This used to say the opposite — that a skipped session left the
+  // day with "an open decision" worth holding the screen for — so skipping the only
+  // session on Today changed nothing an athlete could see: the same card stayed in the
+  // hero slot, struck through, still the first thing on the home page. Ryan, 2026-08-11:
+  // "when i skip a session it doesnt save and i see it in the home page." It did save;
+  // it just didn't look like it, which for a one-tap action is the same bug. Skipping is
+  // a decision, not a deferral (the same rule respond.ts already applies to the ledger),
+  // so the day moves on and the next session takes the slot. Undo stays one tap away in
+  // the toast, and the session is still on the Plan tab.
   const nothingLeftToday =
-    todays.length > 0 && todays.every((w) => w.status === "done" || w.status === "swapped");
+    todays.length > 0 && todays.every((w) => w.status !== "planned");
   const lookAhead = nothingLeftToday && !!next;
   const insight = lookAhead ? insightFor(plan, today) : null;
 
