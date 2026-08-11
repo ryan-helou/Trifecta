@@ -13,7 +13,8 @@
 */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { standingsForRange, totalPoints, unscoredGymIds } from "../lib/league/scoring";
+import { fmtSpan, standingsForRange, totalPoints, unscoredGymIds } from "../lib/league/scoring";
+import { hallOfFame } from "../lib/league/records";
 import { seasonByNumber, seasonChampions } from "../lib/league/season";
 import { DEFAULT_SETTINGS, mergeSettings, type LeagueActivity, type LeagueMember, type LeagueSettings } from "../lib/league/types";
 
@@ -236,6 +237,77 @@ console.log("\nsettings validation");
   check("gym cap is clamped to a sane ceiling", mergeSettings({ maxScoringGymPerDay: 999 }, S).maxScoringGymPerDay, 2);
   check("a garbage season start is ignored", mergeSettings({ seasonStart: "not-a-date" }, S).seasonStart, S.seasonStart);
   check("forfeit is length-capped", mergeSettings({ forfeit: "x".repeat(500) }, S).forfeit.length, 120);
+}
+
+// ---------------------------------------------------------------------------
+// Hall of fame — "Fastest to N pts"
+//
+// Ryan: "For the fastest time to reach something… just days, hours, minutes."
+// So the format carries no seconds, and the record itself is the first crossing
+// of the weekly goal, timed from the start of that week.
+// ---------------------------------------------------------------------------
+
+console.log("\nfmtSpan — days, hours, minutes, never seconds");
+{
+  check("2d 5h 30m", fmtSpan(2 * 86400 + 5 * 3600 + 30 * 60), "2d 5h 30m");
+  check("zero components are dropped, not padded", fmtSpan(2 * 86400 + 30 * 60), "2d 30m");
+  check("hours and minutes alone", fmtSpan(5 * 3600 + 7 * 60), "5h 7m");
+  check("minutes alone", fmtSpan(45 * 60), "45m");
+  check("seconds never appear — 90s is one minute", fmtSpan(90), "1m");
+  check("…and are truncated, not rounded up (119s is still 1m)", fmtSpan(119), "1m");
+  check("under a minute has no unit left to show", fmtSpan(30), "<1m");
+  check("exactly a day", fmtSpan(86400), "1d");
+  check("negative time can't render", fmtSpan(-500), "<1m");
+}
+
+console.log("\nfastest to the weekly goal");
+{
+  const mon = "2026-08-10"; // a Monday
+  // 100 pts = 20 km of running at 5/km. Two runs of 10 km crosses it on the second.
+  const runAt = (id: string, userId: string, day: string, km: number, createdAt: string): LeagueActivity => ({
+    id, userId, sport: "run", km, occurredOn: day, note: null, source: "manual", stravaId: null, createdAt,
+  });
+
+  const rec = (acts: LeagueActivity[], settings = S) =>
+    hallOfFame(acts, settings).find((r) => r.key === "goalrush")!;
+
+  // A crosses the goal 6h30m into the week; B takes two days.
+  const a1 = runAt("a1", "A", mon, 10, "2026-08-10T03:00:00Z");
+  const a2 = runAt("a2", "A", mon, 10, "2026-08-10T06:30:00Z");
+  const b1 = runAt("b1", "B", mon, 20, "2026-08-12T09:15:00Z");
+  const r = rec([a1, a2, b1]);
+  check("the fastest crossing holds it", r.holderId, "A");
+  check("timed from the start of the week to the crossing activity", fmtSpan(r.value), "6h 30m");
+  check("it's a time record", r.unit, "time");
+  check("labelled with the goal it's chasing", r.label, "Fastest to 100 pts");
+
+  // The activity that CROSSES the line is the one that counts, not the last one.
+  const a3 = runAt("a3", "A", mon, 10, "2026-08-11T20:00:00Z");
+  check("later sessions in the same week don't slow the record", fmtSpan(rec([a1, a2, a3, b1]).value), "6h 30m");
+
+  // Not reaching the goal is not a record — 10 km is 50 pts, half the goal.
+  check("a week short of the goal claims nothing", rec([a1]).holderId, null);
+  check("even with several short weeks", rec([a1, { ...a1, id: "x", occurredOn: "2026-08-17", createdAt: "2026-08-17T02:00:00Z" }]).holderId, null);
+  check("but the athlete who does reach it holds it", rec([a1, a2, { ...b1, km: 1 }]).holderId, "A");
+  check("a league with no goal has no such record", rec([a1, a2], { ...S, weeklyGoal: 0 }).holderId, null);
+
+  // Backdating: an entry logged BEFORE the week started would cross at elapsed
+  // zero and hold the record forever. It must not be timed.
+  const pre1 = runAt("p1", "C", mon, 20, "2026-08-03T09:00:00Z");
+  check("a week crossed by a pre-week entry can't be timed", rec([pre1]).holderId, null);
+  check("and doesn't beat an honest mark", rec([a1, a2, pre1]).holderId, "A");
+
+  // The gym-per-day cap applies here exactly as it does to the board, so the
+  // record can't be farmed with unlimited gym sessions.
+  const g = (id: string, at: string) => gym(id, "D", mon, at);
+  const manyGym = [g("g1", "2026-08-10T01:00:00Z"), g("g2", "2026-08-10T01:05:00Z"),
+                   g("g3", "2026-08-10T01:10:00Z"), g("g4", "2026-08-10T01:15:00Z")];
+  check("capped gym sessions can't rush the goal", rec(manyGym).holderId, null);
+
+  // Each week is timed on its own, so a slow week can't spoil a fast one.
+  const nextMon = "2026-08-17";
+  const c1 = runAt("c1", "A", nextMon, 20, "2026-08-17T01:00:00Z");
+  check("the best week across the whole log wins", fmtSpan(rec([a1, a2, b1, c1]).value), "1h");
 }
 
 console.log(failures === 0 ? "\nAll passed.\n" : `\n${failures} FAILED\n`);

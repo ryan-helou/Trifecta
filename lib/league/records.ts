@@ -28,7 +28,7 @@ export interface HallRecord {
   /** User id who holds it, or null if nobody's posted a mark yet. */
   holderId: string | null;
   value: number;
-  unit: "pts" | "km" | "days" | "sessions";
+  unit: "pts" | "km" | "days" | "sessions" | "time";
   /** When it was set — a day, or a week range. */
   detail: string;
   /** How to re-derive the sessions behind this mark. Absent while unclaimed. */
@@ -146,6 +146,61 @@ export function hallOfFame(activities: LeagueActivity[], settings: LeagueSetting
     }
   }
 
+  // ---- fastest to the weekly goal ---------------------------------------
+  //
+  // The one record measured in TIME rather than volume: from the start of the
+  // week to the moment your points crossed `weeklyGoal`. It resets every week, so
+  // it's the one mark a new member can take in their first seven days.
+  //
+  // HOW THE CLOCK RUNS, and its honest limitation. `occurredOn` is date-only by
+  // design ("no timezone maths", types.ts), so a day is the finest resolution
+  // real training gives us — and a record shown in days alone would be a
+  // three-way tie every week. The clock therefore runs on `createdAt`, when the
+  // session was LOGGED. Ryan chose this knowing the trade: it partly measures
+  // logging habits, and someone who banks three sessions and enters them in one
+  // sitting posts a fast time. That is the price of hours-and-minutes on
+  // date-only data, and it is stated in the record's own subtitle rather than
+  // left for someone to discover.
+  //
+  // A week is only timed when the crossing activity was logged AFTER the week
+  // began. Backdating an earlier entry into this week would otherwise cross the
+  // line at elapsed zero and hold the record permanently.
+  let fastestGoal = emptyPeak();
+  const goal = settings.weeklyGoal;
+  if (goal > 0) {
+    // userId|weekStart → the week's activities, oldest LOGGED first
+    const byUserWeek = new Map<string, LeagueActivity[]>();
+    for (const a of activities) {
+      const k = `${a.userId}|${weekStart(a.occurredOn)}`;
+      let list = byUserWeek.get(k);
+      if (!list) byUserWeek.set(k, (list = []));
+      list.push(a);
+    }
+    for (const [k, list] of byUserWeek) {
+      const [holderId, wk] = k.split("|");
+      const opened = Date.parse(`${wk}T00:00:00Z`);
+      if (!Number.isFinite(opened)) continue;
+      const ordered = [...list].sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+      let running = 0;
+      for (const a of ordered) {
+        running += pts(a);
+        if (running < goal) continue;
+        const at = Date.parse(a.createdAt);
+        if (!Number.isFinite(at) || at < opened) break; // can't be timed honestly — see above
+        const elapsed = Math.floor((at - opened) / 1000);
+        if (fastestGoal.holderId === null || elapsed < fastestGoal.value) {
+          fastestGoal = {
+            holderId,
+            value: elapsed,
+            detail: formatRange([wk, weekEnd(wk)]),
+            context: { kind: "week", weekStart: wk },
+          };
+        }
+        break; // the crossing activity is the one that counts
+      }
+    }
+  }
+
   return [
     { key: "week", label: "Biggest week", glyph: "trophy", unit: "pts", ...bestWeek },
     { key: "day", label: "Most points in a day", glyph: "bolt", unit: "pts", ...bestDay },
@@ -153,6 +208,7 @@ export function hallOfFame(activities: LeagueActivity[], settings: LeagueSetting
     { key: "kmday", label: "Most km in a day", glyph: "target", unit: "km", ...bestKmDay },
     { key: "busiest", label: "Busiest week", glyph: "rings", unit: "sessions", ...busiestWeek },
     { key: "streak", label: "Longest streak", glyph: "flame", unit: "days", ...longestStreak },
+    { key: "goalrush", label: `Fastest to ${goal} pts`, glyph: "bolt", unit: "time", ...fastestGoal },
     { key: "run", label: "Longest run", sport: "run", unit: "km", ...longestRun },
     { key: "ride", label: "Longest ride", sport: "bike", unit: "km", ...longestRide },
     { key: "swim", label: "Longest swim", sport: "swim", unit: "km", ...longestSwim },
