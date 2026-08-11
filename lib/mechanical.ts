@@ -53,6 +53,22 @@ export const IMPACT_RAMP_MAX = 1.1;
  *  single missed long run halves the baseline and then blocks a normal week). */
 export const IMPACT_BASELINE_WEEKS = 2;
 
+/**
+ * How far past its design a single VOLUNTARY addition may take a week.
+ *
+ * Deliberately larger than `IMPACT_RAMP_MAX`, and the difference is the whole point. The
+ * 10% rule bounds SUSTAINED weekly growth — it is about where your volume sits next month.
+ * One easy session the athlete asked for is not sustained growth, and gating it at 10%
+ * produced an allowance of 13–20 minutes of running (#211), which is below the length at
+ * which a run is worth changing for, so every run was refused.
+ *
+ * This cannot become a spike by the back door, because the headroom is recomputed against
+ * what the week now contains: take a 38-minute bonus run and the next request that week
+ * sees the week already at its ceiling and says no. One extra session, or a couple of short
+ * ones — which is exactly the behaviour asked for.
+ */
+export const IMPACT_BONUS_MAX = 1.25;
+
 /** An athlete with no impact history at all still gets to run. Without a floor,
  *  a baseline of zero multiplied by any ramp is still zero, and swapping onto a
  *  run would be permanently refused for the beginner it's meant to serve. */
@@ -76,24 +92,90 @@ export function weekImpactMinutes(plan: Plan, week: Week): number {
   return total;
 }
 
-/** The impact load the athlete has recently been carrying — the trailing weeks
- *  before `weekIndex`, averaged. This is what "ramp" is measured against. */
+/** What a week ASKS FOR, as opposed to what has been done in it. Uses the prescribed
+ *  duration only, so a week still in the future measures at its design rather than at
+ *  zero. */
+function prescribedImpactMinutes(plan: Plan, week: Week): number {
+  let total = 0;
+  for (const id of week.workoutIds) {
+    const w = plan.workouts[id];
+    // Athlete-added sessions are excluded, and this is the difference between a baseline
+    // and a ratchet. They land in the same week they are measured against, so counting them
+    // would let each addition raise the ceiling authorising the next one — measured, four
+    // successive bonus runs came out 40, 40, 35, then 55 minutes, growing instead of
+    // tightening. The baseline is what the PLAN asked for; extra work spends against it.
+    if (w && !w.addedByAthlete) {
+      total += ((w.estDurationSec ?? 0) / 60) * (IMPACT_PER_MIN[w.discipline] ?? 0);
+    }
+  }
+  return total;
+}
+
+/**
+ * The impact load the athlete is carrying — what "ramp" is measured against.
+ *
+ * Two things feed it, and the SECOND is what makes this usable:
+ *
+ *  1. The trailing weeks, averaged. What they have actually been doing.
+ *  2. What THIS week's plan prescribes. The engine has already decided the athlete can
+ *     handle that — its own ramp rails bound how fast it grows — so a week the plan asked
+ *     for is by definition not a spike.
+ *
+ * Taking the max of the two fixes a failure the trailing-average-alone version had at both
+ * ends, measured on real plans (#211):
+ *
+ *   • **Week one refused everything.** No trailing weeks → fall back to `IMPACT_FLOOR_MIN`
+ *     (25), which the plan's own first week (≈154) already dwarfs → headroom exactly zero.
+ *     14 of 14 run-and-bike day-combinations refused, at every level. The athlete most
+ *     likely to be keen was the one guaranteed to be told no.
+ *   • **The week after a deload refused everything.** The trailing mean is dragged down by
+ *     the recovery week while this week's own volume jumps — so headroom hit zero exactly
+ *     when the athlete was freshest.
+ *
+ * This is the same fix, and the same reasoning, as `seedLoad` in lib/load.ts: measure the
+ * athlete against the plan they are actually on, not against an assumed history of zero.
+ */
 export function impactBaseline(plan: Plan, weekIndex: number): number {
-  const prior = plan.weeks
-    .filter((w) => w.index < weekIndex && w.index >= weekIndex - IMPACT_BASELINE_WEEKS)
-    .map((w) => weekImpactMinutes(plan, w));
-  if (!prior.length) return IMPACT_FLOOR_MIN;
-  const mean = prior.reduce((a, b) => a + b, 0) / prior.length;
-  return Math.max(IMPACT_FLOOR_MIN, mean);
+  const prior = plan.weeks.filter((w) => w.index < weekIndex && w.index >= weekIndex - IMPACT_BASELINE_WEEKS);
+  const trailingActual = prior.length
+    ? prior.reduce((a, w) => a + weekImpactMinutes(plan, w), 0) / prior.length
+    : 0;
+
+  // The design seed, AVERAGED over this week and its neighbours rather than taken from this
+  // week alone. Averaging is what stops a week blessing itself: a week that has been
+  // stuffed — by swaps, by hand — would otherwise raise the very ceiling meant to catch it,
+  // and the gate would never bite. Spread across the window, one inflated week moves the
+  // baseline by a third of its excess and is still refused.
+  // Recovery weeks are skipped, exactly as `loadWeekRamps` skips them in rails.ts and for
+  // the same reason: a deload is SUPPOSED to drop and the rebuild out of it is supposed to
+  // jump, so treating one as evidence of reduced capacity punishes the week after it. That
+  // was measured — the week following a deload offered nothing at all, which is precisely
+  // when an athlete feels freshest and most likely to want extra.
+  const window = plan.weeks.filter(
+    (w) => w.index <= weekIndex && w.index > weekIndex - 1 - IMPACT_BASELINE_WEEKS && !w.isRecovery,
+  );
+  const design = window.length
+    ? window.reduce((a, w) => a + prescribedImpactMinutes(plan, w), 0) / window.length
+    : 0;
+
+  return Math.max(IMPACT_FLOOR_MIN, trailingActual, design);
 }
 
 /** How many more impact-minutes this week can take before it becomes a spike.
- *  Zero when the week is already at or over its ceiling. */
-export function impactHeadroomMinutes(plan: Plan, weekIndex: number): number {
+ *  Zero when the week is already at or over its ceiling.
+ *
+ *  `ceiling` selects which question is being asked. A SWAP is a replacement and must not
+ *  ramp the receiving sport faster than you'd ramp it fresh, so it uses the 10% rule. A
+ *  voluntary ADDITION is a different question and uses `IMPACT_BONUS_MAX` — see the note
+ *  there for why reusing the ramp ceiling refused every run. */
+export function impactHeadroomMinutes(
+  plan: Plan,
+  weekIndex: number,
+  ceiling: number = IMPACT_RAMP_MAX,
+): number {
   const week = plan.weeks.find((w) => w.index === weekIndex);
   if (!week) return 0;
-  const ceiling = impactBaseline(plan, weekIndex) * IMPACT_RAMP_MAX;
-  return Math.max(0, ceiling - weekImpactMinutes(plan, week));
+  return Math.max(0, impactBaseline(plan, weekIndex) * ceiling - weekImpactMinutes(plan, week));
 }
 
 export interface SwapAllowance {

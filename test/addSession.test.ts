@@ -11,7 +11,7 @@
 import { addSession, suggestSession, MAX_BONUS_MIN, MIN_BONUS_MIN } from "../lib/addSession";
 import { generatePlan } from "../lib/planEngine";
 import { checkRails } from "../lib/rails";
-import { weekImpactMinutes, impactHeadroomMinutes } from "../lib/mechanical";
+import { weekImpactMinutes, impactHeadroomMinutes, IMPACT_BONUS_MAX } from "../lib/mechanical";
 import type { Injury, Plan, Profile, Workout } from "../lib/types";
 import { addDays, mondayOf, todayISO } from "../lib/dates";
 
@@ -139,7 +139,7 @@ section("length is bounded by what the week can actually absorb");
   for (const wk of plan.weeks.slice(0, 10)) {
     for (let d = 0; d < 7; d++) {
       const date = addDays(wk.startDate, d);
-      const before = impactHeadroomMinutes(plan, wk.index);
+      const before = impactHeadroomMinutes(plan, wk.index, IMPACT_BONUS_MAX);
       const a = addSession(plan, p, date);
       if (!a) continue;
       checkedDays++;
@@ -173,6 +173,83 @@ section("adding a session never breaks the plan's own rails");
   const again = addSession(pl, p, addDays(filled.startDate, 2));
   ok(again === null || (again.workout.estDurationSec / 60) <= MAX_BONUS_MIN,
      "a saturated week either refuses or stays inside the bonus ceiling");
+}
+
+// ---- 6. IT MUST ACTUALLY OFFER THINGS ---------------------------------------
+// #211, and the reason it existed. Every test above asserts what the feature REFUSES, and
+// each one passes happily when it refuses everything — the sweeps skip refused days by
+// design. Measured on the shipped build: week one refused 14 of 14 run-and-bike
+// day-combinations at every level, because `impactBaseline` had no trailing weeks to
+// average and fell back to a floor the plan's own first week already dwarfed. 153 green
+// invariants, and not one of them noticed the feature was inert.
+//
+// A test suite that only checks what something declines cannot tell you it declines
+// everything. So: assert the feature WORKS, for the athletes most likely to want it.
+section("a healthy athlete is actually offered something — including a run");
+{
+  for (const level of ["beginner", "intermediate", "advanced", "elite"] as const) {
+    const p = profile({ level });
+    const pl = generatePlan(p, ANCHOR);
+
+    // week one is the case that was completely dead: no history to ramp from
+    const wk1 = pl.weeks[0].startDate;
+    let runOffers = 0;
+    let anyOffers = 0;
+    for (let d = 0; d < 7; d++) {
+      const date = addDays(wk1, d);
+      if (suggestSession(pl, p, date, "run").kind === "ok") runOffers++;
+      if (suggestSession(pl, p, date, "any").kind === "ok") anyOffers++;
+    }
+    ok(anyOffers >= 5, `${level}: week one offers something on most days (${anyOffers}/7)`);
+    ok(runOffers >= 3, `${level}: week one can offer a RUN, not just a swim (${runOffers}/7)`);
+
+    // and the week AFTER a deload — freshest the athlete ever is, and it used to be dead
+    const afterDeload = pl.weeks.find((w, i) => i > 0 && !w.isRecovery && pl.weeks[i - 1]?.isRecovery);
+    if (afterDeload) {
+      let n = 0;
+      for (let d = 0; d < 7; d++) if (suggestSession(pl, p, addDays(afterDeload.startDate, d), "run").kind === "ok") n++;
+      ok(n >= 2, `${level}: the week after a deload still offers a run (${n}/7)`);
+    }
+  }
+
+  // the offers are worth taking, not token
+  const p = profile();
+  const pl = generatePlan(p, ANCHOR);
+  const lens: number[] = [];
+  for (let d = 0; d < 7; d++) {
+    const r = suggestSession(pl, p, addDays(pl.weeks[0].startDate, d), "run");
+    if (r.kind === "ok") lens.push(r.minutes);
+  }
+  ok(lens.length > 0 && Math.max(...lens) >= 30, `the best run offered is worth changing for (${Math.max(...lens, 0)} min)`);
+}
+
+// ---- 7. adding must not authorise more adding --------------------------------
+// The baseline is seeded from what the week's plan ASKS FOR (#211's fix). Athlete-added
+// sessions land in that same week, so if they counted toward the baseline each addition
+// would raise the ceiling permitting the next one. Measured while building the fix: four
+// successive bonus runs came out 40, 40, 35, then 55 minutes — growing, not tightening.
+section("a bonus session spends headroom, it does not create it");
+{
+  const p = profile();
+  let pl: Plan = generatePlan(p, ANCHOR);
+  const wk0 = pl.weeks[0].startDate;
+  const taken: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const r = suggestSession(pl, p, addDays(wk0, i % 7), "run");
+    if (r.kind !== "ok") break;
+    taken.push(r.minutes);
+    const a = addSession(pl, p, addDays(wk0, i % 7), "run");
+    if (!a) break;
+    pl = a.plan;
+  }
+  ok(taken.length >= 1, `at least one bonus run is available (${taken.length})`);
+  ok(taken.length <= 3, `the week stops handing them out (${taken.length} taken: ${taken.join(", ")} min)`);
+  for (let i = 1; i < taken.length; i++) {
+    ok(taken[i] <= taken[i - 1], `offer ${i + 1} is no longer than offer ${i} (${taken.join(" → ")})`);
+  }
+  // and the added sessions are marked, which is what keeps the baseline honest
+  const added = Object.values(pl.workouts).filter((w) => w.addedByAthlete);
+  ok(added.length === taken.length, `every addition is flagged addedByAthlete (${added.length}/${taken.length})`);
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

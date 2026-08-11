@@ -139,6 +139,13 @@ export interface Workout {
   /** set when a swap had to be shortened to keep the receiving sport's volume
    *  ramping safely — carries the sentence explaining what was capped and why */
   impactCapped?: string;
+  /** The athlete asked for this session; the plan did not prescribe it (#209).
+   *
+   *  Load-bearing, not decorative: the mechanical ramp seeds its baseline from what the
+   *  week's plan ASKS FOR, so counting athlete-added work there would let each addition
+   *  raise the ceiling that authorises the next one — a ratchet that hands out longer and
+   *  longer bonus sessions the more you take. */
+  addedByAthlete?: boolean;
   /** filled when a connected device (Strava) auto-completed this session */
   actuals?: WorkoutActuals;
 }

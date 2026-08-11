@@ -23,7 +23,7 @@
 
 import { addDays } from "./dates";
 import { injuryMods, isHardLoading } from "./planEngine";
-import { impactHeadroomMinutes, IMPACT_PER_MIN } from "./mechanical";
+import { impactHeadroomMinutes, IMPACT_BONUS_MAX, IMPACT_PER_MIN } from "./mechanical";
 import type { Discipline, Plan, Profile, Workout } from "./types";
 import { BuildCtx } from "./workouts";
 import * as W from "./workouts";
@@ -176,7 +176,10 @@ function evaluateSport(plan: Plan, profile: Profile, dateISO: string, choice: Ad
   // Reuse the mechanical ramp model rather than inventing a second one: it already knows
   // what this week can absorb before the tissue load becomes a spike.
   const perMin = IMPACT_PER_MIN[sport] ?? 0;
-  const headroom = impactHeadroomMinutes(plan, week.index);
+  // The BONUS ceiling, not the swap ramp: a voluntary extra session is not sustained
+  // weekly growth, and gating it at the 10% rule allowed 13-20 min of running, which is
+  // below the length a run is worth changing for — so every run was refused (#211).
+  const headroom = impactHeadroomMinutes(plan, week.index, IMPACT_BONUS_MAX);
   const roomMin = perMin > 0 ? headroom / perMin : MAX_BONUS_MIN;
   // a day that already carries two sessions gets a shorter third
   const dayCrowding = already.length >= 2 ? 0.6 : already.length === 1 ? 0.85 : 1;
@@ -300,6 +303,10 @@ export function addSession(
     estDistanceM: draft.estDistanceM,
     primaryZone: draft.primaryZone,
     status: "planned",
+    // Marks this as the athlete's own addition, so the ramp baseline ignores it — see
+    // `prescribedImpactMinutes`. Without it, every bonus session raises the ceiling that
+    // permits the next one.
+    addedByAthlete: true,
     note: "Added by you",
   };
 
