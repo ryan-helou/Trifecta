@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.41",
+  "latest": "1.0.42",
   "bundles": [
-    {
-      "version": "1.0.39",
-      "sha256": "441ac93de5421482e03b39c90d2d88d77fb2ad3d0863e7a98c697502a8378501",
-      "size": 801766,
-      "createdAtISO": "2026-08-11T21:44:05.911Z"
-    },
     {
       "version": "1.0.40",
       "sha256": "7383e1b12b503b35cea905b16c945997509e85d6e54715d25aa648e7a3c6bbf9",
@@ -20,6 +14,13 @@
       "size": 801706,
       "createdAtISO": "2026-08-11T21:57:16.317Z",
       "comment": "remove the adjusted-your-plan card"
+    },
+    {
+      "version": "1.0.42",
+      "sha256": "2895a4799bdee0a8aa6ee1d2a18c5a412cfd85d90f31180c257c29c61c9f02de",
+      "size": 801545,
+      "createdAtISO": "2026-08-11T22:07:58.626Z",
+      "comment": "a skipped session leaves the home page"
     }
   ]
 }
