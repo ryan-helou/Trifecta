@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.21",
+  "latest": "1.0.22",
   "bundles": [
-    {
-      "version": "1.0.19",
-      "sha256": "c2315d9a422bd694a4af3e456af68b3e04cd091b5ed82d17e0b74e1963e5de93",
-      "size": 782781,
-      "createdAtISO": "2026-08-10T19:34:48.084Z",
-      "comment": "every prescribed session is a round number; the proactive coach"
-    },
     {
       "version": "1.0.20",
       "sha256": "eea46697fb64189b0117dcf9a58ecb1457596d0e5090b8a8ec20d2a57c8a7651",
@@ -21,6 +14,13 @@
       "size": 787551,
       "createdAtISO": "2026-08-10T22:07:54.542Z",
       "comment": "build a gym routine once, and an exercise catalog to pick from"
+    },
+    {
+      "version": "1.0.22",
+      "sha256": "3840e579cb9e4af6d09030c80a6866e163d57b167610ef5d0829f7bfd3d84cde",
+      "size": 789311,
+      "createdAtISO": "2026-08-11T03:41:52.322Z",
+      "comment": "swims resize, swim distances in metres, and a repair for impossible post-swap paces"
     }
   ]
 }
