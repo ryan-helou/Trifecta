@@ -624,6 +624,88 @@ section("targetHours tells the truth about the week");
   ok(peakSec / 3600 >= 18, `an elite Ironman peak week still prescribes real volume (${(peakSec / 3600).toFixed(1)} h)`);
 }
 
+// ---- 18. NO session, in any sport, ever exceeds its injury cap ----
+// Test 11b did this for the bike only, and reading the headline zone is not enough:
+// `bikeSweetSpot` is zoned Z4 while instructing 88-94% FTP, and `swimTechnique` is zoned
+// Z2 while its middle set asks for Z3. Both are labels that understate the session, and a
+// label is what every injury guard reads. Swept across every sport x severity x distance x
+// level, checking the intensity the segments actually ASK FOR: 444 breaches, all of them
+// an injured swimmer being handed tempo 50s.
+section("injury caps hold across every sport, severity and distance");
+{
+  const hardestFtp = (w: Workout): number => {
+    let hi = 0;
+    const walk = (segs: Segment[]) => {
+      for (const s of segs) {
+        if ((s.discipline ?? w.discipline) === "bike" && s.kind !== "rest") {
+          const said = s.description.match(/(\d{2,3})[–-](\d{2,3})%\s*FTP/);
+          if (said) hi = Math.max(hi, Number(said[2]));
+          else if (s.ftpPct) hi = Math.max(hi, s.ftpPct[1]);
+          else if (s.zone && !s.children?.length) hi = Math.max(hi, ZONES[s.zone].ftpPct[1]);
+        }
+        if (s.children?.length) walk(s.children);
+      }
+    };
+    walk(w.segments ?? []);
+    return hi;
+  };
+  // the hardest zone ANY segment asks for — not the session's headline zone
+  const hardestZone = (w: Workout): number => {
+    let hi = w.primaryZone as number;
+    const walk = (segs: Segment[]) => {
+      for (const s of segs) {
+        if (s.kind !== "rest" && s.zone) hi = Math.max(hi, s.zone);
+        if (s.children?.length) walk(s.children);
+      }
+    };
+    walk(w.segments ?? []);
+    return hi;
+  };
+
+  let breaches = 0;
+  let swept = 0;
+  const worst: string[] = [];
+  for (const raceType of ["olympic", "half", "full"] as const) {
+    for (const level of ["beginner", "intermediate", "advanced", "elite"] as const) {
+      for (const sport of ["swim", "bike", "run"] as const) {
+        for (const severity of ["niggle", "moderate", "severe"] as const) {
+          const p = profile({
+            raceType,
+            level,
+            workoutsPerWeek: 9,
+            raceDateISO: weeksFrom(raceType === "full" ? 30 : raceType === "half" ? 20 : 14),
+            injuries: [{ id: "i", area: "test", disciplines: [sport], severity }] as Injury[],
+          });
+          const cap = injuryMods(p)[sport].capZone;
+          const plan = generatePlan(p, ANCHOR);
+          for (const w of Object.values(plan.workouts)) {
+            if (w.id === "w-race-day") continue;
+            // a brick loads BOTH sports, so it answers to either cap
+            const loads = w.discipline === "brick" ? ["bike", "run"] : [w.discipline];
+            if (!loads.includes(sport)) continue;
+            swept++;
+            const over =
+              sport === "bike"
+                ? hardestFtp(w) > ZONES[cap].ftpPct[1]
+                : hardestZone(w) > cap;
+            if (over) {
+              breaches++;
+              if (worst.length < 3) {
+                worst.push(
+                  `${raceType}/${level}/${sport}/${severity} cap Z${cap}: ${w.title} ` +
+                    (sport === "bike" ? `@ ${hardestFtp(w)}% FTP` : `Z${hardestZone(w)}`),
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  ok(swept > 1000, `the sweep actually covered the space (${swept} sessions)`);
+  ok(breaches === 0, `no session anywhere exceeds its sport's injury cap (${breaches})${worst.length ? " — e.g. " + worst.join(" | ") : ""}`);
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures > 0) {
   console.error(`\n❌ ${failures} engine invariant(s) FAILED`);

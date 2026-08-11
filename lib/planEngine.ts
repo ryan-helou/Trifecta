@@ -563,7 +563,7 @@ function pickWeekSlots(
   function easySwim(prefDay: number, w = 0.8): Role {
     return swim(
       prefDay,
-      (min) => (recover || phase === "taper" ? W.swimRecovery(ctx, 900) : W.swimTechnique(ctx, min)),
+      (min) => (recover || phase === "taper" ? W.swimRecovery(ctx, 900) : W.swimTechnique(ctx, min, mods.swim.capZone)),
       w,
       true,
     );
@@ -575,7 +575,7 @@ function pickWeekSlots(
   // Technique and endurance carry the volume, so those are the two that move (#202).
   function keySwimBuild(min: number): Draft {
     const cap = mods.swim.capZone;
-    if (phase === "base" || recover || cap < 3) return W.swimTechnique(ctx, min);
+    if (phase === "base" || recover || cap < 3) return W.swimTechnique(ctx, min, cap);
     if (phase === "peak") return W.swimOpenWater(ctx);
     if (phase === "taper") return W.swimRecovery(ctx, 1000);
     if (cap < 4) return W.swimEndurance(ctx, W.swimMainMetersFor(ctx, min));
