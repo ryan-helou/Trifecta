@@ -81,6 +81,7 @@ export function StrengthLog({
   routineName,
   onSaveRoutine,
   unit,
+  heading,
   onChange,
 }: {
   /** What's already logged for this session, if anything — or, when nothing is
@@ -100,6 +101,9 @@ export function StrengthLog({
   /** Save what's on screen as the routine for `slot`. Absent ⇒ no save button. */
   onSaveRoutine?: (entries: StrengthEntry[]) => void;
   unit: Unit;
+  /** Section label. Defaults to the logging voice; the routine editor is
+   *  authoring a session that hasn't happened yet, so it says so. */
+  heading?: string;
   onChange: (entries: StrengthEntry[]) => void;
 }) {
   const [draft, setDraft] = useState<DraftEntry[]>(() => toDraft(initial ?? [], unit));
@@ -183,7 +187,7 @@ export function StrengthLog({
   return (
     <div className="animate-fade-up rounded-2xl border border-line bg-surface-2 p-3.5">
       <div className="mb-2.5 flex items-baseline justify-between gap-2">
-        <div className="eyebrow text-[0.7rem]">What you lifted</div>
+        <div className="eyebrow text-[0.7rem]">{heading ?? "What you lifted"}</div>
         {totalLabel && <div className="text-[0.7rem] tabular-nums text-muted">{totalLabel}</div>}
       </div>
 

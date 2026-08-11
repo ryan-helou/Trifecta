@@ -19,6 +19,7 @@ import {
   routineFromEntries,
   slotOf,
   slotLabel,
+  slotsForProfile,
   upsertRoutine,
 } from "../lib/routines";
 import { EXERCISE_CATALOG, canonicalName, searchExercises } from "../lib/exerciseCatalog";
@@ -269,6 +270,49 @@ section("A custom split rotates, and each named day owns its routine");
     Object.values(vague.workouts).filter((w) => w.discipline === "strength").map((w) => slotOf(w)!),
   );
   ok(vagueSlots.size === 1 && vagueSlots.has("custom"), "unparseable free text falls back to one generic gym day");
+}
+
+// ---- the editor must offer exactly the days the plan will produce (#212) ----
+//
+// The routine editor asks "which gym day is this for?". If that list and the
+// plan's actual rotation ever diverge, an athlete can build a routine for a day
+// that never comes round — it saves, it appears in their profile, and it silently
+// never attaches to anything. So the invariant is measured against generated
+// plans rather than asserted against a hard-coded list.
+
+section("the gym days offered are the gym days the plan builds");
+for (const split of ["push-pull-legs", "upper-lower", "full"] as const) {
+  const prof = profileFor(split);
+  const plan = generatePlan(prof, ANCHOR);
+  const onPlan = new Set(
+    Object.values(plan.workouts).filter((w) => w.discipline === "strength").map((w) => slotOf(w)!),
+  );
+  const offered = new Set(slotsForProfile(prof));
+  ok([...onPlan].every((sl) => offered.has(sl)), `${split}: every day the plan builds is offered (plan: ${[...onPlan].sort().join(",")})`);
+  ok([...offered].every((sl) => onPlan.has(sl)), `${split}: and nothing is offered that the plan never builds (offered: ${[...offered].sort().join(",")})`);
+}
+
+{
+  // A custom split the athlete typed themselves.
+  const custom = {
+    ...profileFor("full"),
+    strength: { enabled: true, daysPerWeek: 3, split: "custom", customSplit: "Chest / Back / Legs" },
+  } as unknown as Profile;
+  const plan = generatePlan(custom, ANCHOR);
+  const onPlan = new Set(
+    Object.values(plan.workouts).filter((w) => w.discipline === "strength").map((w) => slotOf(w)!),
+  );
+  const offered = new Set(slotsForProfile(custom));
+  ok(offered.size === 3, `a three-day custom split offers three days (got ${[...offered].join(", ")})`);
+  ok([...onPlan].every((sl) => offered.has(sl)), "and they're the same three the plan builds");
+
+  // Unparseable free text: the engine falls back to one generic day, so must the editor.
+  const vague = { ...custom, strength: { enabled: true, daysPerWeek: 2, split: "custom", customSplit: "whatever I feel like" } } as unknown as Profile;
+  ok(slotsForProfile(vague).join() === "custom", "unreadable free text offers the single generic gym day, matching strengthFor");
+
+  // No gym at all ⇒ the bodyweight home circuit is the only day there is.
+  const home = { ...profileFor("push-pull-legs"), equipment: { gym: false } } as unknown as Profile;
+  ok(slotsForProfile(home).join() === "home", "an athlete with no gym is offered the home circuit, not a push/pull/legs split they can't do");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
