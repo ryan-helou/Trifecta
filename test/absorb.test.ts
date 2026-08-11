@@ -348,6 +348,89 @@ section("running it twice does not compound");
      `absorbing never adds to the miss count (${missedBefore} → ${missedAfter}) — training MORE must never read as falling behind`);
 }
 
+// ---------------------------------------------------------------------------
+// INSTEAD-OF vs AS-WELL-AS. Ryan drew the line himself:
+//
+//   "If I have a long run left on the week and I do a 2k run today, that doesn't
+//    swap it. It might shorten it if you want, but doesn't swap it. But if I
+//    already did a 10k run today and I had a 10k run planned for Saturday, and I
+//    had nothing planned for today, then, and only then, should I switch."
+//
+// The deciding fact is whether the DAY already carried that sport. If it didn't,
+// the unplanned session stood in for the planned one and the planned one comes
+// off. If it did, the work was extra and may only shorten what's left — deleting
+// a session because someone trained MORE hands them a rest day as a punishment.
+// ---------------------------------------------------------------------------
+{
+  section("extra work shortens; a stand-in replaces");
+
+  const plan = generatePlan(profile(), ANCHOR);
+  const week = plan.weeks[2];
+  const inThisWeek = week.workoutIds.map((id) => plan.workouts[id]!).filter((w) => w.discipline !== "rest");
+  const plannedRun = inThisWeek.find(
+    (w) => w.discipline === "run" && inThisWeek.some((x) => x.discipline === "run" && x.status === "planned" && x.date > w.date),
+  );
+  ok(!!plannedRun, "a run today with another run later in the week");
+  const today = plannedRun!.date;
+  const later = inThisWeek.find((x) => x.discipline === "run" && x.date > today)!;
+  const laterBaseSec = later.estDurationSec;
+
+  /** Log an unplanned run of `min` minutes, optionally having done today's planned one. */
+  const extraRun = (min: number, didTodays: boolean) => {
+    let p: Plan = plan;
+    if (didTodays) {
+      p = logCheckin(p, plannedRun!.id, { rpe: 5, feel: "ok", actualDurationSec: plannedRun!.estDurationSec });
+    } else {
+      const workouts = { ...p.workouts };
+      delete workouts[plannedRun!.id];
+      p = { ...p, workouts, weeks: p.weeks.map((k) => ({ ...k, workoutIds: k.workoutIds.filter((i) => i !== plannedRun!.id) })) };
+    }
+    const res = logWorkout(p, { dateISO: today, discipline: "run", durationSec: min * 60, rpe: 5, feel: "ok" });
+    const after = respondTo(res.plan, today, { kind: "logged", workoutId: res.loggedId! })?.plan ?? res.plan;
+    return after.workouts[later.id];
+  };
+
+  // Stand-in: nothing of that sport on the day, and it covers the target.
+  const standIn = extraRun(Math.round((laterBaseSec / 60) * 0.8), false);
+  ok(standIn.status === "skipped" && !!standIn.absorbedBy,
+     "with nothing planned that day, a comparable run REPLACES the one later in the week");
+
+  // As-well-as: the day already had its run, so the same session may only shorten.
+  const asWell = extraRun(Math.round((laterBaseSec / 60) * 0.8), true);
+  ok(asWell.status === "planned",
+     "but having already done that day's run, the same extra run does NOT remove it");
+  ok(asWell.estDurationSec < laterBaseSec,
+     `it shortens it instead (${Math.round(laterBaseSec / 60)}m → ${Math.round(asWell.estDurationSec / 60)}m)`);
+
+  // A token jog never eats a long run.
+  const jog = extraRun(12, true);
+  ok(jog.status === "planned", "a 12 minute jog never removes the long run");
+  ok(jog.estDurationSec > asWell.estDurationSec,
+     "and takes less off it than a real session does — the cut is proportional to what you did");
+
+  // The rule is about the SPORT, not the day being empty: a swim planned and done
+  // leaves a run day free, so an unplanned run still stands in.
+  const swimDay = inThisWeek.find(
+    (w) => w.discipline === "swim" && !inThisWeek.some((x) => x.discipline === "run" && x.date === w.date),
+  );
+  if (swimDay) {
+    const runLater = inThisWeek.find((x) => x.discipline === "run" && x.status === "planned" && x.date > swimDay.date);
+    if (runLater) {
+      const p = logCheckin(plan, swimDay.id, { rpe: 5, feel: "ok", actualDurationSec: swimDay.estDurationSec });
+      const res = logWorkout(p, {
+        dateISO: swimDay.date,
+        discipline: "run",
+        durationSec: Math.round(runLater.estDurationSec * 0.85),
+        rpe: 5,
+        feel: "ok",
+      });
+      const after = respondTo(res.plan, swimDay.date, { kind: "logged", workoutId: res.loggedId! })?.plan ?? res.plan;
+      ok(after.workouts[runLater.id].status === "skipped",
+         "a day whose planned session was a SWIM is still free for a run to stand in");
+    }
+  }
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures) {
   console.error(`\n❌ ${failures} absorb invariant(s) FAILED`);

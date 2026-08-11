@@ -787,6 +787,38 @@ export function runRecovery(ctx: BuildCtx, min = 30): Draft {
 // ===========================================================================
 
 export function brick(ctx: BuildCtx, bikeMin = 40, runMin = 15, racePace = false): Draft {
+  const bikeMain = Math.max(1, bikeMin - 10);
+  // RACE EFFORT IS A BLOCK, NOT THE WHOLE RIDE.
+  //
+  // `racePace` used to zone the ENTIRE bike leg Z3, which made a peak brick 171 of its 185
+  // minutes in-zone — 92%. That one session carried 60% of the week's quality and, being a
+  // volume slot rather than a quality slot, was invisible to the intensity budget: measured
+  // on an intermediate olympic block, peak weeks ran 59% in-zone against a 25% budget and
+  // only 40% easy, against the ≥75% floor doc 01 §4 #2 calls a bug outright.
+  //
+  // The session's own cue already said the right thing — "keep the bike honest but not
+  // heroic, save it for the run" — while the code marked every minute of it race effort.
+  // Now the ride is aerobic with a bounded race-effort block LATE, which is what the cue
+  // promises and where doc 01 §4 #9 wants quality in a long session: on tired legs. Same
+  // shape `runLong` already uses for its finish-strong tail, so the two long sessions
+  // can't drift into disagreeing about what race pace costs.
+  const rpBike = racePace ? Math.max(10, Math.min(30, Math.round(bikeMain * 0.35))) : 0;
+  const easyBike = Math.max(0, bikeMain - rpBike);
+  const bikeSegs: Segment[] = [];
+  if (easyBike > 0)
+    bikeSegs.push(
+      seg({ kind: "main", discipline: "bike", zone: 2, durationSec: M(easyBike), description: `${easyBike} min bike @ ${zn(2)}`, cue: "Keep the bike honest but not heroic — save it for the run." }),
+    );
+  if (rpBike > 0)
+    bikeSegs.push(
+      seg({ kind: "main", discipline: "bike", zone: 3, durationSec: M(rpBike), description: `${rpBike} min @ race effort to finish the ride`, cue: "Settle into race power for the last stretch, then carry it through T2." }),
+    );
+
+  // The run off the bike opens easy on purpose. The description has always promised
+  // "build easy → race pace" while the code zoned all of it Z3; say it and mean it.
+  const runOpen = Math.min(5, Math.max(0, Math.round(runMin * 0.3)));
+  const runRace = Math.max(1, runMin - runOpen);
+
   return finish(ctx, {
     discipline: "brick",
     type: "brick",
@@ -795,9 +827,12 @@ export function brick(ctx: BuildCtx, bikeMin = 40, runMin = 15, racePace = false
     primaryZone: 3,
     segments: [
       seg({ kind: "warmup", discipline: "bike", zone: 2, durationSec: M(10), description: "10 min easy spin-up" }),
-      seg({ kind: "main", discipline: "bike", zone: racePace ? 3 : 2, durationSec: M(bikeMin - 10), description: `${bikeMin - 10} min bike @ ${racePace ? "race effort" : zn(2)}`, cue: "Keep the bike honest but not heroic — save it for the run." }),
+      ...bikeSegs,
       seg({ kind: "main", discipline: "run", zone: 3, durationSec: M(2), description: "⚡ T2 — rack bike, swap shoes, go (under 3 min)", cue: "Practice a fast, calm transition like race day." }),
-      seg({ kind: "main", discipline: "run", zone: 3, durationSec: M(runMin), description: `${runMin} min run, build easy → race pace`, cue: "Start deliberately short-strided. Heaviness lifts by minute 8 — note how long yours takes." }),
+      ...(runOpen > 0
+        ? [seg({ kind: "main", discipline: "run", zone: 2, durationSec: M(runOpen), description: `${runOpen} min easy off the bike`, cue: "Start deliberately short-strided. Heaviness lifts by minute 8 — note how long yours takes." })]
+        : []),
+      seg({ kind: "main", discipline: "run", zone: 3, durationSec: M(runRace), description: `${runRace} min @ race pace`, cue: "This is the effort that decides your race — hold form as the legs come back." }),
       seg({ kind: "cooldown", discipline: "run", zone: 1, durationSec: M(4), description: "4 min walk/jog down" }),
     ],
   });

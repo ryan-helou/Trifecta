@@ -246,12 +246,22 @@ export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
   const sameDay = Object.values(plan.workouts).filter(
     (w) => w.date === input.dateISO && w.discipline !== "rest" && w.status === "planned",
   );
-  // prefer a discipline match; otherwise the closest-duration session (to swap into)
-  const match =
-    sameDay.find((w) => disciplineMatches(d, w.discipline)) ??
-    [...sameDay].sort(
-      (a, b) => Math.abs((a.estDurationSec || 0) - input.durationSec) - Math.abs((b.estDurationSec || 0) - input.durationSec),
-    )[0];
+  // SAME SPORT ONLY.
+  //
+  // This used to fall back to the closest-duration session of ANY sport and swap
+  // the credit into it, so logging a bike on a day that held a run silently turned
+  // the run into a bike — and whether that happened at all depended on whether you
+  // ticked the run first. Same two sessions, two different plans, decided by order.
+  //
+  // Ryan: "if I did a run today extra, I should have one less run for the week."
+  // That rule doesn't care whether the extra work was instead of something or on
+  // top of it, and it needs no question: the work counts as itself, and the WEEK
+  // gives up a session of the same sport (see absorbUnplanned). A ride never
+  // rewrites a run, in either direction.
+  //
+  // The explicit paths are untouched — "Swap sport" on a session, and "Did
+  // something else", both of which say plainly what they are doing.
+  const match = sameDay.find((w) => disciplineMatches(d, w.discipline));
 
   if (!match) {
     const added = addLoggedWorkoutWithId(plan, input);
@@ -259,8 +269,12 @@ export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
       plan: added.plan,
       loggedId: added.id,
       outcome: "bonus",
-      headline: "Bonus session logged",
-      detail: `Nothing was planned — added your ${d} (${durTxt}${distTxt}) to the log.`,
+      headline: "Logged ✓",
+      // The week's answer arrives in its own message from the responder (a matching
+      // session absorbed or shortened), so this says what was RECORDED and doesn't
+      // claim the plan is unchanged. "Nothing was planned" was also just wrong when
+      // something was planned and it simply wasn't this sport.
+      detail: `Added your ${d} (${durTxt}${distTxt}) to the log.`,
       coachPrefill: `I did an unplanned ${d} today: ${durTxt}${distTxt}${feelClause(input)}. Nothing was on the plan — does that change the next few days?`,
     };
   }

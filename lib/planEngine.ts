@@ -217,6 +217,15 @@ interface Slot {
   minMin: number;
   maxMin: number;
   build: (min: number) => Draft;
+  /** The aerobic version of this session, for when the week cannot afford it as quality.
+   *
+   *  Scaling alone bottoms out: a peak week carrying four interval sessions blows its
+   *  intensity budget even with every one of them at its minimum length, and the bisection
+   *  has nowhere left to go. Doc 01 §5 quick-win #2 names the missing lever — "if easy% is
+   *  short, demote a quality filler" — and this is it. Only quality slots set it; a slot
+   *  without one can never be demoted, which is how the week keeps at least one hard
+   *  session (`BLOCK_HARD_MIN` exists for the opposite failure). */
+  demote?: (min: number) => Draft;
 }
 
 // The athlete picks a TOTAL number of workouts per week. 1 = a single key
@@ -792,6 +801,17 @@ function pickWeekSlots(
       budget: aerobic ? "volume" : "quality",
       spaced: loads(disc) && d.type !== "tempo" && (d.primaryZone >= 4 || d.type === "brick"),
       weight, minMin, maxMin: top, build,
+      // The aerobic version of this same session, used only when the week cannot afford
+      // it as quality. Already-aerobic roles need none — they are the fallback.
+      demote: aerobic
+        ? undefined
+        : disc === "run"
+        ? (min) => W.runEasy(ctx, min)
+        : disc === "bike"
+        ? (min) => W.bikeEndurance(ctx, min)
+        : disc === "swim"
+        ? (min) => W.swimTechnique(ctx, min, mods.swim.capZone)
+        : undefined,
     };
   }
   function swim(prefDay: number, build: (min: number) => Draft, weight: number, scalable = false): Role {
@@ -801,7 +821,10 @@ function pickWeekSlots(
     // "CSS Threshold Set" dominated the measured back-to-back-hard pairs. Builders
     // are pure, so evaluating one here to read its zone is safe and cheap.
     const hard = build(60).primaryZone >= 4;
-    return { prefDay, discipline: "swim", hard, scalable, weight, minMin: 25, maxMin: 60, build };
+    return {
+      prefDay, discipline: "swim", hard, scalable, weight, minMin: 25, maxMin: 60, build,
+      demote: hard || build(60).primaryZone >= 3 ? (min) => W.swimTechnique(ctx, min, mods.swim.capZone) : undefined,
+    };
   }
 }
 
@@ -1688,12 +1711,44 @@ function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slo
   // (whole reps) — builders are pure and cheap, so this costs nothing worth counting and
   // stays correct on its own if the session shapes change underneath it.
   const tgt = intensityTarget(cat, profile.level, phase, isRecovery);
-  const qualitySlots = scalables.filter((s) => s.budget === "quality");
+  let qualitySlots = scalables.filter((s) => s.budget === "quality");
   const volumeSlots = scalables.filter((s) => s.budget !== "quality");
+
+  // THE BUDGET IS A CLAIM ON THE WHOLE WEEK, NOT ON THE QUALITY SLOTS.
+  //
+  // It used to bound only the sessions labelled "quality", so in-zone time emitted by any
+  // OTHER slot was free. In peak that is not a rounding error: the long anchor becomes a
+  // race-pace brick and the long run grows a race-effort tail, and those are the two
+  // biggest sessions of the week. Measured before this changed — intermediate olympic
+  // peak, 59% of the week in-zone against a 25% budget, with 171 of those minutes coming
+  // from one brick nothing was counting.
+  //
+  // Now everything already fixed — non-scalable sessions plus whatever the volume slots
+  // will emit — is subtracted first, and the quality slots bisect against what is LEFT.
+  // That makes the trade doc 01 §4 #2 demands explicit: if you add quality, remove it
+  // elsewhere. A week whose long sessions are race-specific gets shorter intervals rather
+  // than both.
   const inZoneBudget = targetSec * qualityShare(tgt);
 
-  let qualitySec = 0;
-  if (qualitySlots.length) {
+  // Everything the week is already committed to before a single interval is sized: the
+  // non-scalable sessions, built at their intrinsic durations.
+  const fixedInZone = [...built.values()].reduce((a, d) => a + inZoneSec(d), 0);
+
+  const sizeVolume = (qualitySec: number) => {
+    const volumeBudget = Math.max(0, remainingSec - qualitySec);
+    const vsum = volumeSlots.reduce((a, s) => a + s.weight, 0) || 1;
+    for (const s of volumeSlots) {
+      const share = (s.weight / vsum) * volumeBudget;
+      const min = Math.round(share / 60);
+      mins.set(s, Math.max(s.minMin, Math.min(s.maxMin, min)));
+    }
+    redistributeCappedMinutes(volumeSlots, mins, volumeBudget / 60);
+    for (const s of volumeSlots) built.set(s, s.build(mins.get(s)!));
+    return volumeSlots.reduce((a, s) => a + inZoneSec(built.get(s)!), 0);
+  };
+
+  const scaleQuality = (budget: number) => {
+    if (!qualitySlots.length) return 0;
     const atScale = (k: number) => {
       let zone = 0;
       let total = 0;
@@ -1711,21 +1766,62 @@ function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slo
     let hi = 1;
     for (let i = 0; i < 14; i++) {
       const mid = (lo + hi) / 2;
-      if (atScale(mid).zone > inZoneBudget) hi = mid;
+      if (atScale(mid).zone > budget) hi = mid;
       else lo = mid;
     }
-    qualitySec = atScale(lo).total; // rebuild at the chosen scale so `built`/`mins` hold it
-  }
+    return atScale(lo).total; // rebuild at the chosen scale so `built`/`mins` hold it
+  };
 
-  const volumeBudget = Math.max(0, remainingSec - qualitySec);
-  const vsum = volumeSlots.reduce((a, s) => a + s.weight, 0) || 1;
-  for (const s of volumeSlots) {
-    const share = (s.weight / vsum) * volumeBudget;
-    const min = Math.round(share / 60);
-    mins.set(s, Math.max(s.minMin, Math.min(s.maxMin, min)));
+  // A fixed point, because the two halves depend on each other: the volume slots' length
+  // depends on how much time quality took, and the quality budget depends on how much
+  // in-zone time the volume slots emit. Two passes is enough — the second only refines
+  // volume lengths by the minutes quality gave back, and a third moves nothing anyone can
+  // measure. Deterministic and cheap either way: the builders are pure.
+  let qualitySec = scaleQuality(Math.max(0, inZoneBudget - fixedInZone));
+  for (let pass = 0; pass < 2; pass++) {
+    const volumeInZone = sizeVolume(qualitySec);
+    let left = Math.max(0, inZoneBudget - fixedInZone - volumeInZone);
+
+    // DEMOTE WHEN SCALING HAS NOWHERE LEFT TO GO.
+    //
+    // Shortening the interval sessions bottoms out: a peak week carrying four of them
+    // exceeds its whole budget even with every one at its minimum length, and the
+    // bisection then silently returns a week 2.4x over. Measured, intermediate olympic
+    // peak: 161 in-zone minutes against a 120-minute budget with every quality slot
+    // already at minMin. Doc 01 §5 quick-win #2 is explicit that the answer is to demote
+    // a quality filler rather than keep shaving.
+    //
+    // Swims go first: an aerobic technique swim is the cheapest quality to give up and
+    // the one whose loss costs the least race-specific fitness (doc 03 §4 — run quality
+    // is where injuries come from, but run specificity is also what can't be bought back
+    // late, so runs are given up last). Within a sport the biggest budget consumer goes
+    // first, so one demotion does as much work as possible. At least one quality session
+    // always survives — a block with none is the opposite failure, and `BLOCK_HARD_MIN`
+    // exists to catch it.
+    const order = [...qualitySlots].sort((a, b) => {
+      const rank = (s: Slot) => (s.discipline === "swim" ? 0 : s.discipline === "bike" ? 1 : 2);
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      return inZoneSec(b.build(b.minMin)) - inZoneSec(a.build(a.minMin));
+    });
+    for (const s of order) {
+      if (qualitySlots.length <= 1) break;
+      const atMin = qualitySlots.reduce((a, q) => a + inZoneSec(q.build(q.minMin)), 0);
+      if (atMin <= left) break;
+      if (!s.demote) continue;
+      s.build = s.demote;
+      s.budget = "volume";
+      s.hard = false;
+      s.spaced = false;
+      qualitySlots = qualitySlots.filter((q) => q !== s);
+      volumeSlots.push(s);
+      // A demoted session is aerobic now, so the week's committed in-zone total changes:
+      // re-measure rather than carrying the stale figure into the next candidate.
+      left = Math.max(0, inZoneBudget - fixedInZone - sizeVolume(qualitySec));
+    }
+
+    qualitySec = scaleQuality(left);
   }
-  redistributeCappedMinutes(volumeSlots, mins, volumeBudget / 60);
-  for (const s of volumeSlots) built.set(s, s.build(mins.get(s)!));
+  sizeVolume(qualitySec);
   separateWithinSport(slots, built, mins);
 
   // Hard-enforce an explicit weeklyHoursCap. targetHours already respects the cap,
