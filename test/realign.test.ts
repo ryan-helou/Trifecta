@@ -16,6 +16,7 @@
 import { generatePlan } from "../lib/planEngine";
 import { easeUpcoming, rebuildFromToday, missedSince } from "../lib/adapt";
 import type { Profile, Plan } from "../lib/types";
+import { addDays, mondayOf, todayISO } from "../lib/dates";
 
 let checks = 0;
 let failures = 0;
@@ -30,7 +31,11 @@ function section(name: string) {
   console.log("\n• " + name);
 }
 
-const ANCHOR = "2026-08-03"; // a Monday
+// A Monday in the FUTURE, never a pinned date — same rot that killed engine.test.ts and
+// load.test.ts. Once the anchor is in the past `generatePlan` clamps day one to today, so
+// dates counted from the anchor and dates the plan actually holds drift apart by however
+// long ago it was; here that left the "completed history" window selecting nothing.
+const ANCHOR = mondayOf(addDays(todayISO(), 7));
 function daysFrom(n: number): string {
   const d = new Date(ANCHOR + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);

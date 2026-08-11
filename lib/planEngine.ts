@@ -598,7 +598,12 @@ function pickWeekSlots(
     // Deliberately NOT threshold or VO2: those belong to build (§4 #3), and
     // "too spicy too early" is the exact failure that gets endurance apps blamed
     // for injuries (competitor doc §5 #1).
-    if (phase === "base" && !recover && cap >= 3 && baseQualityOk) {
+    // `cap >= 4`, not `>= 3`. A zone-3 cap is a niggle, and the sweet-spot branch below
+    // prescribes 88–94% FTP — above it. Admitting cap-3 athletes here jumped the explicit
+    // niggle guard further down (whose own comment warns about exactly this), so a rider
+    // with a sore knee was handed 94% FTP by the base phase. They still get quality: the
+    // `cap === 3` branch routes them to `bikeTempo`, which is the real Z3 answer.
+    if (phase === "base" && !recover && cap >= 4 && baseQualityOk) {
       // Sweet spot is zoned Z4 here (88–94% FTP straddles our Z3/Z4 boundary).
       // On a low-volume beginner plan that one session is a big share of the
       // block: olympic/beginner/5 measured 26.9% Z4+ against the 25% rail — the
@@ -1164,6 +1169,8 @@ export function generatePlan(profile: Profile, anchorISO?: string): Plan {
   clearDayBeforeRace(profile.raceDateISO, weeks, workouts);
   // strip out sessions the athlete told us they can't train (vacation, travel)
   applyBlackouts(profile, weeks, workouts);
+  // last, once nothing else can remove a session: make every week's stated target true
+  reconcileTargetHours(weeks, workouts);
 
   const notice = compressed
     ? "Your race is sooner than the ideal build — this plan is compressed. Prioritise the key sessions and stay healthy."
@@ -1245,6 +1252,7 @@ function generateFitnessPlan(profile: Profile, anchorISO?: string): Plan {
 
   spaceHardDaysAcrossWeeks(weeks, workouts, restDayFor(profile));
   applyBlackouts(profile, weeks, workouts);
+  reconcileTargetHours(weeks, workouts);
 
   return {
     id: `plan-${Date.now()}`,
@@ -1270,6 +1278,31 @@ function focusFor(phase: Phase, rec: boolean, race: boolean): string {
   if (phase === "build") return "Add race-specific intensity — threshold, VO2, and bricks.";
   if (phase === "peak") return "Sharpen at race pace with big race-simulation sessions.";
   return "Taper — cut volume, keep it sharp, and freshen up.";
+}
+
+/**
+ * Make `targetHours` a FACT rather than a promise.
+ *
+ * It was the notional budget a week was sliced from, and the sessions that came out
+ * routinely fell short of it: the long-session caps bind, `separateWithinSport` trims to
+ * its grid, blackouts delete work. Measured on an elite Ironman plan, the gap reached
+ * **43%** — a week advertised as 22 h prescribing 12.5 h — and it widened with volume, so
+ * the athletes training hardest were told the biggest untruth. Progress bars, the Today
+ * ring and the AI coach's prompt all read this number, so it was the same wrong figure on
+ * four screens.
+ *
+ * Runs as a whole-plan pass at the very END, deliberately: `clearDayBeforeRace` and
+ * `applyBlackouts` both delete sessions after the weeks are built, so reconciling inside
+ * `buildNormalWeek` would leave any week they touched still overstating itself.
+ *
+ * Race week is skipped — its "target" isn't training hours, it's openers plus a race.
+ */
+function reconcileTargetHours(weeks: Week[], workouts: Record<string, Workout>): void {
+  for (const wk of weeks) {
+    if (wk.isRaceWeek) continue;
+    const sec = wk.workoutIds.reduce((a, id) => a + (workouts[id]?.estDurationSec ?? 0), 0);
+    wk.targetHours = Math.round((sec / 3600) * 2) / 2;
+  }
 }
 
 function buildNormalWeek(
@@ -1314,6 +1347,49 @@ function buildNormalWeek(
  * separate is left as it was rather than mangled.
  */
 const SEPARATION_GRID_MIN = 5;
+
+/**
+ * Hand back the minutes the per-session caps refused, instead of dropping them.
+ *
+ * The week's time is divided once, proportionally, and each share is then clamped to its
+ * slot's `[minMin, maxMin]`. Whatever the clamp shaved off simply vanished — nobody else
+ * was offered it. That is invisible in a small week and ruinous in a big one, because the
+ * caps that bind are the ones that scale worst: the long run stops at `LONG_RUN_CAP`, an
+ * easy ride at 55–70 min, a swim at 60. Measured on an elite Ironman peak week, the plan
+ * advertised 22 h and prescribed 17 — and every screen that reads `targetHours` (Progress,
+ * the Today ring, the coach's prompt) repeated the 22.
+ *
+ * So: give the surplus to the slots that still have headroom, in proportion to their
+ * weight, and repeat while anything is still open. Bounded to five passes because each one
+ * can only fill slots to their own ceiling — it converges long before that, and a week
+ * whose every slot is genuinely maxed out is a week whose target is honestly unreachable
+ * (`reconcileTargetHours` then tells the truth about it rather than the caps lying).
+ */
+function redistributeCappedMinutes(scalables: Slot[], mins: Map<Slot, number>, budgetMin: number): void {
+  for (let pass = 0; pass < 5; pass++) {
+    const allocated = scalables.reduce((a, s) => a + (mins.get(s) ?? 0), 0);
+    const spare = budgetMin - allocated;
+    if (spare < 1) return; // inside a minute — nothing worth moving
+    const open = scalables.filter((s) => (mins.get(s) ?? 0) < s.maxMin);
+    if (!open.length) return; // every slot is at its ceiling; the caps win, correctly
+    // Shared out by REMAINING HEADROOM, not by weight. Weight is what decides a session's
+    // size in the first place, so reusing it here pours the surplus into whatever is
+    // already longest: measured, it took an elite Ironman's long brick from 4h15 to 6h55
+    // while the easy rides sat untouched at their old length. Headroom instead means each
+    // session takes a share of what it can still absorb — the week fills out, rather than
+    // one session swallowing it.
+    const room = (s: Slot) => s.maxMin - (mins.get(s) ?? 0);
+    const rsum = open.reduce((a, s) => a + room(s), 0) || 1;
+    let moved = 0;
+    for (const s of open) {
+      const cur = mins.get(s)!;
+      const next = Math.min(s.maxMin, Math.round(cur + (room(s) / rsum) * spare));
+      moved += next - cur;
+      mins.set(s, next);
+    }
+    if (moved <= 0) return; // rounding has stalled us; stop rather than spin
+  }
+}
 
 function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slot, number>): void {
   // EVERY session of the sport takes part, not just the resizable ones. The
@@ -1395,6 +1471,7 @@ function separateWithinSport(all: Slot[], built: Map<Slot, Draft>, mins: Map<Slo
     const min = Math.round(share / 60);
     mins.set(s, Math.max(s.minMin, Math.min(s.maxMin, min)));
   }
+  redistributeCappedMinutes(scalables, mins, remainingSec / 60);
   for (const s of scalables) built.set(s, s.build(mins.get(s)!));
   separateWithinSport(slots, built, mins);
 

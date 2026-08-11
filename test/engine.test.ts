@@ -13,6 +13,7 @@ import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts, injuryMods, re
 import type { Profile, Plan, Injury, Workout, Segment } from "../lib/types";
 import { ZONES } from "../lib/zones";
 import { targetView } from "../lib/targets";
+import { addDays, mondayOf, todayISO } from "../lib/dates";
 
 let checks = 0;
 let failures = 0;
@@ -27,7 +28,20 @@ function section(name: string) {
   console.log("\n• " + name);
 }
 
-const ANCHOR = "2026-08-03"; // a Monday
+// A Monday in the FUTURE, not a fixed date.
+//
+// `generatePlan` reads the wall clock and clamps an anchor that has already passed to
+// today, so a pinned Monday rots the instant it slips into the past — and it did. From
+// 2026-08-04 the "race in 6 days" case below resolved to a race that had already happened,
+// which yields a ZERO-week plan, and `p.weeks[p.weeks.length - 1].isRaceWeek` threw. That
+// crashed the file outright, and because `npm test` chains with `&&` it took every suite
+// after it down too: the engine's own gate has been dead for a week for reasons that have
+// nothing to do with the engine.
+//
+// Rolling the anchor forward keeps every relative offset (`weeksFrom`, `plusDays`) meaning
+// what it says. The real cure is injecting the clock into `generatePlan` (doc 04 §4.3);
+// until then, don't pin dates in a suite that calls it.
+const ANCHOR = mondayOf(addDays(todayISO(), 7));
 function weeksFrom(w: number): string {
   const d = new Date(ANCHOR + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + w * 7);
@@ -556,12 +570,58 @@ section("hard-day spacing: 48h between hard run/bike/brick work");
   }
 
   // and the %FTP prescription is never simply lost — it stays as supporting detail
-  const noFtp = generatePlan(base, "2026-07-29");
+  const noFtp = generatePlan(base, ANCHOR); // never a pinned date — see the ANCHOR note
   const v = targetView("bike", 2, noFtp.paces, "metric");
   ok(
     v.secondary.some((s) => /% FTP/.test(s)),
     `no FTP: the %FTP band survives in secondary — got [${v.secondary.join(" | ")}]`,
   );
+}
+
+// ---- 17. a week's stated target is what it actually prescribes ----
+// `targetHours` was the notional budget a week was SLICED from, not what came out of the
+// slicing. Each session's share is clamped to its own [minMin, maxMin], and whatever the
+// clamp shaved off was dropped rather than offered to anyone else — so the gap grew with
+// volume, exactly backwards. Measured before the fix: -22.7% at 70.3 intermediate, -35.6%
+// at full/advanced, and **-42.9%** for an elite Ironman, i.e. a week advertised as 22 h
+// that prescribed 12.5 h. Progress, the Today ring and the coach's prompt all read this
+// number, so it was one wrong figure repeated on four screens.
+section("targetHours tells the truth about the week");
+{
+  const cases: { name: string; p: Profile }[] = [
+    { name: "70.3/intermediate/6", p: profile({ raceType: "half", raceDateISO: weeksFrom(20) }) },
+    { name: "70.3/beginner/5", p: profile({ raceType: "half", level: "beginner", workoutsPerWeek: 5, raceDateISO: weeksFrom(16) }) },
+    { name: "full/advanced/10", p: profile({ raceType: "full", level: "advanced", workoutsPerWeek: 10, raceDateISO: weeksFrom(30) }) },
+    { name: "full/elite/14", p: profile({ raceType: "full", level: "elite", workoutsPerWeek: 14, raceDateISO: weeksFrom(40) }) },
+    { name: "olympic/intermediate/7", p: profile({ raceType: "olympic", workoutsPerWeek: 7, raceDateISO: weeksFrom(16) }) },
+    { name: "fitness/intermediate/6", p: profile({ raceType: "fitness", raceDateISO: "" }) },
+    // the paths that DELETE sessions after the weeks are built — reconciliation has to
+    // run after them, or any week they touch goes back to overstating itself
+    { name: "with blackouts", p: profile({ raceType: "half", raceDateISO: weeksFrom(20), blackouts: [{ startISO: weeksFrom(4), endISO: weeksFrom(5), label: "away" }] }) },
+    { name: "with an hours cap", p: profile({ raceType: "full", level: "advanced", workoutsPerWeek: 12, weeklyHoursCap: 8, raceDateISO: weeksFrom(24) }) },
+  ];
+  for (const c of cases) {
+    const plan = generatePlan(c.p, ANCHOR);
+    let worst = 0;
+    let worstWk = -1;
+    for (const wk of plan.weeks) {
+      if (wk.isRaceWeek || wk.targetHours <= 0) continue;
+      const sec = wk.workoutIds.reduce((a, id) => a + (plan.workouts[id]?.estDurationSec ?? 0), 0);
+      const gap = Math.abs(sec / 3600 - wk.targetHours) / wk.targetHours;
+      if (gap > worst) { worst = gap; worstWk = wk.index + 1; }
+    }
+    // targetHours is rounded to the nearest half hour, so a small week is out by up to 6%
+    // from rounding alone. 8% is that floor plus margin — and a world away from 43%.
+    ok(worst <= 0.08, `${c.name}: worst week is ${(worst * 100).toFixed(1)}% off its stated target (week ${worstWk})`);
+  }
+
+  // The surplus is REDISTRIBUTED, not just re-reported. Reconciling alone would make the
+  // number honest by quietly shrinking the week; the minutes the caps refuse have to go
+  // to sessions that can still take them.
+  const big = generatePlan(profile({ raceType: "full", level: "elite", workoutsPerWeek: 14, raceDateISO: weeksFrom(40) }), ANCHOR);
+  const peak = big.weeks.filter((w) => !w.isRaceWeek).reduce((m, w) => (w.targetHours > m.targetHours ? w : m));
+  const peakSec = peak.workoutIds.reduce((a, id) => a + (big.workouts[id]?.estDurationSec ?? 0), 0);
+  ok(peakSec / 3600 >= 18, `an elite Ironman peak week still prescribes real volume (${(peakSec / 3600).toFixed(1)} h)`);
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
