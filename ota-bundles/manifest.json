@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.25",
+  "latest": "1.0.26",
   "bundles": [
-    {
-      "version": "1.0.23",
-      "sha256": "0988ce30f03484c60520628142bbba3ac0627668ae7f763d0a013ea0b9516f93",
-      "size": 789555,
-      "createdAtISO": "2026-08-11T12:39:31.493Z",
-      "comment": "a week's sessions are visibly different lengths"
-    },
     {
       "version": "1.0.24",
       "sha256": "285e3d38d9426a268a1f58e8c34ef03c0aecf2cd0f3e05cefa77b70d07dd13c8",
@@ -21,6 +14,13 @@
       "size": 790618,
       "createdAtISO": "2026-08-11T16:32:03.567Z",
       "comment": "quality now scales with the athlete instead of being diluted by volume"
+    },
+    {
+      "version": "1.0.26",
+      "sha256": "e1e6628a0baf1f7d85336d654490b314245db207bb9391d976d884ac72b3fc94",
+      "size": 791001,
+      "createdAtISO": "2026-08-11T17:07:30.323Z",
+      "comment": "your existing plan gets the rework too, not just new ones"
     }
   ]
 }

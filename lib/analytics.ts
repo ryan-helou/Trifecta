@@ -41,7 +41,8 @@ export const EVENTS = [
   "readiness_logged", // { score, eased }
   "adaptation_offered", // { cause (enum) }
   "adaptation_applied", // { cause (enum) }
-  "plan_realigned", // { missed, auto } — auto:true is the self-realign (#109)
+  "plan_realigned",
+  "plan_upgraded", // { from, to } — a stored plan rebuilt onto a newer ENGINE_VERSION // { missed, auto } — auto:true is the self-realign (#109)
   "plan_represcribed", // { changed, event } — the ledger resized the next sessions
   "coach_action_applied", // { action, changed } — a change the athlete accepted from the chat
   "session_adjusted", // { targetSec } — the athlete resized a session by hand
