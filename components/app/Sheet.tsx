@@ -305,7 +305,21 @@ export function Sheet({
           >
             <span aria-hidden className="h-1.5 w-12 rounded-full bg-line-soft" />
           </div>
-          {header && <div className="flex-shrink-0">{header}</div>}
+          {/* The header drags too (#214). Content-drag only engages when the scroll
+              region is already at the top, so mid-way through a gym session — scrolled
+              down the exercise list — the ONLY way out was the 44px grab strip, which
+              you had to scroll back up to reach. Ryan: "when im on an activity, like
+              lets say pull strength and i wanna get out of the popup … make it easy to
+              close or slide down out of it." The header is pinned above the scroll
+              region, so it's always on screen and always grabbable. Every header is a
+              title block (plus at most a ✕) — no inputs, nothing horizontally
+              scrollable — and a tap still resolves as a tap, so the close buttons
+              inside them are unaffected. */}
+          {header && (
+            <div data-sheet-handle className="flex-shrink-0">
+              {header}
+            </div>
+          )}
           <div ref={scrollRef} className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {children}
           </div>

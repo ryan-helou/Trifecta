@@ -532,7 +532,10 @@ function TodayHero({ workout }: { workout: Workout }) {
           </div>
         ) : skipped ? (
           <button onClick={() => actions.unskip(workout.id)} className="btn btn-ghost flex-1 py-3 text-sm">
-            Skipped — put it back
+            {/* Absorbed, not missed (#215) — this session came off because the athlete
+                already did that work, so offering to "put it back" as though they
+                dropped it gets the story exactly backwards. */}
+            {workout.absorbedBy ? "Covered by what you did — do it anyway" : "Skipped — put it back"}
           </button>
         ) : (
           <>

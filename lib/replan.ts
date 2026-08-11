@@ -50,6 +50,7 @@
 // Pure — no clock, no I/O.
 // ---------------------------------------------------------------------------
 
+import { isUnplanned } from "./absorb";
 import { railsRegressed } from "./rails";
 import { scaleWorkout } from "./prescribe";
 import { hardDayConflicts } from "./respond";
@@ -112,9 +113,27 @@ export function weekDrift(plan: Plan, week: Week): WeekDrift {
   for (const id of week.workoutIds) {
     const w = plan.workouts[id];
     if (!w || w.discipline === "rest") continue;
+    // A session the engine never wrote has no design, and `designedOf` would have
+    // it speak for itself — putting an unplanned ride on the DESIGNED side while
+    // its done-ness kept it off the current side. Extra work then measured as a
+    // deficit: an unplanned 60 min ride made the app announce the week was "60 min
+    // lighter than planned" (#215). It is not part of this comparison at all;
+    // lib/absorb.ts is what answers for it.
+    if (isUnplanned(w)) continue;
     const des = designedOf(w);
     designedSec += des.sec;
     if (des.zone >= 4) designedHardSec += des.sec;
+    // A session that gave way to unplanned work is drift-NEUTRAL, whether it was
+    // withdrawn or merely trimmed: the hour came off the calendar because the
+    // athlete had already ridden it, so the week has not got lighter. Measuring it
+    // as a loss would print "this week is now 110 min lighter than planned"
+    // directly beneath "that ride covers your Long Endurance Ride" — the app
+    // contradicting itself in two consecutive sentences (#215).
+    if (w.absorbedBy) {
+      currentSec += des.sec;
+      if (des.zone >= 4) currentHardSec += des.sec;
+      continue;
+    }
     // Skipped work has left the week; done work is history and can't be re-planned.
     if (w.status !== "planned") continue;
     currentSec += w.estDurationSec;
@@ -157,8 +176,17 @@ export function sportDrift(plan: Plan, week: Week): Record<string, { designed: n
   for (const id of week.workoutIds) {
     const w = plan.workouts[id];
     if (!w || w.discipline === "rest" || w.discipline === "strength") continue;
+    // Unplanned work sits outside the design on BOTH sides (#215). Counting it only
+    // as current would read an extra ride as a bike surplus and convert a planned
+    // ride into a run — the athlete rode more, which is not a reason to owe a run.
+    // Absorption is what answers an extra session; sport balance stays a question
+    // about the sessions the engine actually wrote.
+    if (isUnplanned(w)) continue;
     bump(w.swappedFrom?.discipline ?? w.discipline, "designed");
-    if (w.status === "skipped") continue;
+    // Absorbed counts as SUPPLIED, not lost — the athlete did that ride, it just
+    // wasn't the one on the calendar. Reading it as a hole would have the responder
+    // convert some other session back into a bike to replace a bike already done.
+    if (w.status === "skipped" && !w.absorbedBy) continue;
     bump(w.discipline, "current");
   }
   return out;

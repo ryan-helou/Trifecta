@@ -24,6 +24,7 @@
 // Pure — no clock, no I/O. The caller supplies today.
 // ---------------------------------------------------------------------------
 
+import { absorbUnplanned } from "./absorb";
 import { represcribe } from "./prescribe";
 import { respondToEdit } from "./replan";
 import type { Plan, Workout } from "./types";
@@ -108,13 +109,21 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
     }
   }
 
+  // Work the plan never asked for is answered FIRST, and answered locally: the
+  // ride you already did comes off the ride you have left (#215). It runs ahead of
+  // the ledger because it changes which sessions are still standing, and the
+  // ledger's job is to resize what remains — in that order they compose, in the
+  // other they argue about a session one of them has already withdrawn.
+  const absorbed = absorbUnplanned(plan, todayISO, event.workoutId);
+  const afterAbsorb = absorbed?.plan ?? plan;
+
   // Every event refreshes the prescription from the ledger. Skips included: a
   // skipped session is zero load, which leaves the athlete FRESHER than budget,
   // and the never-add rule then correctly declines to hand them extra work.
   // Doc 02 §4 #11 — a life-miss is not a reason to soften anything.
   // The session the athlete just acted on is excluded: they set it deliberately,
   // and the responder's job is to adjust the sessions AROUND that choice.
-  const re = represcribe(plan, todayISO, undefined, event.workoutId);
+  const re = represcribe(afterAbsorb, todayISO, undefined, event.workoutId);
 
   // ...and separately, respond to the EDIT itself. The ledger above only sees
   // completed work, so a change to a session you haven't done yet is invisible
@@ -124,7 +133,7 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   //
   // Run on the plan the ledger already adjusted, so the two compose instead of
   // fighting: whichever has something to say, says it, and both can.
-  const afterLedger = re?.plan ?? plan;
+  const afterLedger = re?.plan ?? afterAbsorb;
   // A skip REPORTS; it never reassigns. See respondToEdit's `reassign` doc.
   const edit = respondToEdit(afterLedger, todayISO, event.workoutId, {
     reassign: event.kind !== "skipped",
@@ -139,17 +148,27 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   if (edit && !edit.changedIds.length) warnings.push(edit.headline);
   const editActed = !!edit && edit.changedIds.length > 0;
 
-  if (!re && !editActed) {
+  if (!absorbed && !re && !editActed) {
     if (!warnings.length) return null;
     return { plan, horizon: "none", headline: warnings[0], changedIds: [], warnings };
+  }
+
+  if (!re && !editActed) {
+    return {
+      plan: afterAbsorb,
+      horizon: "sessions",
+      headline: absorbed!.headline,
+      changedIds: [absorbed!.id],
+      warnings,
+    };
   }
 
   if (!re && editActed) {
     return {
       plan: edit!.plan,
       horizon: "sessions",
-      headline: edit!.headline,
-      changedIds: edit!.changedIds,
+      headline: absorbed ? `${absorbed.headline} ${edit!.headline}` : edit!.headline,
+      changedIds: absorbed ? [absorbed.id, ...edit!.changedIds] : edit!.changedIds,
       warnings,
     };
   }
@@ -158,15 +177,20 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   const changedIds = Object.keys(finalPlan.workouts).filter(
     (id) =>
       finalPlan.workouts[id].estDurationSec !== plan.workouts[id]?.estDurationSec ||
-      finalPlan.workouts[id].primaryZone !== plan.workouts[id]?.primaryZone,
+      finalPlan.workouts[id].primaryZone !== plan.workouts[id]?.primaryZone ||
+      // A session that gave way to unplanned work changes STATUS without changing
+      // its numbers, so a duration/zone diff alone reports it as untouched and the
+      // UI never highlights the one session that actually moved (#215).
+      finalPlan.workouts[id].status !== plan.workouts[id]?.status,
   );
 
   return {
     plan: finalPlan,
     horizon: "sessions",
-    // The edit is the more immediate thing the athlete just did, so it leads when
-    // both have something to say.
-    headline: editActed ? edit!.headline : re!.reason,
+    // Absorption leads: it is the most concrete answer to what the athlete just
+    // did, and it is the one they are looking for after logging something the plan
+    // didn't ask for. Otherwise the edit leads, being more immediate than the ledger.
+    headline: absorbed ? absorbed.headline : editActed ? edit!.headline : re!.reason,
     changedIds,
     warnings,
   };

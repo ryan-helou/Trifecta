@@ -27,8 +27,12 @@ type DayState = "kept" | "missed" | "pending";
 function dayState(byDate: Record<string, Workout[]>, iso: string, isToday: boolean): DayState {
   const ws = byDate[iso];
   if (!ws || ws.length === 0) return "kept"; // rest day — recovery still counts
-  if (ws.some((w) => w.status === "skipped")) return "missed";
-  if (ws.every((w) => w.status === "done" || w.status === "swapped" || w.status === "moved")) return "kept";
+  // An absorbed session (#215) is skipped-but-honoured: the athlete already did that
+  // work in an unplanned session, so it must not break the streak. Treated as kept
+  // rather than excluded, so a day holding only an absorbed session still counts.
+  if (ws.some((w) => w.status === "skipped" && !w.absorbedBy)) return "missed";
+  if (ws.every((w) => w.status === "done" || w.status === "swapped" || w.status === "moved" || !!w.absorbedBy))
+    return "kept";
   // some sessions still "planned"
   if (isToday) return ws.some(isDone) ? "kept" : "pending";
   return "missed";
