@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.26",
+  "latest": "1.0.27",
   "bundles": [
-    {
-      "version": "1.0.24",
-      "sha256": "285e3d38d9426a268a1f58e8c34ef03c0aecf2cd0f3e05cefa77b70d07dd13c8",
-      "size": 789716,
-      "createdAtISO": "2026-08-11T15:50:11.114Z",
-      "comment": "weekly hours match what's actually prescribed, and an injury cap now caps every sport"
-    },
     {
       "version": "1.0.25",
       "sha256": "fdf2e31fe4301c816eeb59179b13d131a15ee6780be48c4fb8bc5ac10ec87a42",
@@ -21,6 +14,13 @@
       "size": 791001,
       "createdAtISO": "2026-08-11T17:07:30.323Z",
       "comment": "your existing plan gets the rework too, not just new ones"
+    },
+    {
+      "version": "1.0.27",
+      "sha256": "19386ee9baeb829580a97c086112a21a76ee1b709a854e0c5b75f002b438fdfe",
+      "size": 793142,
+      "createdAtISO": "2026-08-11T17:33:49.184Z",
+      "comment": "add a session the plan picks for you"
     }
   ]
 }

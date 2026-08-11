@@ -16,6 +16,7 @@ import { CheckinSheet } from "./CheckinSheet";
 import { CoachSheet } from "./CoachSheet";
 import { EditSettings } from "./EditSettings";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
+import { AddSessionSheet } from "./AddSessionSheet";
 import { PlanUpdating } from "./PlanUpdating";
 import { useAppleHealthAutoSync } from "./useAppleHealthAutoSync";
 import { todayISO } from "@/lib/dates";
@@ -39,6 +40,7 @@ import {
 import { respondTo, type AthleteEvent } from "@/lib/respond";
 import { ENGINE_VERSION } from "@/lib/planEngine";
 import { adjustSession } from "@/lib/prescribe";
+import { addSession as buildAddedSession, suggestSession, type AddChoice } from "@/lib/addSession";
 import { apiMarkNotificationsRead, apiNotifications } from "@/lib/api";
 import { repaceSession, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
 import type { Plan } from "@/lib/types";
@@ -87,6 +89,7 @@ function AppShellInner() {
   const [coachMsgs, setCoachMsgs] = useState<CoachMsg[]>([COACH_GREETING]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   // Unread kudos/comments, for the Friends badge (#33). Polled rather than pushed
   // because APNs isn't provisioned yet (see lib/push.ts) — this is what makes the
@@ -426,6 +429,22 @@ function AppShellInner() {
       }
       respond(next, { kind: "logged", workoutId: id });
     },
+    // #209 — "I've got a spare hour". Preview is pure, so the sheet can ask freely as the
+    // athlete flicks between sports; only `commitSession` touches the plan.
+    addSession: (dateISO, choice: AddChoice) =>
+      profile ? suggestSession(plan, profile, dateISO, choice) : { kind: "no", reason: "No profile yet." },
+    commitSession: (dateISO, choice: AddChoice) => {
+      if (!profile) return null;
+      const res = buildAddedSession(plan, profile, dateISO, choice);
+      if (!res) return null;
+      track("session_added", { discipline: res.workout.discipline, minutes: Math.round(res.workout.estDurationSec / 60) });
+      // Straight through applyPlan, NOT `respond`: the athlete has just added work, and
+      // `respondTo` would read the fresh load and consider trimming the next few sessions —
+      // arguing with a decision they made one second ago.
+      applyPlan(res.plan);
+      toast({ text: res.summary, tone: "success", duration: 8000 });
+      return res.workout.id;
+    },
     logWorkout: (input) => {
       const res = logWorkout(plan, input);
       applyPlan(res.plan);
@@ -585,6 +604,7 @@ function AppShellInner() {
         openCoach: (prefill) => setCoach({ open: true, prefill }),
         openSettings: () => setSettingsOpen(true),
         openLog: () => setLogOpen(true),
+    openAddSession: () => setAddOpen(true),
         goTab: setTab,
         actions,
       }}
@@ -613,6 +633,7 @@ function AppShellInner() {
       {checkin && <CheckinSheet workout={checkin} plan={plan} today={today} onClose={() => setCheckinId(null)} />}
       {settingsOpen && profile && <EditSettings profile={profile} onClose={() => setSettingsOpen(false)} />}
       {logOpen && <LogWorkoutSheet plan={plan} today={today} onClose={() => setLogOpen(false)} />}
+      {addOpen && <AddSessionSheet today={today} onClose={() => setAddOpen(false)} />}
       {coach.open && (
         <CoachSheet
           plan={plan}

@@ -45,7 +45,7 @@ import { daysBetween, addDays, dayIndexOf, fmtDayMonth, weekdayLong } from "@/li
 
 export function TodayTab() {
   const { plan, profile, username } = useApp();
-  const { today, openCoach, openWorkout, openLog, goTab, actions } = useUI();
+  const { today, openCoach, openWorkout, openLog, openAddSession, goTab, actions } = useUI();
   const toast = useToast();
   const [readyOpen, setReadyOpen] = useState(false);
   // Sheet state lives here, never in a child: a sheet mounted under an
@@ -185,12 +185,25 @@ export function TodayTab() {
         </div>
       )}
 
-      <button
-        onClick={() => openLog()}
-        className="w-full rounded-2xl border border-dashed border-line py-3 text-center text-sm font-semibold text-muted transition hover:border-accent/50 hover:text-foreground"
-      >
-        ＋ Log a workout you did
-      </button>
+      {/* Two different questions, so two buttons. "Log" is retrospective — it records what
+          already happened. "Add" is prospective: #209, "i feel like going on a bike but idk
+          what to do according to the plan". Collapsing them into one would put the athlete
+          back in the position of having to decide what the extra session should be, which
+          is the exact thing they asked us to answer. */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => openLog()}
+          className="flex-1 rounded-2xl border border-dashed border-line py-3 text-center text-sm font-semibold text-muted transition hover:border-accent/50 hover:text-foreground"
+        >
+          ＋ Log a workout
+        </button>
+        <button
+          onClick={() => openAddSession()}
+          className="flex-1 rounded-2xl border border-dashed border-line py-3 text-center text-sm font-semibold text-muted transition hover:border-accent/50 hover:text-foreground"
+        >
+          ＋ Add a session
+        </button>
+      </div>
 
       {/* --- the glance strip --------------------------------------------- */}
       {/* Everything that used to be its own shouting card, compressed to one row of
