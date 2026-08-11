@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
+import { listLive } from "@/lib/liveStore";
+import { sessionProgress } from "@/lib/liveSession";
 import { useUI } from "./ui";
 import { useToast } from "./Toast";
 import { CoachNudge } from "./CoachNudge";
@@ -15,7 +17,7 @@ import { Icon, DisciplineIcon } from "./icons";
 import { RaceCountdown, FitnessHero, upcomingAfter, weekOfDate, workoutsOn } from "./widgets";
 import { isFitnessGoal } from "@/lib/planEngine";
 import { profileGaps, gapSignature } from "@/lib/profileGaps";
-import { Profile, Workout } from "@/lib/types";
+import { Plan, Profile, Workout } from "@/lib/types";
 import { assessAdaptation, weekProgress, type AdaptationSuggestion } from "@/lib/adapt";
 import { calibrationDue } from "@/lib/calibrate";
 import { computeStreak } from "@/lib/stats";
@@ -53,6 +55,12 @@ export function TodayTab() {
   // instead of the viewport.
   const [formOpen, setFormOpen] = useState(false);
   const [dismissed, setDismissed] = useState<string[]>([]);
+
+  // An unfinished gym session, if there is one. See findResumable below.
+  // Read every render rather than memoized: it's a walk over a handful of storage
+  // keys, and it must be fresh — after the athlete ticks two more sets and closes
+  // the sheet, Today has to show the new count, not the one from mount.
+  const resumable = findResumable(plan, today);
 
   // auto-recalibrate paces at most weekly, once per app session, from how recent
   // sessions actually went. Only surfaces a toast when something moved.
@@ -183,6 +191,31 @@ export function TodayTab() {
           </div>
           <WorkoutCard workout={next} onOpen={() => openWorkout(next.id)} />
         </div>
+      )}
+
+      {/* A gym session you started and didn't finish (#212).
+          The draft always survived the app closing — it's in the same WebView
+          storage as the cached plan — but nothing surfaced it, so reopening the
+          app left you on Today with no sign a workout was half done and no way
+          back to it but remembering which gym day it was. Resolved against the
+          real plan so a draft orphaned by a rebuild shows nothing rather than a
+          card that goes nowhere. */}
+      {resumable && (
+        <button
+          onClick={() => openWorkout(resumable.workout.id)}
+          className="w-full rounded-2xl border border-accent/50 bg-accent/10 px-4 py-3.5 text-left transition active:scale-[0.99]"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="eyebrow text-[0.7rem] text-accent-soft">Still in progress</div>
+              <div className="truncate font-display text-[1.02rem] font-semibold">{resumable.live.name}</div>
+              <div className="text-xs tabular-nums text-muted">
+                {resumable.progress.done}/{resumable.progress.total} sets done · pick up where you left off
+              </div>
+            </div>
+            <span className="shrink-0 text-sm font-semibold text-accent-soft">Resume ›</span>
+          </div>
+        </button>
       )}
 
       {/* Two different questions, so two buttons. "Log" is retrospective — it records what
@@ -726,4 +759,25 @@ function Card({
       {children}
     </div>
   );
+}
+
+
+/**
+ * The newest unfinished gym session that still points at a real, untrained
+ * workout. Only one is ever offered — two half-done sessions is not a list
+ * anyone wants on Today, and the newest is always the one they mean.
+ */
+function findResumable(plan: Plan | null, today: string) {
+  if (typeof window === "undefined" || !plan) return null;
+  for (const live of listLive(today)) {
+    const workout = plan.workouts[live.workoutId];
+    // A draft whose workout no longer exists (the plan was rebuilt under it), or
+    // that has since been completed some other way, is dead — say nothing rather
+    // than offer a card that goes nowhere.
+    if (!workout || workout.status === "done" || workout.status === "skipped") continue;
+    const progress = sessionProgress(live);
+    if (progress.total === 0) continue;
+    return { live, workout, progress };
+  }
+  return null;
 }

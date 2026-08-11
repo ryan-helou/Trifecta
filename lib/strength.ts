@@ -145,3 +145,109 @@ export function summarise(entries: StrengthEntry[]): string {
   else parts.push(`${reps} reps`);
   return parts.join(" · ");
 }
+
+// ---------------------------------------------------------------------------
+// "Compare to what you did last time, or congratulate you if you did better."
+//
+// A gym log that only records is a filing cabinet. The reason to open the app
+// under the bar is to know whether today beats last week — so the comparison has
+// to be on screen WHILE you lift, not in a report afterwards.
+//
+// WHAT COUNTS AS BETTER, and why it isn't just weight. Progression on a lift is
+// load first, then reps at that load: 100 × 5 beats 95 × 5, and 100 × 6 beats
+// 100 × 5, but 105 × 3 against 100 × 8 is not an improvement anyone should be
+// congratulated for. So a set is "better" only when it is heavier than the best
+// set of last session, or equal weight for more reps than were done at that
+// weight. Everything else is silent — a congratulation that fires on a lighter
+// day is worse than none, because it teaches the athlete to ignore the badge.
+//
+// Estimated 1RM stays out of it, for the reason `heaviestSet` already gives.
+// ---------------------------------------------------------------------------
+
+/** The best single set of a list, by weight then reps. */
+export function topSet(sets: StrengthSet[]): StrengthSet | null {
+  return sets.reduce<StrengthSet | null>((best, s) => {
+    if (!best) return s;
+    const w = s.weightKg ?? 0;
+    const bw = best.weightKg ?? 0;
+    if (w > bw) return s;
+    if (w === bw && (s.reps || 0) > (best.reps || 0)) return s;
+    return best;
+  }, null);
+}
+
+export type BeatKind = "weight" | "reps";
+
+/**
+ * Did this set beat the athlete's LAST session on this lift? Returns null when
+ * it didn't, and when there's no history to beat — "first time" is its own state
+ * and is shown as such, never dressed up as a win.
+ */
+export function setBeatsLast(set: StrengthSet, lastSets: StrengthSet[] | null | undefined): BeatKind | null {
+  if (!lastSets?.length) return null;
+  const w = set.weightKg ?? 0;
+  const prevTop = topSet(lastSets);
+  const prevW = prevTop?.weightKg ?? 0;
+  if (w > prevW) return "weight";
+  if (w === prevW) {
+    // most reps done at that weight last time
+    const prevReps = lastSets.filter((s) => (s.weightKg ?? 0) === prevW).reduce((m, s) => Math.max(m, s.reps || 0), 0);
+    if ((set.reps || 0) > prevReps) return "reps";
+  }
+  return null;
+}
+
+export interface LiftVerdict {
+  name: string;
+  /** null when this lift has never been logged before. */
+  last: { sets: number; topWeightKg: number | null; topReps: number; volumeKg: number } | null;
+  now: { sets: number; topWeightKg: number | null; topReps: number; volumeKg: number };
+  beat: BeatKind | null;
+}
+
+const describe = (sets: StrengthSet[]) => {
+  const t = topSet(sets);
+  return {
+    sets: sets.length,
+    topWeightKg: t?.weightKg != null && t.weightKg > 0 ? t.weightKg : null,
+    topReps: t?.reps ?? 0,
+    volumeKg: volumeLoad([{ name: "x", sets }]),
+  };
+};
+
+/** This session's lifts against the last time each was trained. */
+export function compareLifts(entries: StrengthEntry[], history: ExerciseHistory[]): LiftVerdict[] {
+  return entries.map((e) => {
+    const prior = history.find((p) => p.name.trim().toLowerCase() === e.name.trim().toLowerCase());
+    const best = topSet(e.sets);
+    return {
+      name: e.name.trim(),
+      last: prior?.lastSets.length ? describe(prior.lastSets) : null,
+      now: describe(e.sets),
+      beat: best ? setBeatsLast(best, prior?.lastSets) : null,
+    };
+  });
+}
+
+/**
+ * One sentence for the end of a session. Deliberately singular and specific —
+ * "Back Squat 100 kg, 5 up on last time" lands; "you improved on 2 lifts" is a
+ * report. Returns null when there is nothing true to celebrate, because the
+ * alternative is congratulating someone for a session they know was worse.
+ */
+export function congratulate(verdicts: LiftVerdict[]): string | null {
+  const wins = verdicts.filter((v) => v.beat && v.last);
+  if (!wins.length) return null;
+  // the biggest jump in load leads; ties fall back to the first
+  const byGain = [...wins].sort(
+    (a, b) => ((b.now.topWeightKg ?? 0) - (b.last!.topWeightKg ?? 0)) - ((a.now.topWeightKg ?? 0) - (a.last!.topWeightKg ?? 0)),
+  );
+  const w = byGain[0];
+  const others = wins.length - 1;
+  const tail = others > 0 ? ` (and ${others} more lift${others === 1 ? "" : "s"})` : "";
+  if (w.beat === "reps") {
+    return `${w.name}: ${w.now.topReps} reps at the same weight, up from ${w.last!.topReps}${tail}.`;
+  }
+  const gain = Math.round(((w.now.topWeightKg ?? 0) - (w.last!.topWeightKg ?? 0)) * 10) / 10;
+  return `${w.name}: ${w.now.topWeightKg} kg, ${gain} up on last time${tail}.`;
+}

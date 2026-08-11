@@ -44,7 +44,7 @@ import {
   setDone,
 } from "@/lib/liveSession";
 import { saveLive, clearLive } from "@/lib/liveStore";
-import { exerciseHistory, setCount, volumeLoad } from "@/lib/strength";
+import { compareLifts, congratulate, exerciseHistory, setBeatsLast, setCount, topSet, volumeLoad } from "@/lib/strength";
 import { searchExercises } from "@/lib/exerciseCatalog";
 import { haptic } from "@/lib/haptics";
 
@@ -143,6 +143,10 @@ export function LiveStrengthSession({
   const logged = finishSession(session);
   const { sets: loggedSets } = setCount(logged);
   const kg = volumeLoad(logged);
+  // How today is going against last time, live. `congratulate` returns null when
+  // there is nothing true to celebrate — a badge that fires on a lighter day
+  // teaches the athlete to ignore the badge.
+  const praise = congratulate(compareLifts(logged, past));
 
   return (
     <Sheet
@@ -194,11 +198,21 @@ export function LiveStrengthSession({
                     {eDone && <span className="text-success">✓ </span>}
                     {e.name}
                   </div>
-                  {prior?.bestWeightKg != null && (
-                    <div className="text-[0.68rem] tabular-nums text-muted">
-                      Best {kgToDisplay(prior.bestWeightKg, unit)} {wLabel}
-                    </div>
-                  )}
+                  {/* The comparison, on screen while you lift. "First time" is
+                      its own state — never dressed up as a win. */}
+                  <div className="text-[0.68rem] tabular-nums text-muted">
+                    {prior?.lastSets.length ? (
+                      <>
+                        Last time {prior.lastSets.length} × {topSet(prior.lastSets)?.reps ?? 0}
+                        {topSet(prior.lastSets)?.weightKg
+                          ? ` @ ${kgToDisplay(topSet(prior.lastSets)!.weightKg, unit)} ${wLabel}`
+                          : ""}
+                        {prior.bestWeightKg != null && ` · best ${kgToDisplay(prior.bestWeightKg, unit)} ${wLabel}`}
+                      </>
+                    ) : (
+                      "First time — this becomes the mark to beat"
+                    )}
+                  </div>
                 </div>
                 <button
                   onClick={() => { haptic("light"); apply(removeExercise(session, ei)); }}
@@ -213,6 +227,7 @@ export function LiveStrengthSession({
                 {e.sets.map((s, si) => {
                   const isNext = nextUp?.ei === ei && nextUp?.si === si;
                   const isEditing = editing?.ei === ei && editing?.si === si;
+                  const beat = setBeatsLast(s, prior?.lastSets);
 
                   if (isEditing) {
                     // Detail on demand: the numbers become fields only when asked.
@@ -283,7 +298,15 @@ export function LiveStrengthSession({
                             <span className="font-normal text-muted"> × {kgToDisplay(s.weightKg, unit)} {wLabel}</span>
                           )}
                         </span>
-                        {isNext && <span className="ml-auto text-[0.68rem] font-semibold text-accent-soft">Next</span>}
+                        {/* Congratulation at the moment it's earned, not in a
+                            report afterwards. Only shown once the set is ticked —
+                            typing a number you haven't lifted isn't a PB. */}
+                        {s.done && beat && (
+                          <span className="ml-auto rounded-full bg-success/20 px-2 py-0.5 text-[0.62rem] font-semibold text-success">
+                            {beat === "weight" ? "↑ Heavier" : "↑ More reps"}
+                          </span>
+                        )}
+                        {isNext && !s.done && <span className="ml-auto text-[0.68rem] font-semibold text-accent-soft">Next</span>}
                       </button>
                       <button
                         onClick={() => setEditing({ ei, si })}
@@ -347,11 +370,19 @@ export function LiveStrengthSession({
           {loggedSets === 0 ? (
             <span className="text-muted">Nothing ticked off yet — tap a set when you finish it.</span>
           ) : (
-            <span className="tabular-nums">
-              <span className="font-semibold">{loggedSets} set{loggedSets === 1 ? "" : "s"}</span>
-              {kg > 0 && <span className="text-muted"> · {Math.round(unit === "imperial" ? kg * LB_PER_KG : kg).toLocaleString()} {wLabel} moved</span>}
-              {!complete && <span className="text-muted"> · {total - done} left</span>}
-            </span>
+            <div>
+              <span className="tabular-nums">
+                <span className="font-semibold">{loggedSets} set{loggedSets === 1 ? "" : "s"}</span>
+                {kg > 0 && <span className="text-muted"> · {Math.round(unit === "imperial" ? kg * LB_PER_KG : kg).toLocaleString()} {wLabel} moved</span>}
+                {!complete && <span className="text-muted"> · {total - done} left</span>}
+              </span>
+              {praise && (
+                <div className="mt-1.5 flex items-start gap-1.5 text-[0.78rem] font-semibold leading-snug text-success">
+                  <span aria-hidden>↑</span>
+                  <span>{praise}</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

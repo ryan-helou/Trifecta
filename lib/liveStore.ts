@@ -80,23 +80,34 @@ export function clearLive(workoutId: string): void {
   }
 }
 
-/** Drop every draft older than MAX_AGE_DAYS. Called on app open so abandoned
- *  sessions don't accumulate in storage forever. */
-export function pruneLive(nowISO: string): void {
+/**
+ * Every session still in progress, newest first.
+ *
+ * This is what makes "it survives closing the app" true in practice rather than
+ * just on disk. The draft always persisted — localStorage in the WebView is the
+ * same store that holds the athlete's cached plan — but nothing SURFACED it, so
+ * reopening the app after a session left you staring at Today with no sign that
+ * a workout was half done, and no way to find it but remembering which gym day
+ * it was and navigating there. Today now shows it.
+ */
+export function listLive(nowISO: string): LiveSession[] {
+  const out: LiveSession[] = [];
   try {
-    const stale: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k || !k.startsWith(PREFIX)) continue;
-      try {
-        const s = JSON.parse(localStorage.getItem(k) || "{}") as LiveSession;
-        if (!s.startedISO || daysBetween(s.startedISO, nowISO) > MAX_AGE_DAYS) stale.push(k);
-      } catch {
-        stale.push(k); // unparseable is stale by definition
-      }
+      const s = loadLive(k.slice(PREFIX.length), nowISO);
+      if (s) out.push(s);
     }
-    for (const k of stale) localStorage.removeItem(k);
   } catch {
     /* see header */
   }
+  return out.sort((a, b) => (b.startedISO || "").localeCompare(a.startedISO || ""));
 }
+
+// A `pruneLive` sweep used to live here, described as "called on app open". It never
+// was, and it wasn't needed: `loadLive` clears a stale draft as it reads one, and
+// `listLive` runs `loadLive` over every key each time Today renders — so expired
+// drafts are swept by the same pass that looks for resumable ones. Keeping a second,
+// uncalled sweep around would have been dead code carrying a comment that lied about
+// when it ran.
