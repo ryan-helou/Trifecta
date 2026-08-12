@@ -68,8 +68,30 @@ export interface MeResponse {
   version?: number;
 }
 
+/** Thrown when the request never completed — no server answer, of any kind. */
+export class OfflineError extends Error {
+  constructor() {
+    super("offline");
+    this.name = "OfflineError";
+  }
+}
+
 export async function apiMe(): Promise<MeResponse> {
-  const { data } = await jsonFetch("/api/auth/me");
+  const { status, data } = await jsonFetch("/api/auth/me");
+  // "I couldn't reach the server" is NOT the same answer as "you're not signed in",
+  // and this is the one call where confusing them costs the athlete their app.
+  //
+  // jsonFetch never throws by design (a hung WebView must not hang the UI), so a
+  // dead network arrived here as `{ error: ... }` — `authenticated` undefined,
+  // therefore falsy, therefore indistinguishable from a genuine logged-out reply.
+  // Both callers in AppProvider are already written for the truth: boot falls back
+  // to the cached plan inside `catch`, and `refresh` raises the offline banner
+  // there. Neither catch could ever run, so launching with no signal put a signed-in
+  // athlete on the WELCOME screen with their plan sitting unread in localStorage —
+  // and finishing a run somewhere without coverage meant there was nothing to log
+  // it into. Restore the signal those handlers are waiting for; `status === 0` is
+  // the sentinel jsonFetch sets when the request never completed.
+  if (status === 0) throw new OfflineError();
   return data as MeResponse;
 }
 

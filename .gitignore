@@ -49,3 +49,8 @@ artifacts/
 
 # transient snapshot copy used to run a capture without live-editing the original
 scripts/.capture-run.tmp.sh
+
+# Seeded test state written into public/ so the WebView can fetch it during a
+# simulator run. public/ is copied verbatim into the static export, so committing one
+# would ship a fabricated account and its whole plan to every device.
+public/__seed*.json
