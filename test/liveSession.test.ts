@@ -20,6 +20,9 @@ import {
   nudgeRest,
   restRemainingSec,
   restSecondsFor,
+  trackedDurationSec,
+  MIN_TRACKED_SEC,
+  MAX_TRACKED_SEC,
   patchSet,
   removeExercise,
   removeSet,
@@ -30,7 +33,8 @@ import {
   type LiveSession,
 } from "../lib/liveSession";
 import { MAX_AGE_DAYS } from "../lib/liveStore";
-import { compareLifts, congratulate, exerciseHistory, setBeatsLast, topSet } from "../lib/strength";
+import { compareLifts, congratulate, exerciseHistory, setBeatsLast, suggestProgression, topSet } from "../lib/strength";
+import { isLowerBody } from "../lib/exerciseCatalog";
 import type { StrengthEntry, Workout } from "../lib/types";
 
 let checks = 0;
@@ -350,6 +354,69 @@ section("rest never reaches what gets logged");
     !JSON.stringify(entries).includes("rest"),
     "and no rest bookkeeping leaks into the strength history everything else is computed from",
   );
+}
+
+// --- how long it took -------------------------------------------------------
+//
+// Strength reaches the load model through DURATION, so a session credited at the
+// plan's guess instead of its real length propagates into CTL. It's measured now —
+// but only while the measurement is believable, because the draft survives the phone
+// locking and therefore also survives being forgotten until after lunch.
+section("a tracked session records the time it actually took");
+{
+  const at = (sec: number) => new Date(Date.parse("2026-08-12T10:00:00.000Z") + sec * 1000).toISOString();
+  const s = startSession({ workoutId: "w1", startedISO: at(0), slot: "push", name: "Push", from: ROUTINE });
+
+  ok(trackedDurationSec(s, at(48 * 60)) === 48 * 60, "48 minutes of tracking reads as 48 minutes");
+  ok(trackedDurationSec(s, at(MIN_TRACKED_SEC)) === MIN_TRACKED_SEC, "the lower bound itself is believable");
+  ok(trackedDurationSec(s, at(MAX_TRACKED_SEC)) === MAX_TRACKED_SEC, "and so is the upper one");
+  ok(
+    trackedDurationSec(s, at(60)) === null,
+    "a minute means they typed it in afterwards, not that they trained for a minute",
+  );
+  ok(
+    trackedDurationSec(s, at(5 * 60 * 60)) === null,
+    "five hours means the session was left open — say we don't know rather than credit it",
+  );
+  // null is load-bearing: the caller omits the key entirely, so the plan's estimate
+  // stands and nothing overwrites a duration entered by hand.
+  ok(trackedDurationSec(s, "not-a-date") === null, "an unparseable clock is refused, not NaN");
+}
+
+section("progression is earned, and only ever suggested");
+{
+  const held = [{ reps: 8, weightKg: 60 }, { reps: 8, weightKg: 60 }, { reps: 8, weightKg: 60 }];
+  const upper = suggestProgression(held, false);
+  ok(upper?.kind === "weight" && upper.weightKg === 62.5, `three clean sets at 60 earn 62.5 (got ${JSON.stringify(upper)})`);
+  const lower = suggestProgression(held, true);
+  ok(lower?.kind === "weight" && lower.weightKg === 65, "lower body moves in bigger steps");
+
+  // The rule that keeps this a maintenance dose rather than an injury: a session
+  // whose reps faded was already at its limit.
+  ok(
+    suggestProgression([{ reps: 8, weightKg: 60 }, { reps: 8, weightKg: 60 }, { reps: 5, weightKg: 60 }], false) === null,
+    "reps that dropped off across sets earn nothing",
+  );
+  ok(
+    suggestProgression([{ reps: 8, weightKg: 50 }, { reps: 8, weightKg: 60 }], false) === null,
+    "ascending sets have no single working weight to add to",
+  );
+  ok(suggestProgression([], false) === null, "no history, no suggestion");
+  ok(suggestProgression(null, false) === null, "and null history is not a crash");
+
+  // Bodyweight work has no plate to add.
+  const bw = suggestProgression([{ reps: 12 }, { reps: 12 }, { reps: 12 }], false);
+  ok(bw?.kind === "reps" && bw.reps === 13, `bodyweight progresses in reps (got ${JSON.stringify(bw)})`);
+  ok(
+    suggestProgression([{ reps: 12 }, { reps: 12, weightKg: 20 }], false) === null,
+    "a half-filled log is not a bodyweight movement — it's a half-filled log",
+  );
+
+  // The step is sized off the lift, and an unknown name takes the smaller one.
+  ok(isLowerBody("Back Squat") && isLowerBody("Deadlift"), "squats and deadlifts are lower body");
+  ok(!isLowerBody("Push-Up") && !isLowerBody("Overhead Press"), "presses are not");
+  ok(!isLowerBody("Plank"), "core work is tagged for every day and must not read as legs");
+  ok(!isLowerBody("Ryan's Special Thing"), "a lift the catalog never heard of gets the conservative step");
 }
 
 console.log(`\n${checks - failures}/${checks} live-session invariants passed`);
