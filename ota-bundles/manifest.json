@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.47",
+  "latest": "1.0.48",
   "bundles": [
-    {
-      "version": "1.0.45",
-      "sha256": "bd71abbaa01cdc1776980f9c877659aabb559685ec5306e7a0cc46f447ea6d3f",
-      "size": 802113,
-      "createdAtISO": "2026-08-12T13:14:48.170Z"
-    },
     {
       "version": "1.0.46",
       "sha256": "e85c59eac7d4759900058a16f28ea73fccc8f9cdb058e4330ed0d3694909f9ac",
@@ -20,6 +14,13 @@
       "size": 802393,
       "createdAtISO": "2026-08-12T14:33:51.271Z",
       "comment": "auto-adjust fixes"
+    },
+    {
+      "version": "1.0.48",
+      "sha256": "8b2c67d60ccde13c721bf440bb0683a63f59ef08b82983d0dc46b715b55ef83f",
+      "size": 810861,
+      "createdAtISO": "2026-08-12T18:22:30.519Z",
+      "comment": "type your own values, and change a gym split"
     }
   ]
 }
