@@ -197,10 +197,52 @@ function distClause(l: LoggedWorkout): string {
   return l.distanceM ? ` · ${(l.distanceM / 1000).toFixed(l.discipline === "swim" ? 2 : 1)} km` : "";
 }
 
+/** The zone a logged session represents, read off the effort the athlete reported.
+ *
+ *  Undefined when they didn't say. That distinction matters to `bestMatch`: no RPE is
+ *  absence of evidence, not evidence of easy, and treating a silent log as Z2 would
+ *  make it "match" the easiest session on the day every time. Storage still needs a
+ *  number, and defaults to Z2 at its own call site. */
+function loggedZone(l: LoggedWorkout): Zone | undefined {
+  if (typeof l.rpe !== "number") return undefined;
+  return l.rpe >= 7 ? 4 : l.rpe >= 5 ? 3 : 2;
+}
+
+/**
+ * Of the same-sport sessions planned that day, which one did they actually do?
+ *
+ * A day can hold two of a sport — the engine emits same-day doubles, and the ids carry
+ * a `-seq` for exactly that. Taking the FIRST match (what this was) meant map order
+ * decided: log the 60-minute intervals on a Tuesday holding an easy 30 min run and the
+ * EASY run got ticked, credited with the interval session's numbers, while the quality
+ * session stayed on the books still owed. The athlete then has to skip the work they
+ * just did to clear it.
+ *
+ * Intensity leads, then duration — the same order and the same reason as the sort in
+ * absorb.ts: ranking on length alone spends a hard session's credit on an easy one and
+ * leaves the athlete doing their intervals twice. With no RPE to go on it falls back to
+ * duration, which is the only honest signal left. Ties break on id so the answer never
+ * depends on map order again.
+ */
+function bestMatch(logged: LoggedWorkout, candidates: Workout[]): Workout | undefined {
+  if (candidates.length <= 1) return candidates[0];
+  const zone = loggedZone(logged);
+  return [...candidates].sort((a, b) => {
+    if (zone != null) {
+      const za = Math.abs(a.primaryZone - zone);
+      const zb = Math.abs(b.primaryZone - zone);
+      if (za !== zb) return za - zb;
+    }
+    const da = Math.abs((a.estDurationSec || 0) - logged.durationSec);
+    const db = Math.abs((b.estDurationSec || 0) - logged.durationSec);
+    return da === db ? a.id.localeCompare(b.id) : da - db;
+  })[0];
+}
+
 /** Add a self-logged session as a completed workout (used when nothing was planned). */
 function addLoggedWorkoutWithId(plan: Plan, input: LoggedWorkout): { plan: Plan; id: string } {
   const p = clonePlan(plan);
-  const zone: Zone = typeof input.rpe === "number" ? (input.rpe >= 7 ? 4 : input.rpe >= 5 ? 3 : 2) : 2;
+  const zone: Zone = loggedZone(input) ?? 2;
   const base = `logged-${input.dateISO}-${input.discipline}`;
   let id = base;
   let n = 1;
@@ -357,7 +399,7 @@ export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
   //
   // The explicit paths are untouched — "Swap sport" on a session, and "Did
   // something else", both of which say plainly what they are doing.
-  const match = sameDay.find((w) => disciplineMatches(d, w.discipline));
+  const match = bestMatch(input, sameDay.filter((w) => disciplineMatches(d, w.discipline)));
 
   if (!match) {
     const added = addLoggedWorkoutWithId(plan, input);
@@ -404,7 +446,18 @@ export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {
   }
 
   // did a different sport than planned → swap the credit to what they actually did
-  let swapped = logInstead(plan, match.id, input.note ?? `Did ${d} instead of ${match.discipline}`, {
+  //
+  // CURRENTLY UNREACHABLE, and deliberately so. `match` is drawn only from sessions
+  // `disciplineMatches` already accepted, so the check above always passes — a log of a
+  // sport the day didn't hold becomes a bonus instead (the same-sport-only rule, #215:
+  // "a ride never rewrites a run, in either direction"). Kept because "swapped" is still
+  // a declared outcome and the explicit paths — "Swap sport" and "Did something else" —
+  // may want to route through here; asserted as bonus in test/logmatch.test.ts so nobody
+  // reads this as live behaviour. If it ever is live: the athlete's own note ADDS to the
+  // explanation rather than replacing it, or the session would read "hilly trail loop"
+  // with nothing saying a swap happened at all.
+  const swapNote = `Did ${d} instead of ${match.discipline}`;
+  let swapped = logInstead(plan, match.id, input.note ? `${swapNote} — ${input.note}` : swapNote, {
     discipline: d,
     durationSec: input.durationSec,
   });

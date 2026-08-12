@@ -68,6 +68,12 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
   // asking the wrong question (#121) — "what muscles I hit or what day of the split"
   // is the thing they'd actually tell you, and it's the thing worth reading back later.
   const [trained, setTrained] = useState<string[]>([]);
+  // ...and what it was, for everything else. The gym gets chips because "Push" is a
+  // category with a fixed vocabulary; a ride is not — "hilly loop with Sam", "treadmill,
+  // legs dead" is the thing worth writing down, and there was nowhere to write it.
+  // It becomes the session's title, so the log reads back as what you did rather than
+  // as "Logged run".
+  const [note, setNote] = useState("");
   // ...and what was actually lifted (#199). Same editor as the planned-session
   // check-in, because an unplanned gym session deserves the same record.
   const [strengthLog, setStrengthLog] = useState<StrengthEntry[]>([]);
@@ -103,7 +109,10 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
       distanceM: isStrength ? undefined : distanceM,
       rpe,
       feel,
-      note: trained.length ? trained.join(", ") : undefined,
+      // A gym session names itself with the split chips; everything else says it in
+      // its own words. Same field either way, so both end up in the session title and
+      // read back the same later.
+      note: isStrength ? (trained.length ? trained.join(", ") : undefined) : note.trim() || undefined,
       strengthLog: isStrength && strengthLog.length ? strengthLog : undefined,
     });
     haptic("success");
@@ -295,6 +304,20 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
             </label>
           )}
         </div>
+
+        {/* what it was — everything except the gym, which says it with chips above */}
+        {!isStrength && (
+          <div>
+            <div className="mb-2 eyebrow text-[0.7rem]">What was it? · optional</div>
+            <input
+              className="input"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g. hilly trail loop"
+              maxLength={80}
+            />
+          </div>
+        )}
 
         {/* effort */}
         <div>
