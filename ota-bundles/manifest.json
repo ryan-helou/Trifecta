@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.52",
+  "latest": "1.0.53",
   "bundles": [
-    {
-      "version": "1.0.50",
-      "sha256": "77342b517c028e61e4ed2bbc7f0254236513babcd2c695517b5c5bfcc9dd02c3",
-      "size": 804251,
-      "createdAtISO": "2026-08-12T18:28:25.655Z",
-      "comment": "drop the seed fixture that leaked into 1.0.49"
-    },
     {
       "version": "1.0.51",
       "sha256": "ce47a42fff797dce3f5aa258ebf8ec23748b66db8399f1f2f35cc7bc241da474",
@@ -21,6 +14,13 @@
       "size": 805883,
       "createdAtISO": "2026-08-12T19:16:22.849Z",
       "comment": "real gym session length + progressive overload"
+    },
+    {
+      "version": "1.0.53",
+      "sha256": "86eb674466d507ce71a68a8d573762c1e4a08e780e60f1a64a72567fc15d54f1",
+      "size": 806093,
+      "createdAtISO": "2026-08-12T19:35:51.577Z",
+      "comment": "modify edits survive a relaunch"
     }
   ]
 }

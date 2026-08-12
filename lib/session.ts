@@ -35,3 +35,34 @@ export function resolveProfile(profile: Profile | null | undefined, plan: Plan |
 export function profileToPersist(profile: Profile | null | undefined, plan: Plan | null | undefined): Profile | null {
   return resolveProfile(profile, plan);
 }
+
+// ---------------------------------------------------------------------------
+// Which copy wins at launch — the cache, or the server's?
+//
+// The app restores from the server on every launch, which is right whenever the
+// two agree and silently destructive when they don't. An edit whose save never
+// landed — a failed request, a dead connection, the app killed inside the 700 ms
+// save debounce — came back as the value it had BEFORE, with nothing reported,
+// because locally it had saved. Ryan, 2026-08-12: "my modify workouts arent
+// saving"; measured on the shipped build, a session resized to 26 min came back
+// at 50 after a relaunch.
+//
+// So the cache records whether its contents were ever acknowledged, and this is
+// the question asked at boot. It is deliberately narrow: local only wins when it
+// is provably ahead, for this same account. Everything else defers to the server,
+// because a cache that wins when it shouldn't resurrects stale training.
+// ---------------------------------------------------------------------------
+
+/** Does the cached copy hold edits the server has not acknowledged? Pure. */
+export function cacheHasUnsavedEdits(
+  cache: { username?: string; plan?: Plan | null; dirty?: boolean } | null | undefined,
+  serverUsername: string,
+): boolean {
+  if (!cache?.plan) return false;
+  // Another account's cache is never ours to restore, dirty or not.
+  if (cache.username !== serverUsername) return false;
+  // Written before the flag existed ⇒ unknown ⇒ treat as clean. That is the old
+  // behaviour, and deferring to the server is the safe direction for a copy whose
+  // history we can't establish.
+  return cache.dirty === true;
+}
