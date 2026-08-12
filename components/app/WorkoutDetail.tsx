@@ -869,7 +869,7 @@ export function WorkoutDetail({ workout, plan, autoStartGym }: { workout: Workou
                   >
                     {live
                       ? `Resume workout · ${sessionProgress(live).done}/${sessionProgress(live).total} sets`
-                      : "Start workout"}
+                      : "Begin workout"}
                   </button>
                   {/* Starting with an empty card is a fine way to train, but it's
                       also the moment the athlete most wants to build the day once. */}

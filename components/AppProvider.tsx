@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { Plan, Profile } from "@/lib/types";
-import { profileToPersist, resolveProfile } from "@/lib/session";
+import { cacheHasUnsavedEdits, profileToPersist, resolveProfile } from "@/lib/session";
 import { dedupeSyncedSessions } from "@/lib/activity";
 import { repairSwappedDistances } from "@/lib/repair";
 import { apiDeleteAccount, apiLogin, apiLogout, apiMe, apiSaveState, apiSignup } from "@/lib/api";
@@ -86,7 +86,26 @@ function purgeTokenOnFreshInstall() {
   }
 }
 
-function readCache(): { username: string; profile: Profile | null; plan: Plan | null } | null {
+/**
+ * `dirty` = this copy holds edits that have not been acknowledged by the server.
+ *
+ * Without it the cache could not answer the only question that matters at boot:
+ * "is the server's copy newer than mine, or older?" It always adopted the server's,
+ * so ANY edit whose save didn't land — a failed request, a dropped connection, the
+ * app being killed inside the 700 ms debounce — came back on next launch as though
+ * it had never happened. Reported exactly that way: "my modify workouts aren't
+ * saving", and they looked saved at the time, because locally they were.
+ */
+interface CachedState {
+  username: string;
+  profile: Profile | null;
+  plan: Plan | null;
+  /** Absent on caches written before this existed — treated as clean, which is the
+   *  old behaviour and the safe direction for a copy we know nothing about. */
+  dirty?: boolean;
+}
+
+function readCache(): CachedState | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -94,9 +113,9 @@ function readCache(): { username: string; profile: Profile | null; plan: Plan | 
     return null;
   }
 }
-function writeCache(username: string, profile: Profile | null, plan: Plan | null) {
+function writeCache(username: string, profile: Profile | null, plan: Plan | null, dirty = false) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ username, profile, plan }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ username, profile, plan, dirty }));
   } catch {
     /* ignore quota */
   }
@@ -145,6 +164,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const pendingRef = useRef<{ uname: string; prof: Profile | null; pl: Plan | null } | null>(null);
   // optimistic-concurrency version of our server-side state blob (#66)
   const versionRef = useRef(0);
+  /** Edits recovered from a dirty cache at boot, waiting to be saved up. */
+  const recoverRef = useRef<{ uname: string; prof: Profile | null; pl: Plan | null } | null>(null);
   // latest committed state — the flush + 409-merge handlers read this (never a
   // debounced snapshot), so a merge can't resurrect stale data
   const latestRef = useRef<{ username: string | null; profile: Profile | null; plan: Plan | null }>({
@@ -230,13 +251,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         if (me.authenticated && me.user) {
           const st = me.state ?? {};
+          // EDITS THAT NEVER REACHED THE SERVER MUST SURVIVE THE RELAUNCH.
+          //
+          // This used to adopt the server's copy unconditionally, which is right when
+          // the two agree and silently destructive when they don't: an edit whose save
+          // failed, or that was still inside the 700 ms debounce when the app was
+          // killed, came back as the value it had before. Nothing reported it, because
+          // locally it HAD saved.
+          //
+          // A dirty cache for this same account is the one case where local is newer.
+          // It doesn't win outright — `mergeServerPlan` folds in the completions the
+          // server made on our behalf (the Strava webhook) exactly as it does after a
+          // 409, so device-synced sessions aren't lost either. Then it saves, which is
+          // the retry the failed write never got.
+          const cache = readCache();
+          const unsaved = cacheHasUnsavedEdits(cache, me.user.username);
+          const serverPlan = (st.plan as Plan) ?? null;
           const restored = {
             username: me.user.username,
-            profile: (st.profile as Profile) ?? null,
-            plan: (st.plan as Plan) ?? null,
+            profile: unsaved ? (cache!.profile ?? (st.profile as Profile) ?? null) : ((st.profile as Profile) ?? null),
+            plan: unsaved ? mergeServerPlan(cache!.plan, serverPlan) : serverPlan,
             version: me.version ?? 0,
           };
-          writeCache(restored.username, restored.profile, restored.plan);
+          writeCache(restored.username, restored.profile, restored.plan, unsaved);
           // The race that made onboarding feel broken: the safety timeout drops the
           // athlete onto the welcome screen, they start answering questions, and then
           // this resolves and swaps `screen` out from under them — ten steps of work
@@ -247,6 +284,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setPendingSession({ username: restored.username });
           } else {
             applyRestored(restored);
+            // Push the recovered edits up. `applyRestored` only sets state, so without
+            // this the copy stays dirty until the athlete happens to change something
+            // else — and a relaunch before that would be leaning on the cache again.
+            // Staged rather than called: `persist` is declared below this effect, and
+            // the drain runs once boot has settled.
+            if (unsaved) recoverRef.current = { uname: restored.username, prof: restored.profile, pl: restored.plan };
           }
         }
       } catch {
@@ -292,6 +335,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (r.ok) {
         if (r.version != null) versionRef.current = r.version;
         setOffline(false); // a save that lands means we're back online — clear the banner
+        // Acknowledged: this exact copy is on the server, so it is no longer dirty.
+        // Only when nothing newer is already queued — clearing the flag while a later
+        // edit is still waiting would mark unsaved work as saved, which is the very
+        // bug this flag exists to prevent.
+        if (!pendingRef.current) writeCache(uname, prof, pl, false);
         return;
       }
       if (r.status === 409 && r.serverVersion != null) {
@@ -307,6 +355,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (latestRef.current.username !== uname) return;
         if (retry.ok) {
           if (retry.version != null) versionRef.current = retry.version;
+          if (!pendingRef.current) writeCache(uname, cur.profile, merged, false);
         } else if (retry.status === 409 && retry.serverVersion != null) {
           // still conflicting — keep the local copy, adopt the server's version so
           // the next edit's save wins
@@ -329,7 +378,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // carries — that single bad write is what stranded athletes with a blank
       // Profile tab in the first place.
       const safeProf = profileToPersist(prof, pl);
-      writeCache(uname, safeProf, pl);
+      // Dirty from the moment it's written and only cleared by an acknowledged save,
+      // so a change is never silently abandoned between here and the server.
+      writeCache(uname, safeProf, pl, true);
       pendingRef.current = { uname, prof: safeProf, pl };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
@@ -342,6 +393,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [doSave],
   );
+
+  // Boot recovered edits the server never acknowledged — save them now. Runs once
+  // `booted` settles, which is after the restore has been applied, so this pushes the
+  // copy the athlete is actually looking at.
+  useEffect(() => {
+    if (!booted) return;
+    const r = recoverRef.current;
+    if (!r) return;
+    recoverRef.current = null;
+    persist(r.uname, r.prof, r.pl);
+  }, [booted, persist]);
 
   // Send whatever's still queued NOW — the page/app is going away (#68). fetch
   // keepalive lets the PUT outlive the page and still carries the Bearer header

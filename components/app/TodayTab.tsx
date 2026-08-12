@@ -558,7 +558,7 @@ function TodayHero({ workout }: { workout: Workout }) {
                 you trained without the phone. */}
             {workout.discipline === "strength" ? (
               <button onClick={() => openWorkout(workout.id, { startGym: true })} className="btn btn-primary flex-1 py-3.5 text-base">
-                Start workout
+                Begin workout
               </button>
             ) : (
               <button onClick={complete} className="btn btn-primary flex-1 py-3.5 text-base">
