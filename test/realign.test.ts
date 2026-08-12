@@ -16,6 +16,8 @@
 import { ENGINE_VERSION, generatePlan } from "../lib/planEngine";
 import { easeUpcoming, rebuildFromToday, missedSince, setStatus, shouldUpgradePlan, weeksBanked, UPGRADE_RACE_GUARD_DAYS } from "../lib/adapt";
 import type { Profile, Plan, Workout } from "../lib/types";
+import { adjustSession } from "../lib/prescribe";
+import { addSession } from "../lib/addSession";
 import { addDays, mondayOf, todayISO } from "../lib/dates";
 
 let checks = 0;
@@ -424,6 +426,82 @@ section("the engine upgrade knows when NOT to touch a plan");
   ok(Object.values(rebuilt.workouts).some(
        (w) => w.date === untouched.date && w.discipline === untouched.discipline && w.status === "planned"),
      "sessions you didn't skip come back planned, as they should");
+}
+
+// ---------------------------------------------------------------------------
+// A REBUILD MUST NOT UNDO WHAT THE ATHLETE DECIDED ABOUT THE FUTURE.
+//
+// Audited 2026-08-12: of six decisions an athlete can make about a future
+// session, only a skip survived a rebuild. Moved, swapped, added, resized and
+// eased were all reverted — and a rebuild fires automatically at three missed
+// sessions, so the reversion was routine rather than rare.
+//
+// Moved and swapped stay uncarried on purpose (a rebuild re-lays the calendar and
+// there may be no equivalent slot); the three below have one honest answer.
+{
+  section("a rebuild keeps what you decided about the future");
+
+  const today = daysFrom(10);
+  const plan = generatePlan(base, ANCHOR);
+  const future = Object.values(plan.workouts)
+    .filter((w) => w.date > today && w.discipline !== "rest")
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const live = (p: Plan, w: Workout) =>
+    Object.values(p.workouts).find(
+      (x) => !x.id.startsWith("kept-") && x.date === w.date && x.discipline === w.discipline,
+    );
+
+  // A session YOU added is not the engine's to delete.
+  {
+    const busy = new Set(future.map((w) => w.date));
+    let free = daysFrom(12);
+    for (let i = 2; i < 12; i++) { const d = daysFrom(10 + i); if (!busy.has(d)) { free = d; break; } }
+    const added = addSession(plan, base, free, "any");
+    ok(!!added, `a session could be added on ${free}`);
+    if (added) {
+      const rebuilt = rebuildFromToday(added.plan, today);
+      ok(Object.values(rebuilt.workouts).some((w) => w.addedByAthlete),
+         "a session you added yourself survives a realign");
+    }
+  }
+
+  // An eased session stays eased — the one direction that is a safety regression.
+  {
+    let checked = false;
+    for (let off = 0; off < 40 && !checked; off += 7) {
+      const eased = easeUpcoming(plan, daysFrom(10 + off), 7, "readiness");
+      const touched = Object.values(eased.workouts).filter((w) => w.easedCause === "readiness" && w.date >= today);
+      if (!touched.length) continue;
+      const rebuilt = rebuildFromToday(eased, today);
+      const still = Object.values(rebuilt.workouts).filter(
+        (w) => !w.id.startsWith("kept-") && w.easedCause === "readiness" && w.date >= today,
+      );
+      ok(still.length > 0, `a session eased after a rough check-in is still eased (${touched.length} softened)`);
+      const one = touched[0];
+      const after = live(rebuilt, one);
+      ok(!!after && after.estDurationSec <= one.estDurationSec + 60,
+         "and it is not quietly re-lengthened to the full prescription");
+      checked = true;
+    }
+    ok(checked, "precondition: something hard to ease");
+  }
+
+  // A session you shortened keeps the length you chose.
+  {
+    let checked = false;
+    for (const cand of future) {
+      const adj = adjustSession(plan, cand.id, Math.round(cand.estDurationSec * 0.6));
+      if (!adj) continue;
+      const got = adj.plan.workouts[cand.id].estDurationSec;
+      if (Math.abs(got - cand.estDurationSec) < 60) continue;
+      const after = live(rebuildFromToday(adj.plan, today), cand);
+      ok(!!after && Math.abs(after.estDurationSec - got) < 60,
+         `a session you shortened to ${Math.round(got / 60)} min stays that length (got ${after ? Math.round(after.estDurationSec / 60) : "?"})`);
+      checked = true;
+      break;
+    }
+    ok(checked, "precondition: a session that resizes");
+  }
 }
 
 console.log(`\n${checks - failures}/${checks} realign invariants passed`);

@@ -504,6 +504,13 @@ export function weeksBanked(plan: Plan, todayISO: string): number {
   return Math.round(elapsed * Math.min(1, adherence));
 }
 
+/** Did the ATHLETE shorten this session? `prescribed` holds what the engine asked
+ *  for, so a current length below it that no ease explains is their own edit. */
+function isAthleteResized(w: Workout): boolean {
+  const base = w.prescribed?.estDurationSec;
+  return !!base && base > 0 && Math.abs(w.estDurationSec - base) > 60;
+}
+
 export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
   const fresh = generatePlan(plan.profile, undefined, { weeksBanked: weeksBanked(plan, todayISO) });
   const cutoff = fromISO(todayISO).getTime();
@@ -562,6 +569,52 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
     }
     kept[w.id] = w;
   }
+  // ---- carry the athlete's other decisions about the future ----------------
+  //
+  // Everything from today onward is regenerated, so ANY decision an athlete made
+  // about a future session was silently reverted. Measured (scripts audit,
+  // 2026-08-12): of six decisions, only a skip survived — moved, swapped, added,
+  // resized and eased were all lost, and rebuilds fire automatically at three
+  // missed sessions.
+  //
+  // Two are fixed here because they have one honest answer:
+  //
+  //  • A SESSION YOU ADDED (#209) is not the engine's to delete. It never appears
+  //    in `fresh` (the engine didn't write it), so it is carried verbatim.
+  //  • AN EASED SESSION STAYS EASED. `easeUpcoming` softens the next days after a
+  //    rough check-in or a session that cost far more than it should have. Letting
+  //    a realign re-harden them is the one direction that is a safety regression,
+  //    not just an annoyance — doc 02 §4 #11.
+  //  • A SESSION YOU RESIZED keeps the length you chose, for the same reason a
+  //    skip keeps its status: you said so.
+  //
+  // Moved and swapped are deliberately NOT carried — a rebuild re-lays the whole
+  // calendar, so "this session belongs on Thursday instead" may have no equivalent
+  // in the new week, and guessing one silently is worse than re-planning it.
+  for (const w of Object.values(plan.workouts)) {
+    if (fromISO(w.date).getTime() < cutoff) continue;
+    if (w.addedByAthlete && !kept[w.id]) {
+      kept[w.id] = w; // yours, not the engine's — see above
+      continue;
+    }
+    if (!w.easedCause && !isAthleteResized(w)) continue;
+    // Same matching rule as the skip carry: date+discipline, because a rebuild
+    // re-anchors week indices and ids cannot be compared across it.
+    const target = Object.values(kept).find(
+      (f) => !f.id.startsWith("kept-") && f.date === w.date && f.discipline === w.discipline && f.status === "planned",
+    );
+    if (!target) continue;
+    kept[target.id] = {
+      ...target,
+      estDurationSec: w.estDurationSec,
+      ...(w.estDistanceM != null ? { estDistanceM: w.estDistanceM } : {}),
+      segments: w.segments,
+      ...(w.primaryZone != null ? { primaryZone: w.primaryZone } : {}),
+      ...(w.easedCause ? { easedCause: w.easedCause } : {}),
+      ...(w.prescribed ? { prescribed: w.prescribed } : {}),
+    };
+  }
+
   const merged: Plan = {
     ...fresh,
     workouts: kept,
