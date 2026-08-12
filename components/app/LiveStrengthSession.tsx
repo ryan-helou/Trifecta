@@ -28,20 +28,23 @@
 // athlete counts in, and "9 / 16" answers "how much longer" without arithmetic.
 // ---------------------------------------------------------------------------
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Sheet } from "./Sheet";
 import type { StrengthEntry, Unit, Workout } from "@/lib/types";
 import {
   type LiveSession,
   addExercise,
   addSet,
+  clearRest,
+  completeSet,
   finishSession,
+  nudgeRest,
   patchSet,
   removeExercise,
   removeSet,
+  restRemainingSec,
   sessionAsEntries,
   sessionProgress,
-  setDone,
 } from "@/lib/liveSession";
 import { saveLive, clearLive } from "@/lib/liveStore";
 import { compareLifts, congratulate, exerciseHistory, setBeatsLast, setCount, topSet, volumeLoad } from "@/lib/strength";
@@ -138,8 +141,40 @@ export function LiveStrengthSession({
   const toggle = (ei: number, si: number) => {
     const was = session.exercises[ei].sets[si].done;
     haptic(was ? "light" : "success");
-    apply(setDone(session, ei, si, !was));
+    // Ticking a set starts the rest that follows it — no second tap. Standing at
+    // the rack, "I finished that" and "I'm now resting" are the same event.
+    apply(completeSet(session, ei, si, !was, new Date().toISOString()));
   };
+
+  // ---- rest between sets --------------------------------------------------
+  // Re-render once a second while resting, and ONLY while resting. The interval
+  // does no arithmetic of its own — every number on screen is derived from the
+  // stored end instant, so a phone that locked mid-rest comes back correct
+  // rather than however many ticks the suspended WebView managed to fire.
+  const [, retick] = useReducer((n: number) => n + 1, 0);
+  const resting = !!session.restUntilISO;
+  useEffect(() => {
+    if (!resting) return;
+    const id = setInterval(retick, 1000);
+    return () => clearInterval(id);
+  }, [resting]);
+
+  const restLeft = restRemainingSec(session, new Date().toISOString());
+  const restTotal = session.restSec ?? 0;
+
+  // One buzz when the rest is up, keyed on the specific rest so it can't fire
+  // twice for the same one. Honest limitation: a backgrounded WebView is
+  // suspended, so this lands when the athlete next looks at the phone rather
+  // than in their pocket — that needs a scheduled local notification.
+  const buzzedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session.restUntilISO || restLeft === null || restLeft > 0) return;
+    if (buzzedFor.current === session.restUntilISO) return;
+    buzzedFor.current = session.restUntilISO;
+    haptic("success");
+  }, [session.restUntilISO, restLeft]);
+
+  const restClock = restLeft == null ? "" : `${Math.floor(restLeft / 60)}:${String(restLeft % 60).padStart(2, "0")}`;
 
   const logged = finishSession(session);
   const { sets: loggedSets } = setCount(logged);
@@ -192,7 +227,48 @@ export function LiveStrengthSession({
            your session meant scrolling past every exercise to find the button.
            Discard is deliberately the smaller, quieter half — it's the
            destructive one, and it already asks before doing anything. */
-        <div className="flex gap-2 border-t border-line px-5 py-3">
+        <div className="border-t border-line">
+          {/* REST, pinned above the actions. Between sets this is the only thing
+              the athlete wants from the phone, and it must not be something they
+              have to scroll to find — the same reasoning that pinned Finish. It
+              appears on the tick and leaves on Skip, so it never occupies the
+              footer when there's nothing to count. */}
+          {restLeft != null && (
+            <div
+              className={`flex items-center gap-2.5 border-b border-line px-5 py-2.5 ${restLeft === 0 ? "bg-success/10" : ""}`}
+              role="timer"
+              aria-live="off"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className={`font-display text-lg font-semibold tabular-nums ${restLeft === 0 ? "text-success" : ""}`}>
+                    {restLeft === 0 ? "Rest done" : restClock}
+                  </span>
+                  {restLeft > 0 && <span className="text-[0.68rem] text-muted">rest</span>}
+                </div>
+                {/* Proportional, no axis — doc 07 §4.8 #4, same as the set bar above. */}
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${restLeft === 0 ? "bg-success" : "bg-accent"}`}
+                    style={{ width: restTotal > 0 ? `${((restTotal - restLeft) / restTotal) * 100}%` : "100%" }}
+                  />
+                </div>
+              </div>
+              <button
+                onClick={() => { haptic("select"); apply(nudgeRest(session, new Date().toISOString(), 30)); }}
+                className="shrink-0 rounded-lg border border-line px-2.5 py-1.5 text-[0.7rem] font-semibold text-muted transition active:scale-90"
+              >
+                +30s
+              </button>
+              <button
+                onClick={() => { haptic("light"); apply(clearRest(session)); }}
+                className="shrink-0 rounded-lg px-2 py-1.5 text-[0.7rem] font-semibold text-accent-soft transition active:scale-90"
+              >
+                {restLeft === 0 ? "Clear" : "Skip"}
+              </button>
+            </div>
+          )}
+          <div className="flex gap-2 px-5 py-3">
           <button
             onClick={() => setConfirmDiscard(true)}
             className="rounded-2xl border border-line px-4 py-3 text-sm font-semibold text-muted transition active:scale-[0.99]"
@@ -206,6 +282,7 @@ export function LiveStrengthSession({
           >
             {loggedSets === 0 ? "Tick a set to finish" : complete ? "Finish workout" : `Finish · ${loggedSets} set${loggedSets === 1 ? "" : "s"}`}
           </button>
+          </div>
         </div>
       }
     >
