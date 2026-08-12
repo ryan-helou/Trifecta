@@ -54,18 +54,42 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     dropTimer.current = setTimeout(() => setToast((t) => (t && (id == null || t.id === id) ? null : t)), 220);
   }, []);
 
+  /** When the visible toast is due to disappear. A DEADLINE, not just a timer.
+   *
+   *  `setTimeout` is suspended while a WebView is backgrounded, so a toast raised just
+   *  before the app goes to sleep comes back with its timer frozen and simply stays. That
+   *  is how the plan-upgrade toast — the one whose only button is "Undo" — became a
+   *  message an athlete could not get rid of without reverting their own plan. */
+  const dueAt = useRef(0);
+
   const show = useCallback(
     (o: ToastOpts) => {
       clearTimers();
       const id = ++idRef.current;
+      const ms = o.duration ?? 4500;
+      dueAt.current = Date.now() + ms;
       setToast({ ...o, id, closing: false });
       hideTimer.current = setTimeout(() => {
         setToast((t) => (t && t.id === id ? { ...t, closing: true } : t));
         dropTimer.current = setTimeout(() => setToast((t) => (t && t.id === id ? null : t)), 220);
-      }, o.duration ?? 4500);
+      }, ms);
     },
     [],
   );
+
+  // Coming back to the foreground, settle anything whose deadline passed while we slept.
+  useEffect(() => {
+    const settle = () => {
+      if (document.visibilityState !== "visible") return;
+      if (dueAt.current && Date.now() >= dueAt.current) dismiss();
+    };
+    document.addEventListener("visibilitychange", settle);
+    window.addEventListener("focus", settle);
+    return () => {
+      document.removeEventListener("visibilitychange", settle);
+      window.removeEventListener("focus", settle);
+    };
+  }, [dismiss]);
 
   useEffect(() => () => clearTimers(), []);
 
@@ -102,6 +126,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                   {toast.actionLabel}
                 </button>
               )}
+              {/* ALWAYS a way out that isn't the action.
+                  Without this the only control on the card was "Undo", so a toast that
+                  outstayed its timer could only be cleared by reverting the very change
+                  it was announcing — the plan-upgrade toast made that trap real. A
+                  dismiss is never destructive; the action stays opt-in. */}
+              <button
+                onClick={() => { haptic("light"); dismiss(toast.id); }}
+                aria-label="Dismiss"
+                className="flex-shrink-0 rounded-full px-2.5 py-1.5 text-sm text-muted transition hover:text-foreground"
+              >
+                ✕
+              </button>
             </div>
           </div>
         </div>
