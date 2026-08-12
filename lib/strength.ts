@@ -176,6 +176,72 @@ export function topSet(sets: StrengthSet[]): StrengthSet | null {
   }, null);
 }
 
+// ---- progressive overload ----------------------------------------------------
+//
+// The plan prescribes the same circuit in week 1 and week 16, and `withKnownLoads`
+// hands back whatever you lifted last time — so once an athlete benched 60 kg the
+// app offered 60 kg forever. Strength was the one discipline with no progression at
+// all, in an app whose whole argument is periodization.
+//
+// WHAT THIS IS NOT. It is not a hypertrophy ladder. Doc 01 §4 rule 4: in-season
+// strength for a triathlete is a MAINTENANCE dose serving durability and power, and
+// the endurance block is the thing being protected. So this is deliberately the
+// slowest honest progression — the standard double-progression trigger, one
+// increment, and only when the last session was completed cleanly.
+//
+// AND IT ONLY EVER SUGGESTS. The card still opens at last session's numbers; this
+// is surfaced beside them for the athlete to take or ignore. `prescribedExercises`
+// already states the principle — "the plan can't know what this athlete lifts, and
+// inventing a number would be worse than an empty field" — and silently loading the
+// bar heavier than someone left it is that mistake with a limp attached.
+
+/** Upper-body jump: the smallest pair of plates most gyms actually have. */
+export const STEP_UPPER_KG = 2.5;
+/** Lower body carries more absolute load, so it moves in bigger steps. */
+export const STEP_LOWER_KG = 5;
+
+export type Progression =
+  | { kind: "weight"; weightKg: number; fromKg: number; stepKg: number }
+  | { kind: "reps"; reps: number; fromReps: number };
+
+/**
+ * Should this lift go up next time?
+ *
+ * The trigger is "you completed every set at the same weight with no drop-off in
+ * reps" — the conventional double-progression rule, and the conservative reading of
+ * it. A session whose reps fell away set to set was already at its limit; offering
+ * more weight there is how a maintenance dose turns into an injury (doc 03 §4).
+ *
+ * Bodyweight work has no plate to add, so it progresses in reps instead. Returns
+ * null when there's nothing earned — silence is the common and correct answer.
+ */
+export function suggestProgression(
+  lastSets: StrengthSet[] | null | undefined,
+  isLowerBody: boolean,
+): Progression | null {
+  if (!lastSets?.length) return null;
+  const reps = lastSets.map((s) => s.reps || 0);
+  if (reps.some((r) => r <= 0)) return null;
+  // Every set held up: the last set matched the best set. One hard set followed by
+  // two that faded is not a session that earned more load.
+  if (Math.min(...reps) < Math.max(...reps)) return null;
+
+  const weights = lastSets.map((s) => s.weightKg ?? 0);
+  const loaded = weights.every((w) => w > 0);
+  if (loaded) {
+    // Straight sets only. Ascending or drop sets aren't a single working weight, so
+    // "add 2.5 kg" has no unambiguous meaning — leave those alone.
+    if (Math.min(...weights) !== Math.max(...weights)) return null;
+    const from = weights[0];
+    const step = isLowerBody ? STEP_LOWER_KG : STEP_UPPER_KG;
+    return { kind: "weight", weightKg: Math.round((from + step) * 100) / 100, fromKg: from, stepKg: step };
+  }
+  // Unloaded, and it must be unloaded THROUGHOUT — a mix means the log is
+  // half-filled, not that this is a bodyweight movement.
+  if (weights.some((w) => w > 0)) return null;
+  return { kind: "reps", reps: reps[0] + 1, fromReps: reps[0] };
+}
+
 export type BeatKind = "weight" | "reps";
 
 /**

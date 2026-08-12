@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.51",
+  "latest": "1.0.52",
   "bundles": [
-    {
-      "version": "1.0.49",
-      "sha256": "eb9f9d331e653218d34ed91d4eba48132d065e0e5890fcb218cc65e91b83c80e",
-      "size": 810848,
-      "createdAtISO": "2026-08-12T18:27:27.666Z",
-      "comment": "offline is no longer signed-out"
-    },
     {
       "version": "1.0.50",
       "sha256": "77342b517c028e61e4ed2bbc7f0254236513babcd2c695517b5c5bfcc9dd02c3",
@@ -21,6 +14,13 @@
       "size": 805380,
       "createdAtISO": "2026-08-12T19:05:04.199Z",
       "comment": "delete a logged session, correct match credit, gym rest timer"
+    },
+    {
+      "version": "1.0.52",
+      "sha256": "f09559c2684f93a303c1a91aafafcad41759cc5ee68454c5f0a7ce0a1ed3e244",
+      "size": 805883,
+      "createdAtISO": "2026-08-12T19:16:22.849Z",
+      "comment": "real gym session length + progressive overload"
     }
   ]
 }

@@ -945,7 +945,7 @@ export function WorkoutDetail({ workout, plan, autoStartGym }: { workout: Workou
         routineName={routine?.name ?? null}
         onChange={setLive}
         onClose={() => setLiveOpen(false)}
-        onFinish={(entries) => {
+        onFinish={(entries, durationSec) => {
           setLive(null);
           setLiveOpen(false);
           // The congratulation is computed against history EXCLUDING this session,
@@ -954,7 +954,13 @@ export function WorkoutDetail({ workout, plan, autoStartGym }: { workout: Workou
           const praise = congratulate(
             compareLifts(entries, exerciseHistory(Object.values(plan.workouts).filter((w) => w.id !== workout.id))),
           );
-          actions.logCheckin(workout.id, { strengthLog: entries });
+          // Credit the time it actually took. The key is sent ONLY when the tracker
+          // measured something believable — `logCheckin` treats a present key as an
+          // explicit set, so passing undefined would wipe a duration entered by hand.
+          actions.logCheckin(workout.id, {
+            strengthLog: entries,
+            ...(durationSec != null ? { actualDurationSec: durationSec } : {}),
+          });
           close();
           toast({
             text: praise ? `${praise} 💪` : `${workout.title} logged — nice work.`,

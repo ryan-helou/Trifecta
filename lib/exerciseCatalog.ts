@@ -149,6 +149,26 @@ const norm = (s: string) => s.trim().toLowerCase();
  * because refusing to show a lift the athlete is standing in front of would be
  * absurd.
  */
+/**
+ * Is this a lower-body lift? Only used to size a progression step — legs carry more
+ * absolute load, so they move in bigger jumps than a press does.
+ *
+ * The test is "lower and not upper" rather than looking for `legs`, because core work
+ * is tagged for EVERY day (including `legs`), and a deadlift is tagged `pull` as well
+ * as `lower`. That combination is the one that separates them cleanly:
+ *   Back Squat → lower, no upper           → yes
+ *   Deadlift   → lower + pull, no upper    → yes
+ *   Plank      → lower AND upper (all days)→ no
+ * An exercise the catalog has never heard of gets the smaller step, which is the
+ * conservative side to be wrong on.
+ */
+export function isLowerBody(name: string): boolean {
+  const canon = canonicalName(name) ?? name;
+  const hit = EXERCISE_CATALOG.find((e) => e.name.toLowerCase() === canon.trim().toLowerCase());
+  if (!hit) return false;
+  return hit.slots.includes("lower") && !hit.slots.includes("upper");
+}
+
 export function searchExercises(query: string, slot?: StrengthSlot, limit = 6): string[] {
   const q = norm(query);
   if (!q) return [];

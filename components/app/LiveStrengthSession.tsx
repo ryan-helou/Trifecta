@@ -45,10 +45,21 @@ import {
   restRemainingSec,
   sessionAsEntries,
   sessionProgress,
+  trackedDurationSec,
 } from "@/lib/liveSession";
 import { saveLive, clearLive } from "@/lib/liveStore";
-import { compareLifts, congratulate, exerciseHistory, setBeatsLast, setCount, topSet, volumeLoad } from "@/lib/strength";
-import { searchExercises } from "@/lib/exerciseCatalog";
+import {
+  type Progression,
+  compareLifts,
+  congratulate,
+  exerciseHistory,
+  setBeatsLast,
+  setCount,
+  suggestProgression,
+  topSet,
+  volumeLoad,
+} from "@/lib/strength";
+import { isLowerBody, searchExercises } from "@/lib/exerciseCatalog";
 import { haptic } from "@/lib/haptics";
 
 const LB_PER_KG = 2.20462;
@@ -79,7 +90,10 @@ export function LiveStrengthSession({
   unit: Unit;
   /** Called on every mutation so the parent's copy stays in step with storage. */
   onChange: (s: LiveSession) => void;
-  onFinish: (entries: StrengthEntry[]) => void;
+  /** `durationSec` is how long it actually took, or null when the clock isn't
+   *  believable (see `trackedDurationSec`) — the caller then leaves the plan's
+   *  estimate alone rather than crediting a number nobody measured. */
+  onFinish: (entries: StrengthEntry[], durationSec: number | null) => void;
   onDiscard: () => void;
   /** Absent for an unplanned gym session, which has no slot to attach to. */
   onSaveRoutine?: (entries: StrengthEntry[]) => void;
@@ -136,6 +150,18 @@ export function LiveStrengthSession({
       ),
     );
     setAdding("");
+  };
+
+  /** Take the suggested step. Only sets NOT already ticked move — rewriting a set
+   *  the athlete has completed would put a weight in their log they never lifted. */
+  const takeProgression = (ei: number, p: Progression) => {
+    haptic("success");
+    let next = session;
+    session.exercises[ei].sets.forEach((s, si) => {
+      if (s.done) return;
+      next = patchSet(next, ei, si, p.kind === "weight" ? { weightKg: p.weightKg } : { reps: p.reps });
+    });
+    apply(next);
   };
 
   const toggle = (ei: number, si: number) => {
@@ -276,7 +302,12 @@ export function LiveStrengthSession({
             Discard
           </button>
           <button
-            onClick={() => { haptic("success"); clearLive(session.workoutId); onFinish(logged); }}
+            onClick={() => {
+              haptic("success");
+              const took = trackedDurationSec(session, new Date().toISOString());
+              clearLive(session.workoutId);
+              onFinish(logged, took);
+            }}
             disabled={loggedSets === 0}
             className="flex-1 rounded-2xl bg-foreground py-3 text-sm font-semibold text-background transition active:scale-[0.99] disabled:opacity-40"
           >
@@ -297,6 +328,16 @@ export function LiveStrengthSession({
         {session.exercises.map((e, ei) => {
           const prior = past.find((p) => p.name.toLowerCase() === e.name.trim().toLowerCase());
           const eDone = e.sets.length > 0 && e.sets.every((s) => s.done);
+          // Earned, not automatic — and withdrawn the moment they're already lifting
+          // at or above it, so it can never nag about a step they've taken.
+          const step = eDone ? null : suggestProgression(prior?.lastSets, isLowerBody(e.name));
+          const already =
+            step?.kind === "weight"
+              ? e.sets.some((s) => (s.weightKg ?? 0) >= step.weightKg)
+              : step?.kind === "reps"
+                ? e.sets.some((s) => s.reps >= step.reps)
+                : false;
+          const suggestion = already ? null : step;
           return (
             <div
               key={`${e.name}-${ei}`}
@@ -323,6 +364,21 @@ export function LiveStrengthSession({
                       "First time — this becomes the mark to beat"
                     )}
                   </div>
+                  {/* The progression, offered rather than applied. The numbers below
+                      still open at what they lifted last time; this is one tap to take
+                      the step, and saying WHY it appeared is what stops it reading as
+                      the app randomly loading the bar heavier. */}
+                  {suggestion && (
+                    <button
+                      onClick={() => takeProgression(ei, suggestion)}
+                      className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-accent/45 px-2.5 py-1 text-[0.68rem] font-semibold text-accent-soft transition active:scale-95"
+                    >
+                      <span aria-hidden>↑</span>
+                      {suggestion.kind === "weight"
+                        ? `Try ${kgToDisplay(suggestion.weightKg, unit)} ${wLabel} — you held every set`
+                        : `Try ${suggestion.reps} reps — you held every set`}
+                    </button>
+                  )}
                 </div>
                 <button
                   onClick={() => { haptic("light"); apply(removeExercise(session, ei)); }}

@@ -123,6 +123,36 @@ export function restRemainingSec(s: LiveSession, nowISO: string): number | null 
   return Math.max(0, Math.ceil(ms / 1000));
 }
 
+// ---- how long the session actually took --------------------------------------
+//
+// The tracker knows when it started, and until now threw that away: Finish logged
+// the sets and nothing else, so a 70-minute session was credited as whatever the
+// plan had guessed — 45 min. Strength reaches the load model through its DURATION
+// (`creditedSec`, absorb.ts), so that guess was propagating into CTL.
+//
+// Wall-clock elapsed is the honest measure, but only while it's believable. The
+// session is a draft in storage that survives the phone locking, which is the whole
+// point — and also means it survives being forgotten. Someone who starts a session,
+// gets pulled away, and finishes it after lunch would otherwise credit four hours of
+// training. So it is bounded on both ends, and OUTSIDE those bounds we say we don't
+// know (null) rather than reporting a number we don't believe — the caller then falls
+// back to the plan's estimate, which is exactly today's behaviour.
+
+/** Below this, the athlete was transcribing a session afterwards, not tracking one. */
+export const MIN_TRACKED_SEC = 5 * 60;
+/** Above this, the session was left open rather than trained for that long. */
+export const MAX_TRACKED_SEC = 3 * 60 * 60;
+
+/** How long the session took, or null when the clock isn't believable. */
+export function trackedDurationSec(s: LiveSession, nowISO: string): number | null {
+  const started = new Date(s.startedISO).getTime();
+  const now = new Date(nowISO).getTime();
+  if (!Number.isFinite(started) || !Number.isFinite(now)) return null;
+  const sec = Math.round((now - started) / 1000);
+  if (sec < MIN_TRACKED_SEC || sec > MAX_TRACKED_SEC) return null;
+  return sec;
+}
+
 /**
  * Tick a set off (or back on) and move the rest clock with it.
  *
