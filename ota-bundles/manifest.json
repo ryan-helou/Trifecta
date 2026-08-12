@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.48",
+  "latest": "1.0.49",
   "bundles": [
-    {
-      "version": "1.0.46",
-      "sha256": "e85c59eac7d4759900058a16f28ea73fccc8f9cdb058e4330ed0d3694909f9ac",
-      "size": 802179,
-      "createdAtISO": "2026-08-12T13:30:47.987Z",
-      "comment": "swapping a run away no longer blocks getting it back"
-    },
     {
       "version": "1.0.47",
       "sha256": "7f6f61554f5ad7f872a0e9175f784e7196cafb2a22e3e16ad6f5c5aae797b20a",
@@ -21,6 +14,13 @@
       "size": 810861,
       "createdAtISO": "2026-08-12T18:22:30.519Z",
       "comment": "type your own values, and change a gym split"
+    },
+    {
+      "version": "1.0.49",
+      "sha256": "eb9f9d331e653218d34ed91d4eba48132d065e0e5890fcb218cc65e91b83c80e",
+      "size": 810848,
+      "createdAtISO": "2026-08-12T18:27:27.666Z",
+      "comment": "offline is no longer signed-out"
     }
   ]
 }
