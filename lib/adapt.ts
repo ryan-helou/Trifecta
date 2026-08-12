@@ -529,11 +529,37 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
       if (isTodayDone) keptTodayDone.add(`${w.date}·${w.discipline}`);
     }
   }
+  // A SKIP ON A FUTURE DAY IS A DECISION, AND A REBUILD MUST NOT FORGET IT.
+  //
+  // Everything from today onward is regenerated, so a session the athlete had
+  // already skipped came back as "planned" — and with the automatic realign firing
+  // at 3 missed sessions, it came back over and over. Ryan: "It's not remembering
+  // that I'm skipping sessions."
+  //
+  // Matched on date+discipline rather than id: a rebuild re-anchors the week
+  // indices, so `w-3-1-bike` becomes `w-0-1-bike` and ids cannot be compared
+  // across it (that re-anchoring is exactly why kept history is namespaced). A
+  // multiset, not a Set — skipping one of Saturday's two rides must not silently
+  // skip both.
+  const futureSkips = new Map<string, number>();
+  for (const w of Object.values(plan.workouts)) {
+    if (w.status !== "skipped" || fromISO(w.date).getTime() < cutoff) continue;
+    const k = `${w.date}·${w.discipline}`;
+    futureSkips.set(k, (futureSkips.get(k) ?? 0) + 1);
+  }
+
   // add fresh workouts from today onward, minus any today slot already completed
   for (const w of Object.values(fresh.workouts)) {
     const t = fromISO(w.date).getTime();
     if (t < cutoff) continue;
     if (t === cutoff && keptTodayDone.has(`${w.date}·${w.discipline}`)) continue;
+    const k = `${w.date}·${w.discipline}`;
+    const owed = futureSkips.get(k) ?? 0;
+    if (owed > 0) {
+      futureSkips.set(k, owed - 1);
+      kept[w.id] = { ...w, status: "skipped" };
+      continue;
+    }
     kept[w.id] = w;
   }
   const merged: Plan = {

@@ -14,7 +14,7 @@
  * Run: `npm test`.
  */
 import { ENGINE_VERSION, generatePlan } from "../lib/planEngine";
-import { easeUpcoming, rebuildFromToday, missedSince, shouldUpgradePlan, weeksBanked, UPGRADE_RACE_GUARD_DAYS } from "../lib/adapt";
+import { easeUpcoming, rebuildFromToday, missedSince, setStatus, shouldUpgradePlan, weeksBanked, UPGRADE_RACE_GUARD_DAYS } from "../lib/adapt";
 import type { Profile, Plan, Workout } from "../lib/types";
 import { addDays, mondayOf, todayISO } from "../lib/dates";
 
@@ -367,6 +367,63 @@ section("the engine upgrade knows when NOT to touch a plan");
   const afterDecline = rebuildFromToday(declined, daysFrom(10));
   ok(afterDecline.upgradeDeclinedVersion === ENGINE_VERSION,
      "a declined upgrade stays declined through a realign");
+}
+
+// ---------------------------------------------------------------------------
+// A REBUILD REMEMBERS WHAT YOU SKIPPED.
+//
+// Ryan: "It's not remembering that I'm skipping sessions." Everything from today
+// onward is regenerated, so a future session already marked skipped came back as
+// planned — and the automatic realign fires at 3 missed sessions, so it came back
+// again and again. Matched on date+discipline, because a rebuild re-anchors week
+// indices and ids cannot survive it.
+{
+  section("a rebuild remembers a skipped session");
+
+  const today = daysFrom(10);
+  const plan = generatePlan(base, ANCHOR);
+  const future = Object.values(plan.workouts)
+    .filter((w) => w.date > today && w.discipline !== "rest")
+    .sort((a, b) => a.date.localeCompare(b.date));
+  ok(future.length > 2, `future sessions to skip (${future.length})`);
+
+  const one = future[0];
+  const skipped = setStatus(plan, one.id, "skipped");
+  const rebuilt = rebuildFromToday(skipped, today);
+  const sameSlot = Object.values(rebuilt.workouts).filter(
+    (w) => w.date === one.date && w.discipline === one.discipline && !w.id.startsWith("kept-"),
+  );
+  ok(sameSlot.some((w) => w.status === "skipped"),
+     `a session skipped for ${one.date} is still skipped after a realign (${sameSlot.map((w) => w.status).join(",") || "gone"})`);
+
+  // …and it survives the NEXT realign too, or it just comes back a day later.
+  const twice = rebuildFromToday(rebuilt, today);
+  ok(Object.values(twice.workouts).some(
+       (w) => w.date === one.date && w.discipline === one.discipline && w.status === "skipped" && !w.id.startsWith("kept-")),
+     "and through a second realign");
+
+  // Skipping ONE of two same-sport sessions on a day must not skip both.
+  const doubled = Object.values(plan.workouts).filter((w) => w.date > today && w.discipline !== "rest");
+  const byDay = new Map<string, typeof doubled>();
+  for (const w of doubled) {
+    const k = `${w.date}·${w.discipline}`;
+    byDay.set(k, [...(byDay.get(k) ?? []), w]);
+  }
+  const pair = [...byDay.values()].find((v) => v.length >= 2);
+  if (pair) {
+    const r = rebuildFromToday(setStatus(plan, pair[0].id, "skipped"), today);
+    const slots = Object.values(r.workouts).filter(
+      (w) => w.date === pair[0].date && w.discipline === pair[0].discipline && !w.id.startsWith("kept-"),
+    );
+    ok(slots.filter((w) => w.status === "skipped").length <= 1,
+       "skipping one of two same-sport sessions that day does not skip both");
+  }
+
+  // A session you have NOT skipped stays planned — the carry must not leak.
+  const untouched = future[1];
+  ok(Object.values(rebuilt.workouts).some(
+       (w) => w.date === untouched.date && w.discipline === untouched.discipline && w.status === "planned"),
+     "sessions you didn't skip come back planned, as they should");
 }
 
 console.log(`\n${checks - failures}/${checks} realign invariants passed`);
