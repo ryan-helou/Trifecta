@@ -34,8 +34,10 @@ import {
   targetLabel,
   targetUnavailableReason,
   zoneForTarget,
+  reslotStrength,
 } from "../lib/modify";
-import type { Plan, Profile, Workout, Zone } from "../lib/types";
+import { slotOf } from "../lib/routines";
+import type { Plan, Profile, StrengthSlot, Workout, Zone } from "../lib/types";
 
 let checks = 0;
 let failures = 0;
@@ -334,6 +336,50 @@ section("the offered targets are the plan's own zones");
   ok(targetLabel("bike-power", 217.4) === "217 W", "power reads in whole watts");
   ok(targetLabel("run-pace", 315) === "5:15/km", "run pace reads as mm:ss/km");
   ok(targetLabel("swim-pace", 110) === "1:50/100m", "swim pace reads per 100m");
+}
+
+// --- changing which day of the split a gym session is -----------------------
+//
+// Ryan, 2026-08-12: "allow me to modify the day or my split for the workout so I can
+// change it from push to pull or whatever." The important part is that it rebuilds the
+// EXERCISES — relabelling alone would leave an athlete pressing under a heading that
+// says rows.
+section("a gym session can be moved to another day of the split");
+{
+  const plan = generatePlan(
+    { username: "t", raceType: "olympic", raceDateISO: weeksFrom(16), level: "intermediate",
+      workoutsPerWeek: 8, createdAtISO: ANCHOR,
+      strength: { enabled: true, daysPerWeek: 3, split: "push-pull-legs" } } as unknown as Profile,
+    ANCHOR,
+  );
+  const gym = Object.values(plan.workouts).find((w) => w.discipline === "strength" && w.status === "planned");
+  ok(!!gym, "the plan has a gym session to reslot");
+  if (gym) {
+    const from = slotOf(gym);
+    const target: StrengthSlot = from === "pull" ? "push" : "pull";
+    const res = reslotStrength(plan, gym.id, target);
+    ok(!!res, `${from} -> ${target} produces a change`);
+    if (res) {
+      const after = res.workout;
+      ok(slotOf(after) === target, `the slot is now ${target}`);
+      ok(after.discipline === "strength", "it is still a strength session");
+      ok(after.date === gym.date && after.weekIndex === gym.weekIndex, "it stays on its own day");
+      ok(
+        JSON.stringify(after.segments) !== JSON.stringify(gym.segments),
+        "the EXERCISES changed, not just the title",
+      );
+      ok(
+        Math.abs(after.estDurationSec - gym.estDurationSec) <= 10 * 60,
+        `the athlete's time carries across (${Math.round(gym.estDurationSec / 60)} -> ${Math.round(after.estDurationSec / 60)} min)`,
+      );
+      ok(after.prescribed === undefined, "the old split's resize baseline is dropped");
+      // idempotent: asking for the slot it already is must not be a dead button
+      ok(reslotStrength(res.plan, gym.id, target) === null, "re-selecting the same day changes nothing");
+    }
+  }
+  // a non-strength session is never reslotted
+  const run = Object.values(plan.workouts).find((w) => w.discipline === "run" && w.status === "planned");
+  if (run) ok(reslotStrength(plan, run.id, "push") === null, "a run has no split to change");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

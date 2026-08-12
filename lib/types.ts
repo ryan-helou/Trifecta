@@ -156,6 +156,22 @@ export interface Workout {
    *  `stats.ts` — has to tell them apart. Without it, training MORE would read as
    *  falling behind and soften the block. See lib/absorb.ts. */
   absorbedBy?: string;
+  /** This session exactly as it stood the instant before `absorbedBy` took it off
+   *  the week — so deleting the logged session that took it can put it back.
+   *
+   *  A snapshot rather than a recomputation, and specifically NOT `prescribed`:
+   *  the session may have been eased for readiness or re-paced by hand before the
+   *  absorption ever happened, and restoring "the original design" would silently
+   *  undo those too. What absorption took is the only thing giving it back should
+   *  return. See `deleteLoggedWorkout` in lib/adapt.ts. */
+  absorbedFrom?: {
+    status: Workout["status"];
+    note?: string;
+    segments: Segment[];
+    estDurationSec: number;
+    estDistanceM?: number;
+    primaryZone: Zone;
+  };
   /** filled when a connected device (Strava) auto-completed this session */
   actuals?: WorkoutActuals;
 }

@@ -63,6 +63,10 @@ export function setStatus(plan: Plan, id: string, status: Workout["status"], not
     // is live again, and would keep it out of the miss count if it were then
     // genuinely skipped — a session that quietly never counts against you.
     absorbedBy: status === "planned" ? undefined : w.absorbedBy,
+    // The snapshot only means anything while `absorbedBy` points at something, so
+    // the two are cleared together — a stale one would let a later delete restore
+    // a session to a shape it hasn't had since.
+    absorbedFrom: status === "planned" ? undefined : w.absorbedFrom,
   };
   return p;
 }
@@ -235,6 +239,98 @@ function addLoggedWorkoutWithId(plan: Plan, input: LoggedWorkout): { plan: Plan;
  *  is what lets the responder absorb it into the week (#215). */
 export function addLoggedWorkout(plan: Plan, input: LoggedWorkout): Plan {
   return addLoggedWorkoutWithId(plan, input).plan;
+}
+
+// ---- delete a session the athlete put there themselves ----------------------
+
+/**
+ * Is this session the athlete's to remove?
+ *
+ * Only work that exists BECAUSE they said so: a hand-logged session (`logged-`),
+ * or one they asked the plan to add (#209, `addedByAthlete`). Everything the
+ * engine designed is edited through skip / move / modify, which is a different
+ * verb with different arithmetic — a prescribed session you delete would just be
+ * silently missing from the week it was balancing.
+ *
+ * A device-synced session (`synced-`) is deliberately NOT deletable. It carries an
+ * `activityId` the importer matches on, so removing it only lasts until the next
+ * sync re-imports the same ride — a delete that undoes itself is worse than no
+ * delete at all. That needs an ignore-list, which is its own piece of work.
+ */
+export function isAthleteLogged(w: Workout | undefined): boolean {
+  return !!w && (!!w.addedByAthlete || w.id.startsWith("logged-"));
+}
+
+export interface Deletion {
+  plan: Plan;
+  /** the session that was removed, so the caller can name it */
+  removed: Workout;
+  /** sessions this one had taken off the week, now back on it */
+  restored: Workout[];
+  /** one sentence, athlete-facing — every change explains itself or it doesn't ship */
+  headline: string;
+}
+
+/**
+ * Remove a session the athlete logged, and give back whatever logging it took.
+ *
+ * The second half is the whole point. Logging an unplanned ride absorbs or
+ * shortens a matching session later in the week (#215) — so a ride logged by
+ * mistake doesn't merely sit in the log inflating fitness, it has already
+ * deleted or trimmed real work. Removing the log without putting that back
+ * would leave the week permanently lighter for a session that never happened,
+ * which is the same bug as #215 with the sign flipped.
+ *
+ * Returns null when there is nothing honest to do, so no caller can report a
+ * no-op as a change (the #108 dead-button lesson).
+ */
+export function deleteLoggedWorkout(plan: Plan, id: string): Deletion | null {
+  const removed = plan.workouts[id];
+  if (!isAthleteLogged(removed)) return null;
+
+  const p = clonePlan(plan);
+  delete p.workouts[id];
+
+  const restored: Workout[] = [];
+  for (const t of Object.values(p.workouts)) {
+    if (t.absorbedBy !== id) continue;
+    const snap = t.absorbedFrom;
+    // Field by field, never a spread: the plan round-trips through JSON, which
+    // drops undefined keys — a spread would silently keep the "Covered by…" note
+    // on a session that is live again (see `snapshot` in absorb.ts).
+    const back: Workout = snap
+      ? {
+          ...t,
+          status: snap.status,
+          note: snap.note,
+          segments: snap.segments,
+          estDurationSec: snap.estDurationSec,
+          estDistanceM: snap.estDistanceM,
+          primaryZone: snap.primaryZone,
+          absorbedBy: undefined,
+          absorbedFrom: undefined,
+        }
+      : // Absorbed by a build that predates the snapshot. Status is the half that
+        // matters and the half we can recover exactly — a session marked "skipped"
+        // by a log that no longer exists would otherwise never be trainable again.
+        // A merely-shortened one keeps its length; guessing it back from
+        // `prescribed` would undo any ease or re-pace that happened around it.
+        { ...t, status: t.status === "skipped" ? "planned" : t.status, note: undefined, absorbedBy: undefined, absorbedFrom: undefined };
+    p.workouts[t.id] = back;
+    restored.push(back);
+  }
+
+  reindexWeeks(p);
+
+  const what = removed!.discipline;
+  return {
+    plan: p,
+    removed: removed!,
+    restored,
+    headline: restored.length
+      ? `Removed that ${what} — and put ${restored.length === 1 ? `“${restored[0].title}”` : `${restored.length} sessions`} back on your week.`
+      : `Removed that ${what} from your log.`,
+  };
 }
 
 export function logWorkout(plan: Plan, input: LoggedWorkout): LogResult {

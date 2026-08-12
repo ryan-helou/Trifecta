@@ -32,10 +32,15 @@
 // ---------------------------------------------------------------------------
 
 import { railsRegressed } from "./rails";
+import * as W from "./workouts";
+import type { BuildCtx } from "./workouts";
+import { customSlotFor, parseCustomSplit } from "./workouts";
+import { slotLabel, slotOf } from "./routines";
+import { dayIndexOf } from "./dates";
 import { ZONES } from "./zones";
 import type { Adjustment } from "./prescribe";
 import { scaleWorkout } from "./prescribe";
-import type { PaceModel, Plan, Segment, Workout, Zone } from "./types";
+import type { PaceModel, Plan, Profile, Segment, StrengthSlot, Workout, Zone } from "./types";
 
 /** What kind of intensity target this session can be given. */
 export type TargetKind = "run-pace" | "swim-pace" | "bike-power";
@@ -285,4 +290,90 @@ export function resizeByDistance(plan: Plan, workoutId: string, targetM: number)
     scaled.estDurationSec / 60,
   )} min at the same effort.`;
   return { plan: nextPlan, workout: scaled, summary };
+}
+
+// ---------------------------------------------------------------------------
+// Changing which day of the split a gym session is
+// ---------------------------------------------------------------------------
+
+/** The splits an athlete can move a gym session to, plus their own named days.
+ *
+ *  `home` is deliberately included: "I'm not getting to the gym today" is the most
+ *  common reason to change a strength day, and it is the one option the engine can
+ *  already build without equipment. */
+export function slotChoices(profile: Profile | null | undefined): StrengthSlot[] {
+  const base: StrengthSlot[] = ["push", "pull", "legs", "upper", "lower", "full", "home"];
+  const own = parseCustomSplit(profile?.strength?.customSplit).map(customSlotFor);
+  // The athlete's own names go FIRST — if they've told us their week is "Chest /
+  // Back / Legs", those are the words they think in, and push/pull/legs is our
+  // vocabulary rather than theirs.
+  return [...own, ...base.filter((s) => !own.includes(s))];
+}
+
+/**
+ * Move a gym session to a different day of the split (#, Ryan 2026-08-12: "allow me to
+ * modify the day or my split for the workout so I can change it from push to pull").
+ *
+ * Rebuilds the session from the chosen slot's own builder rather than relabelling it: a
+ * Pull day is a different set of exercises from a Push day, and swapping only the title
+ * would leave an athlete doing bench press under a heading that says rows. The DURATION
+ * carries across, because that is the athlete's constraint, not the split's.
+ *
+ * Deliberately NOT rails-gated. Strength carries no impact load in `mechanical.ts` and no
+ * zone above 2, so push→pull cannot breach a ramp or an intensity band — there is nothing
+ * for the rails to have an opinion about. It also does not go through `respond`: changing
+ * which muscles you train today is not a change in load, and announcing a week-wide
+ * adjustment for it would be noise.
+ *
+ * Returns null when the slot is already the one it is, so the chip can't be a dead button.
+ */
+export function reslotStrength(
+  plan: Plan,
+  workoutId: string,
+  slot: StrengthSlot,
+): Adjustment | null {
+  const w = plan.workouts[workoutId];
+  if (!w || w.discipline !== "strength" || w.status !== "planned") return null;
+  if (slotOf(w) === slot) return null;
+
+  const ctx: BuildCtx = { paces: plan.paces, level: plan.profile.level };
+  const min = Math.max(15, Math.round((w.estDurationSec || 35 * 60) / 60));
+  const custom = slot.startsWith("custom:");
+  const draft = custom
+    ? W.strengthCustom(ctx, min, plan.profile.strength?.customSplit, slotLabel(slot))
+    : slot === "push" ? W.strengthPush(ctx, min)
+    : slot === "pull" ? W.strengthPull(ctx, min)
+    : slot === "legs" ? W.strengthLegs(ctx, min)
+    : slot === "upper" ? W.strengthUpper(ctx, min)
+    : slot === "lower" ? W.strengthLower(ctx, min)
+    : slot === "home" ? W.strengthHome(ctx, min)
+    : W.strength(ctx, min);
+
+  const next: Workout = {
+    ...w,
+    title: draft.title,
+    purpose: draft.purpose,
+    segments: draft.segments,
+    estDurationSec: draft.estDurationSec,
+    primaryZone: draft.primaryZone,
+    // The slot is what `slotOf` reads, and what a saved routine is keyed on — so setting
+    // it is also what makes the athlete's own Pull routine show up on this session.
+    strengthSlot: slot,
+    // A resize baseline captured for the OLD split describes exercises that are no longer
+    // here; keeping it would have the next ease scale this session from a stranger.
+    prescribed: undefined,
+    strengthLog: undefined,
+  };
+
+  return {
+    plan: { ...plan, workouts: { ...plan.workouts, [workoutId]: next } },
+    workout: next,
+    summary: `${fmtDayName(w.date)} is a ${slotLabel(slot)} day now — ${Math.round(next.estDurationSec / 60)} min.`,
+  };
+}
+
+/** "Thursday" from an ISO date, for a one-line confirmation. */
+function fmtDayName(iso: string): string {
+  const DOW = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  return DOW[dayIndexOf(iso)] ?? "That session";
 }

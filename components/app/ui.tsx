@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { Discipline, Feel, Plan, ReadinessInput, StrengthEntry, Unit } from "@/lib/types";
+import { Discipline, Feel, Plan, ReadinessInput, StrengthEntry, StrengthSlot, Unit } from "@/lib/types";
 import type { CalibrationResult } from "@/lib/calibrate";
 import type { AdaptationSuggestion, LoggedWorkout, LogResult } from "@/lib/adapt";
 import type { AddChoice, AddOutcome } from "@/lib/addSession";
@@ -32,6 +32,10 @@ export interface UIActions {
   logCheckin(id: string, entry: CheckinEntry): void;
   /** log a workout the athlete actually did; matches/ticks/swaps against the plan */
   logWorkout(input: LoggedWorkout): Omit<LogResult, "plan">;
+  /** Remove a session the athlete logged (or added) themselves — wrong sport,
+   *  wrong day, logged twice. Puts back whatever that log had absorbed off the
+   *  week, so a mistake doesn't leave the week permanently lighter. */
+  deleteLogged(id: string): void;
   /** "I've got a spare hour" — ADD a session the plan chooses, prospectively (#209).
    *  Distinct from logWorkout, which records what already happened. Returns the
    *  outcome so the sheet can preview it, including a refusal and its alternative. */
@@ -49,6 +53,9 @@ export interface UIActions {
   applySynced(next: Plan, anchorId?: string): void;
   /** resize one session to a target DISTANCE; time moves with it (#185) */
   setDistance(id: string, targetM: number): void;
+  /** move a gym session to a different day of the split — push -> pull and so on.
+   *  Rebuilds the exercises, not just the title (Ryan, 2026-08-12). */
+  setSlot(id: string, slot: StrengthSlot): void;
   /** set the intensity a session will actually be done at. NOT cosmetic — the
    *  zone moves to match the pace, the load moves with the zone, and the rest of
    *  the week responds (#185, Ryan's call: "just the most accurate"). */
