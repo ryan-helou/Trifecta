@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.53",
+  "latest": "1.0.54",
   "bundles": [
-    {
-      "version": "1.0.51",
-      "sha256": "ce47a42fff797dce3f5aa258ebf8ec23748b66db8399f1f2f35cc7bc241da474",
-      "size": 805380,
-      "createdAtISO": "2026-08-12T19:05:04.199Z",
-      "comment": "delete a logged session, correct match credit, gym rest timer"
-    },
     {
       "version": "1.0.52",
       "sha256": "f09559c2684f93a303c1a91aafafcad41759cc5ee68454c5f0a7ce0a1ed3e244",
@@ -21,6 +14,12 @@
       "size": 806093,
       "createdAtISO": "2026-08-12T19:35:51.577Z",
       "comment": "modify edits survive a relaunch"
+    },
+    {
+      "version": "1.0.54",
+      "sha256": "c668f86b561357586c5a912eddde32856e79ca6a0705448cbb4fba03473b399f",
+      "size": 806211,
+      "createdAtISO": "2026-08-12T20:22:34.702Z"
     }
   ]
 }
