@@ -474,6 +474,61 @@ section("deadbands");
   ok(EDIT_VOL_DEADBAND > 0 && EDIT_HARD_DEADBAND > 0, "and neither is zero, so trivial edits stay quiet");
 }
 
+// --- a skip must not MASK a later edit in the same week ---------------------
+//
+// A skipped session used to count on the designed side of the drift and not the current
+// side, so it read as a permanent deficit that NETTED against anything done afterwards.
+// Measured on device: skip a 60 min run on Tuesday, lengthen Friday's run by 28 min, and
+// the week came out at -2% — inside the deadband — so the responder saw "on plan" and did
+// nothing, while the truth was a lost Z5 session plus half an hour of extra easy volume.
+section("a skip is drift-neutral, and never hides a later change");
+{
+  const plan = generatePlan(profile(6, { swim: 2, bike: 2, run: 2 }), ANCHOR);
+  const today = d(2);
+  const week = plan.weeks.find((w) => w.index === 1)!;
+  const base = weekDrift(plan, week);
+  ok(Math.abs(base.volPct) < 0.001, `an untouched week measures 0 (${base.volPct.toFixed(2)}%)`);
+
+  const victim = week.workoutIds
+    .map((id) => plan.workouts[id]!)
+    .find((w) => w && w.status === "planned" && w.discipline !== "rest" && w.date >= today)!;
+  const skipped = setStatus(plan, victim.id, "skipped");
+  const afterSkip = weekDrift(skipped, week);
+  ok(
+    Math.abs(afterSkip.volPct) < 0.001,
+    `a skip leaves the comparison entirely (${afterSkip.volPct.toFixed(2)}%, was ${base.volPct.toFixed(2)}%)`,
+  );
+
+  // Now lengthen a DIFFERENT session in the same week. The property is not that any
+  // particular edit clears the deadband — that depends on how big the session is — but
+  // that the skip contributes NOTHING to the measurement. Drift after the edit must be
+  // identical whether or not a session was skipped first; that identity is exactly what
+  // was broken, and it is what let a skip swallow a later change.
+  const other = week.workoutIds
+    .map((id) => skipped.workouts[id]!)
+    .find((w) => w && w.status === "planned" && w.discipline !== "rest" && w.id !== victim.id && !!w.segments?.length)!;
+  if (other) {
+    const longer = scaleWorkout(other, 1.5, { allowLonger: true });
+    if (longer && longer.estDurationSec > other.estDurationSec) {
+      const withSkip: Plan = { ...skipped, workouts: { ...skipped.workouts, [other.id]: longer } };
+      const noSkip: Plan = { ...plan, workouts: { ...plan.workouts, [other.id]: longer } };
+      const a = weekDrift(withSkip, week).volPct;
+      const b = weekDrift(noSkip, week).volPct;
+      // Not identical — dropping the skipped session shrinks the denominator, so the same
+      // edit is a slightly LARGER share of what is left. That is correct. The property is
+      // directional: a skip may never make a subsequent addition measure smaller, and can
+      // certainly never flip its sign, which is how +28 min used to read as -2%.
+      ok(
+        a >= b - 0.001,
+        `an earlier skip never shrinks a later addition (${a.toFixed(2)}% with, ${b.toFixed(2)}% without)`,
+      );
+      ok(a > 0, `and the addition still reads as MORE work, not less (${a.toFixed(2)}%)`);
+    } else {
+      ok(true, "that session could not be lengthened (vacuous)");
+    }
+  }
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures) {
   console.error(`\n❌ ${failures} replan invariant(s) FAILED`);

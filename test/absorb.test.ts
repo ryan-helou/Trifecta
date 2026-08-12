@@ -431,6 +431,43 @@ section("running it twice does not compound");
   }
 }
 
+// --- 11. an unplanned session is never silently ignored ---------------------
+//
+// `canCover` is a one-way door so easy work can't buy an athlete out of intervals. It
+// was gating the SHORTEN path too, and in a build week almost everything left is Z3+ —
+// so an unplanned ride routinely matched nothing and the plan did nothing at all.
+// Observed on device: an unplanned 1h15 bike left a Bike Threshold 4x10 untouched, which
+// is #215's original complaint by another route. Volume counts even when intensity
+// can't stand in.
+section("an unplanned session always registers somewhere in its sport");
+{
+  const { plan, today, weekIndex } = bed();
+  const week = plan.weeks.find((w) => w.index === weekIndex)!;
+  // a week whose remaining bikes are ALL quality — the case that used to no-op
+  let hard: Plan = { ...plan, workouts: { ...plan.workouts } };
+  let bikes = 0;
+  for (const id of week.workoutIds) {
+    const w = hard.workouts[id];
+    if (!w || w.discipline !== "bike" || w.status !== "planned") continue;
+    hard.workouts[id] = { ...w, primaryZone: 4 };
+    bikes++;
+  }
+  ok(bikes > 0, `the fixture week has bikes to test against (${bikes})`);
+
+  const before = hard;
+  const { plan: after } = didUnplanned(hard, today, "bike", 60, 3); // EASY unplanned ride
+  const touched = Object.values(after.workouts).filter(
+    (w) => w.absorbedBy && before.workouts[w.id],
+  );
+  ok(touched.length > 0, "an easy unplanned ride still reduces the week's bike volume");
+  for (const w of touched) {
+    const was = before.workouts[w.id]!;
+    ok(w.status === "planned", `${w.title} is trimmed, not removed — easy work can't cancel a hard session`);
+    ok(w.primaryZone === was.primaryZone, `${w.title} keeps its intensity (z${was.primaryZone})`);
+    ok(w.estDurationSec < was.estDurationSec, `${w.title} is shorter than it was`);
+  }
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures) {
   console.error(`\n❌ ${failures} absorb invariant(s) FAILED`);

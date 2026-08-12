@@ -203,7 +203,39 @@ export function absorbUnplanned(plan: Plan, todayISO: string, doneId: string): A
       return da === db ? a.date.localeCompare(b.date) : da - db;
     });
 
-  for (const target of pool) {
+  // WHEN NOTHING MATCHES ON INTENSITY, THE WORK STILL COUNTS AS VOLUME.
+  //
+  // `canCover` is a one-way door on purpose: an easy hour must never buy an athlete out
+  // of their intervals. But it was gating the SHORTEN path too, and in a build week
+  // almost everything left is Z3+, so an unplanned ride routinely found no candidate at
+  // all and the plan did nothing. Measured on device: an unplanned 1h15 bike left the
+  // week's Bike Threshold 4x10 completely untouched — which is ticket #215's original
+  // complaint ("i did a bike and nothign changed") reappearing through a side door.
+  //
+  // The two questions are different. "May this stand IN FOR that session?" is about
+  // stimulus, and stays gated. "Has the week already had some of that riding?" is about
+  // volume, and the honest answer is yes regardless of how hard it was. So a trim is
+  // allowed against a harder session — it keeps the session's shape and zone, it just
+  // asks for less of it — and the EASIEST eligible session takes the cut first, so the
+  // week sheds aerobic volume before it touches a key session's interval count.
+  const trimOnly = pool.length
+    ? []
+    : week.workoutIds
+        .map((id) => plan.workouts[id])
+        .filter(
+          (w): w is Workout =>
+            !!w &&
+            w.id !== doneId &&
+            w.id !== "w-race-day" &&
+            w.status === "planned" &&
+            w.date >= todayISO &&
+            !!w.segments?.length &&
+            covers(did.discipline, w.discipline),
+        )
+        .sort((a, b) => (a.primaryZone !== b.primaryZone ? a.primaryZone - b.primaryZone : a.date.localeCompare(b.date)));
+
+  for (const target of [...pool, ...trimOnly]) {
+    const volumeOnly = !pool.includes(target);
     // Measure against the ORIGINAL prescription, not the current value. Otherwise a
     // session already trimmed by an earlier pass looks easier to cover than it is,
     // and two unplanned rides could between them absorb a session neither earned.
@@ -213,7 +245,7 @@ export function absorbUnplanned(plan: Plan, todayISO: string, doneId: string): A
     // --- adequate equivalent → it comes off the week ------------------------
     // …unless the day already carried this sport, in which case this was extra
     // work rather than a stand-in, and the most it may do is shorten (see above).
-    if (didSec / baseSec >= ADEQUATE && !dayAlreadyHadThisSport) {
+    if (didSec / baseSec >= ADEQUATE && !dayAlreadyHadThisSport && !volumeOnly) {
       const absorbed: Workout = {
         ...target,
         status: "skipped",
@@ -248,9 +280,12 @@ export function absorbUnplanned(plan: Plan, todayISO: string, doneId: string): A
       plan: next,
       id: target.id,
       kind: "shortened",
-      headline:
-        `That ${did.discipline} wasn't on the plan, so ${target.title} comes down to ` +
-        `${Math.round(trimmed.estDurationSec / 60)} min — you've already done part of it.`,
+      headline: volumeOnly
+        ? `That ${did.discipline} wasn't on the plan, so ${target.title} comes down to ` +
+          `${Math.round(trimmed.estDurationSec / 60)} min — the week has had that ${did.discipline} volume already, ` +
+          `and this session keeps its intensity.`
+        : `That ${did.discipline} wasn't on the plan, so ${target.title} comes down to ` +
+          `${Math.round(trimmed.estDurationSec / 60)} min — you've already done part of it.`,
     };
   }
 
