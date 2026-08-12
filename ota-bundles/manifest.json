@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.43",
+  "latest": "1.0.44",
   "bundles": [
-    {
-      "version": "1.0.41",
-      "sha256": "9c51bc5c741c074ab0a6c641fabed262bb7994550aaa6c98d881307e201699b6",
-      "size": 801706,
-      "createdAtISO": "2026-08-11T21:57:16.317Z",
-      "comment": "remove the adjusted-your-plan card"
-    },
     {
       "version": "1.0.42",
       "sha256": "2895a4799bdee0a8aa6ee1d2a18c5a412cfd85d90f31180c257c29c61c9f02de",
@@ -20,6 +13,12 @@
       "sha256": "1c83c5a9e114fb06fc992f921cce8f7cac6ff0767a09eb8be6b2199c68bc6529",
       "size": 801585,
       "createdAtISO": "2026-08-11T22:16:56.569Z"
+    },
+    {
+      "version": "1.0.44",
+      "sha256": "23f4133084347907eb0430211673c5a9ce593b949ea96d3f142e356a2e82c147",
+      "size": 801816,
+      "createdAtISO": "2026-08-12T00:50:53.204Z"
     }
   ]
 }
