@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.46",
+  "latest": "1.0.47",
   "bundles": [
-    {
-      "version": "1.0.44",
-      "sha256": "23f4133084347907eb0430211673c5a9ce593b949ea96d3f142e356a2e82c147",
-      "size": 801816,
-      "createdAtISO": "2026-08-12T00:50:53.204Z"
-    },
     {
       "version": "1.0.45",
       "sha256": "bd71abbaa01cdc1776980f9c877659aabb559685ec5306e7a0cc46f447ea6d3f",
@@ -19,6 +13,13 @@
       "size": 802179,
       "createdAtISO": "2026-08-12T13:30:47.987Z",
       "comment": "swapping a run away no longer blocks getting it back"
+    },
+    {
+      "version": "1.0.47",
+      "sha256": "7f6f61554f5ad7f872a0e9175f784e7196cafb2a22e3e16ad6f5c5aae797b20a",
+      "size": 802393,
+      "createdAtISO": "2026-08-12T14:33:51.271Z",
+      "comment": "auto-adjust fixes"
     }
   ]
 }
