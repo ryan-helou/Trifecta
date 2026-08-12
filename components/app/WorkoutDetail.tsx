@@ -134,7 +134,16 @@ function ModifyPanel({
   const paces = kind ? targetChoices(plan.paces, kind) : [];
   const sports: Discipline[] = ["swim", "bike", "run", "strength"];
   const today = todayISO();
-  const days = Array.from({ length: 10 }).map((_, i) => addDays(today, i));
+  // Days AROUND THE SESSION, not always the ten after today.
+  //
+  // This offered `today … today+9` whatever session was open, so a session three weeks
+  // out could only be moved backwards — every option on the row was in a week it doesn't
+  // belong to, and the one thing an athlete actually wants ("shift it a day or two") was
+  // not on offer at all. Anchored to the session instead: a few days either side, never
+  // into the past, so moving is always a nudge rather than a relocation.
+  const days = Array.from({ length: 10 })
+    .map((_, i) => addDays(workout.date, i - 3))
+    .filter((d) => d >= today);
   const baseSec = workout.prescribed?.estDurationSec ?? workout.estDurationSec;
   const baseM = workout.prescribed?.estDistanceM ?? workout.estDistanceM ?? 0;
 
@@ -217,7 +226,13 @@ function ModifyPanel({
         label="Sport"
         hint={
           workout.primaryZone >= 4
-            ? "Swapping gives you an EASY session of that sport — this is a hard session, so its quality is lost, not moved. Capped too, so a swap can't hide a jump in running load."
+            ? // The old copy said the quality was "lost, not moved". It isn't: respondToEdit
+              // rebuilds the lost intensity into another session in the same week, and on
+              // device it did exactly that — swapping a VO2 run for a ride turned Thursday's
+              // sweet-spot bike into a VO2 Max Run. Telling an athlete their hard work is
+              // gone, and then silently giving it back somewhere else, undersells the best
+              // thing the engine does and makes the week look like it changed for no reason.
+              "Swapping gives you an EASY session of that sport. This one is hard, so its intensity moves to another day this week rather than disappearing. Capped too, so a swap can't hide a jump in running load."
             : "Swapping gives you an easy session of that sport, capped so it can't hide a jump in running load."
         }
       >

@@ -726,7 +726,37 @@ export function easeUpcoming(plan: Plan, fromISODate: string, days: number, caus
     if (w.status !== "planned") continue;
     const hard = ["threshold", "vo2", "tempo", "brick"].includes(w.type);
     if (hard) {
-      const draft = replacementDraft(ctx, w.discipline === "brick" ? "bike" : w.discipline, (w.estDurationSec || 2400) / 60 * 0.8);
+      // A BRICK IS EASED, NOT DISSOLVED.
+      //
+      // `replacementDraft` for a brick asked for a *bike*, so easing turned "Brick — Find
+      // Your Run Legs" into an "Easy Aerobic Endurance Ride" and the run off the bike —
+      // the single most race-specific thing in the week — simply vanished. Doc 01 §4 #8
+      // makes bricks mandatory in build and peak; they are not an intensity garnish that
+      // can be traded for recovery. Observed on device: one hard check-in removed the
+      // week's brick entirely.
+      //
+      // Easing it means dropping the race-pace block and the duration, and KEEPING the
+      // ride-then-run shape. Same protection, without deleting the stimulus.
+      if (w.type === "brick") {
+        const mins = Math.max(30, Math.round(((w.estDurationSec || 3600) / 60) * 0.8));
+        const runOff = Math.max(10, Math.round(mins * 0.2));
+        const draft = W.brick(ctx, mins - runOff, runOff, false);
+        p.workouts[id] = {
+          ...w,
+          type: draft.type,
+          title: draft.title,
+          purpose: "Shorter and all-aerobic, so you still get the legs-off-the-bike practice while you recover.",
+          segments: draft.segments,
+          estDurationSec: draft.estDurationSec,
+          estDistanceM: draft.estDistanceM,
+          primaryZone: draft.primaryZone,
+          note: "Eased off",
+          easedCause: cause,
+          easedFrom: w.easedFrom ?? { type: w.type, primaryZone: w.primaryZone },
+        };
+        continue;
+      }
+      const draft = replacementDraft(ctx, w.discipline, (w.estDurationSec || 2400) / 60 * 0.8);
       p.workouts[id] = {
         ...w,
         type: draft.type,

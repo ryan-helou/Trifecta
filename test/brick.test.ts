@@ -22,6 +22,7 @@
 
 import { generatePlan, brickRunOffMin } from "../lib/planEngine";
 import { checkRails } from "../lib/rails";
+import { easeUpcoming } from "../lib/adapt";
 import { gainMultiplier } from "../lib/predict";
 import type { Plan, Profile, Workout } from "../lib/types";
 
@@ -277,6 +278,40 @@ section("improvement keeps accruing past 16 weeks, with diminishing returns");
   // bounded — it can never promise the impossible
   for (const w of [200, 500, 5000]) ok(gainMultiplier(w) < 4.001, `${w} weeks stays under the ceiling`);
   ok(gainMultiplier(1) > 0 && gainMultiplier(1) < 0.2, "one week is worth something, but barely");
+}
+
+// --- easing a week must not DELETE the brick --------------------------------
+//
+// `easeUpcoming` rebuilt every hard session from `replacementDraft`, and for a brick it
+// asked for a *bike* — so "Brick — Find Your Run Legs" came back as an "Easy Aerobic
+// Endurance Ride" and the run off the bike vanished. Observed on device: one hard
+// check-in removed the week's brick outright. Doc 01 §4 #8 makes bricks mandatory in
+// build and peak; they are not intensity garnish to be traded for recovery.
+section("easing a week keeps its bricks");
+{
+  for (const [raceType, wpw] of ARCH) {
+    const plan = planFor(raceType, wpw);
+    const before = bricksOf(plan).filter((w) => w.status === "planned");
+    ok(before.length > 0, `${raceType}: the block has bricks to protect (${before.length})`);
+    // ease a wide window so every brick in the plan is exercised
+    const eased = easeUpcoming(plan, d(0), 200, "strain");
+    for (const b of before) {
+      const after = eased.workouts[b.id];
+      ok(!!after, `${raceType}: ${b.title} still exists after easing`);
+      if (!after) continue;
+      ok(
+        after.discipline === "brick",
+        `${raceType}: a brick stays a brick when eased (became ${after.discipline})`,
+      );
+      ok(
+        after.estDurationSec <= b.estDurationSec,
+        `${raceType}: and easing never lengthens it`,
+      );
+      const hasRun = (after.segments ?? []).some((sg) => sg.discipline === "run");
+      const hasBike = (after.segments ?? []).some((sg) => sg.discipline === "bike");
+      ok(hasRun && hasBike, `${raceType}: the ride-then-run shape survives the ease`);
+    }
+  }
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

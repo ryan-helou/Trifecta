@@ -142,7 +142,25 @@ export function weekDrift(plan: Plan, week: Week): WeekDrift {
       if (des.zone >= 4) currentHardSec += des.sec;
       continue;
     }
-    // Skipped work has left the week; done work is history and can't be re-planned.
+    // A SKIP LEAVES THE COMPARISON ENTIRELY — both sides of it.
+    //
+    // It used to count on the designed side and not the current side, so a skipped hour
+    // read as a permanent -60 min on the week. That number then NETTED against anything
+    // the athlete did afterwards: measured on device, skipping a 60 min run on Tuesday
+    // and then lengthening Friday's run by 28 min left the week measuring -2% — inside
+    // the deadband — so the responder saw "on plan" and did nothing at all, while the
+    // truth was a lost Z5 session and half an hour of extra easy volume.
+    //
+    // Drift is meant to answer "how far have the sessions still on the books moved from
+    // what they were designed to be". A session that is gone is not one of them. Dropping
+    // it from both sides makes a skip drift-NEUTRAL, which is also what the product
+    // already promises: a skip is absorbed, not compensated for.
+    if (w.status === "skipped") {
+      designedSec -= des.sec;
+      if (des.zone >= 4) designedHardSec -= des.sec;
+      continue;
+    }
+    // Done work is history and can't be re-planned.
     if (w.status !== "planned") continue;
     currentSec += w.estDurationSec;
     if (w.primaryZone >= 4) currentHardSec += w.estDurationSec;
@@ -172,8 +190,20 @@ export interface EditResponse {
  * Ryan, 2026-08-10: "someone could get away with just biking all the time and
  * never running."
  *
- * A skipped session counts as lost, exactly like a swapped one: skipping every
- * run is the same hole by a different route.
+ * A SWAP counts as lost — that is the exploit this exists for. A SKIP does not.
+ *
+ * Skips used to count as a hole too, on the reasoning that skipping every run avoids
+ * running just as effectively as swapping it away. True, but it made the plan do the one
+ * thing Ryan has now asked it not to do three separate times: rewrite a session he did
+ * not touch. The hole is not filled on the skip itself (`reassign` is false there) — it
+ * just SITS in the week, and the next unrelated edit trips over it. Observed on device:
+ * skip Tuesday's run, later lengthen Sunday's long run, and Friday's swim silently became
+ * a run. The athlete changed a run and lost a swim.
+ *
+ * A skip is a decision, and the session is gone; it leaves the comparison exactly as it
+ * leaves `weekDrift`. The avoid-your-weak-sport case is real but belongs to the weekly
+ * adaptation, which can look at a fortnight and say so out loud — not to a silent
+ * conversion triggered by an unrelated edit days later.
  */
 export function sportDrift(plan: Plan, week: Week): Record<string, { designed: number; current: number }> {
   const out: Record<string, { designed: number; current: number }> = {};
@@ -190,11 +220,11 @@ export function sportDrift(plan: Plan, week: Week): Record<string, { designed: n
     // Absorption is what answers an extra session; sport balance stays a question
     // about the sessions the engine actually wrote.
     if (isUnplanned(w)) continue;
-    bump(w.swappedFrom?.discipline ?? w.discipline, "designed");
-    // Absorbed counts as SUPPLIED, not lost — the athlete did that ride, it just
-    // wasn't the one on the calendar. Reading it as a hole would have the responder
-    // convert some other session back into a bike to replace a bike already done.
+    // A genuine skip leaves the comparison entirely, both sides — see the note above.
+    // (An ABSORBED session also carries `skipped`, and that one is supplied, not lost:
+    // the athlete did that ride, it just wasn't the one on the calendar.)
     if (w.status === "skipped" && !w.absorbedBy) continue;
+    bump(w.swappedFrom?.discipline ?? w.discipline, "designed");
     bump(w.discipline, "current");
   }
   return out;

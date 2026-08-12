@@ -117,13 +117,26 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   const absorbed = absorbUnplanned(plan, todayISO, event.workoutId);
   const afterAbsorb = absorbed?.plan ?? plan;
 
-  // Every event refreshes the prescription from the ledger. Skips included: a
-  // skipped session is zero load, which leaves the athlete FRESHER than budget,
-  // and the never-add rule then correctly declines to hand them extra work.
-  // Doc 02 §4 #11 — a life-miss is not a reason to soften anything.
-  // The session the athlete just acted on is excluded: they set it deliberately,
-  // and the responder's job is to adjust the sessions AROUND that choice.
-  const re = represcribe(afterAbsorb, todayISO, undefined, event.workoutId);
+  // Every event refreshes the prescription from the ledger. The session the athlete just
+  // acted on is excluded: they set it deliberately, and the responder's job is to adjust
+  // the sessions AROUND that choice.
+  //
+  // A SKIP MAY ONLY EVER REDUCE.
+  //
+  // This comment used to say the never-add rule handled skips for us — "a skipped session
+  // is zero load, which leaves the athlete FRESHER than budget, and the never-add rule
+  // then correctly declines to hand them extra work". That rule was overridden on
+  // 2026-08-09 to allow gentle increases, and nobody revisited this: the comment stayed
+  // true-sounding while the behaviour inverted. Observed on device — skipping a session
+  // produced "You've been running about 11% lighter than this block budgeted for, so the
+  // next sessions get put back", i.e. missing a run bought MORE work.
+  //
+  // Doc 02 §4 #11 is unambiguous that a life-miss is not a reason to change the plan
+  // around the athlete, and adding load because they missed something is the worst
+  // reading of it available. Credit still accrues from work genuinely done; it just
+  // cannot be claimed by work NOT done.
+  const reRaw = represcribe(afterAbsorb, todayISO, undefined, event.workoutId);
+  const re = event.kind === "skipped" && reRaw && reRaw.factor > 1 ? null : reRaw;
 
   // ...and separately, respond to the EDIT itself. The ledger above only sees
   // completed work, so a change to a session you haven't done yet is invisible

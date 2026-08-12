@@ -411,7 +411,21 @@ function AppShellInner() {
       const after = next.workouts[id];
       const strain = after ? sessionStrain(after) : null;
       if (strain !== null && strain >= STRAIN_OFFER_EASE) {
-        const eased = easeUpcoming(next, today, 7, "strain");
+        // TWO DAYS, NOT SEVEN.
+        //
+        // This is ONE session's evidence, and respond.ts states the ladder it has to obey:
+        // one event moves the next 1-3 sessions, a week's shape moves the coming week, a
+        // trend moves the block. A 7-day window skipped two rungs — measured on device, a
+        // single max-effort swim on Wednesday softened Thursday's threshold ride AND
+        // Saturday's brick, so the week lost both its key sessions to one hard swim.
+        // Doc 02 §4 #10 is the rule being broken: one bad day is not a reason to rewrite
+        // anything beyond the days it plausibly reaches.
+        //
+        // Two days still protects the thing worth protecting — tomorrow, when the fatigue
+        // from today actually lands — and leaves the weekend's key work alone. A genuine
+        // pattern is still caught: `assessAdaptation` watches a fortnight and softens the
+        // whole of next week, which is the right tool at that scale.
+        const eased = easeUpcoming(next, today, 2, "strain");
         // easeUpcoming only touches HARD sessions, so an already-easy week comes back
         // identical — count what actually moved and say the true thing, or nothing.
         const softened = Object.values(eased.workouts).filter(

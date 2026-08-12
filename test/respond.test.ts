@@ -276,6 +276,40 @@ section("never throws on degenerate input");
   }
 }
 
+// --- a skip may only ever REDUCE ------------------------------------------
+//
+// The never-add rule used to guarantee this for free. It was overridden on 2026-08-09 to
+// allow gentle increases, and the skip path inherited that silently: observed on device,
+// skipping a session produced "you've been running 11% lighter than this block budgeted
+// for, so the next sessions get put back". Missing a run bought more work. Doc 02 §4 #11.
+section("skipping never buys the athlete MORE work");
+{
+  const plan = generatePlan(profile(), ANCHOR);
+  const today = addDays(ANCHOR, 30);
+  // an athlete who has been consistently UNDER budget — the state that triggers credit
+  let light = plan;
+  for (const w of Object.values(plan.workouts)) {
+    if (w.discipline === "rest" || w.date >= today) continue;
+    light = logCheckin(light, w.id, { rpe: 2, feel: "great", actualDurationSec: Math.round((w.estDurationSec || 0) * 0.5) });
+  }
+  const upcoming = Object.values(light.workouts).filter(
+    (w) => w.date >= today && w.status === "planned" && w.discipline !== "rest",
+  );
+  ok(upcoming.length > 0, "there are sessions left to change");
+  let grew = 0;
+  for (const w of upcoming.slice(0, 6)) {
+    const before = setStatus(light, w.id, "skipped");
+    const res = respondTo(before, today, { kind: "skipped", workoutId: w.id });
+    if (!res) continue;
+    for (const [id, after] of Object.entries(res.plan.workouts)) {
+      const was = before.workouts[id];
+      if (!was || id === w.id) continue;
+      if (after.estDurationSec > was.estDurationSec + 1) grew++;
+    }
+  }
+  ok(grew === 0, `no session is lengthened because something was skipped (${grew} grew)`);
+}
+
 console.log(`\n${checks - failures}/${checks} invariants passed`);
 if (failures) {
   console.error(`\n❌ ${failures} response invariant(s) failed`);
