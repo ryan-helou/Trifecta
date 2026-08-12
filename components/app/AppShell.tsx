@@ -24,6 +24,7 @@ import { todayISO } from "@/lib/dates";
 import {
   assessAdaptation,
   applyAdaptation,
+  deleteLoggedWorkout,
   easeUpcoming,
   logCheckin,
   logInstead,
@@ -43,7 +44,7 @@ import { ENGINE_VERSION } from "@/lib/planEngine";
 import { adjustSession } from "@/lib/prescribe";
 import { addSession as buildAddedSession, suggestSession, type AddChoice } from "@/lib/addSession";
 import { apiMarkNotificationsRead, apiNotifications } from "@/lib/api";
-import { repaceSession, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
+import { repaceSession, reslotStrength, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
 import type { Plan } from "@/lib/types";
 import { logReadiness, readinessScore, READY_LOW } from "@/lib/readiness";
 import { track } from "@/lib/analytics";
@@ -51,6 +52,7 @@ import { calibratePaces } from "@/lib/calibrate";
 import { observeHr } from "@/lib/hr";
 import { derivePaces } from "@/lib/paces";
 import { loadNotifPrefs, refreshReminders } from "@/lib/notify";
+import { clearLive } from "@/lib/liveStore";
 
 const COACH_GREETING: CoachMsg = {
   role: "coach",
@@ -477,6 +479,31 @@ function AppShellInner() {
       const { plan: _p, ...view } = res;
       return view;
     },
+    // Logged the wrong sport, the wrong day, or the same ride twice. Straight
+    // through applyPlan, NOT `respond`: the athlete is taking work OFF the ledger,
+    // and the responder's job is to answer new work — pointing it at a deletion
+    // would have it re-balance the week around a session that no longer exists.
+    // The restore inside deleteLoggedWorkout is the whole answer.
+    deleteLogged: (id) => {
+      const res = deleteLoggedWorkout(plan, id);
+      if (!res) return;
+      const prev = plan;
+      track("session_deleted", { discipline: res.removed.discipline, restored: res.restored.length });
+      // A gym session the athlete added can have a half-finished tracker draft in
+      // storage. Ids are reusable (`logged-<date>-<sport>`), so leaving it would let
+      // a dead draft re-attach to the next session that happens to take the same id.
+      clearLive(id);
+      applyPlan(res.plan);
+      toast({
+        text: res.headline,
+        tone: "success",
+        actionLabel: "Undo",
+        onAction: () => applyPlan(prev),
+        // Longer than a normal toast: this is the only route back to a session
+        // that no longer exists anywhere.
+        duration: 10000,
+      });
+    },
     // Rebuilding used to be silent: it changed the plan correctly, but from the Profile
     // tab — where the button lives — nothing on screen moved, because the confirmation
     // only ever rendered on Today. Tapping it looked like a dead button (#108). Now it
@@ -517,6 +544,31 @@ function AppShellInner() {
       track("session_distance_set", { targetM });
       respond(res.plan, { kind: "logged", workoutId: id });
       toast({ text: res.summary, tone: "success", actionLabel: "Undo", onAction: () => applyPlan(prev), duration: 8000 });
+    },
+
+    // Moving a gym session to another day of the split (Ryan, 2026-08-12: "so I can
+    // change it from push to pull or whatever").
+    //
+    // Deliberately does NOT go through `respond`. Strength carries no impact load and no
+    // zone above 2, so swapping which muscles you train cannot move the week's ramp or
+    // its intensity band — running it through the responder would announce a week-wide
+    // adjustment for a change that has none, which is the dead-button bug inverted.
+    setSlot: (id, slot) => {
+      const res = reslotStrength(plan, id, slot);
+      if (!res) {
+        toast({ text: "That's already the day it's set to.", tone: "default" });
+        return;
+      }
+      const prev = plan;
+      track("session_reslotted", { slot });
+      applyPlan(res.plan);
+      toast({
+        text: res.summary,
+        tone: "success",
+        actionLabel: "Undo",
+        onAction: () => applyPlan(prev),
+        duration: 8000,
+      });
     },
 
     // Setting the pace a session will be done at (#185). This is the one control

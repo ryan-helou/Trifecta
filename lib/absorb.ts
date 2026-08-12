@@ -120,6 +120,27 @@ function covers(did: Discipline, planned: Discipline): boolean {
   return false;
 }
 
+/**
+ * The session as it stands right now, kept so that deleting the logged session
+ * that absorbed it can hand back exactly what was taken (`absorbedFrom` in
+ * types.ts explains why this is a snapshot and not `prescribed`).
+ *
+ * `note` is listed explicitly even when it is absent: the plan is JSON-persisted,
+ * and JSON drops undefined keys — so a restore that relied on spreading the
+ * snapshot would leave "Covered by the bike you did on…" on a session that is
+ * live again. The reader in adapt.ts assigns each field by name for the same reason.
+ */
+function snapshot(w: Workout): NonNullable<Workout["absorbedFrom"]> {
+  return {
+    status: w.status,
+    note: w.note,
+    segments: w.segments,
+    estDurationSec: w.estDurationSec,
+    estDistanceM: w.estDistanceM,
+    primaryZone: w.primaryZone,
+  };
+}
+
 export interface Absorption {
   plan: Plan;
   /** the session that gave way */
@@ -250,6 +271,7 @@ export function absorbUnplanned(plan: Plan, todayISO: string, doneId: string): A
         ...target,
         status: "skipped",
         absorbedBy: doneId,
+        absorbedFrom: snapshot(target),
         note: `Covered by the ${did.discipline} you did on ${did.date}`,
       };
       const next: Plan = { ...plan, workouts: { ...plan.workouts, [target.id]: absorbed } };
@@ -273,7 +295,9 @@ export function absorbUnplanned(plan: Plan, todayISO: string, doneId: string): A
     const scaled = scaleWorkout(target, remainingSec / baseSec);
     if (!scaled) continue;
 
-    const trimmed: Workout = { ...scaled, absorbedBy: doneId };
+    // Snapshot the TARGET, not `scaled` — what has to come back is the session as it
+    // stood before this pass trimmed it.
+    const trimmed: Workout = { ...scaled, absorbedBy: doneId, absorbedFrom: snapshot(target) };
     const next: Plan = { ...plan, workouts: { ...plan.workouts, [target.id]: trimmed } };
     if (railsRegressed(plan, next).length) continue;
     return {

@@ -2,7 +2,7 @@
 
 import { Segment, StrengthSet, Unit, Workout } from "./types";
 
-const M_PER_MILE = 1609.34;
+export const M_PER_MILE = 1609.34;
 
 export function pad(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;

@@ -5,7 +5,7 @@ import { Discipline, Plan, Segment, Unit, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 import { targetView } from "@/lib/targets";
-import { fmtDistance, fmtDuration, fmtSets, repsSummary } from "@/lib/format";
+import { M_PER_MILE, fmtDistance, fmtDuration, fmtSets, repsSummary } from "@/lib/format";
 import { compareLifts, congratulate, exerciseHistory, newPersonalBests, summarise } from "@/lib/strength";
 import { addDays, dayIndexOf, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
@@ -13,6 +13,7 @@ import { Sheet } from "./Sheet";
 import { buildWorkoutFit, fitFilename } from "@/lib/fit";
 import { whyAddsContext, whyForWorkout } from "@/lib/why";
 import { adjustChoices } from "@/lib/prescribe";
+import { isAthleteLogged } from "@/lib/adapt";
 import {
   canSetDistance,
   distanceChoices,
@@ -20,6 +21,7 @@ import {
   targetKindFor,
   targetLabel,
   targetUnavailableReason,
+  slotChoices,
 } from "@/lib/modify";
 import { haptic } from "@/lib/haptics";
 import { useUI, type UIActions } from "./ui";
@@ -85,6 +87,140 @@ function RepBlock({ seg, paces, unit }: { seg: Segment; paces: Plan["paces"]; un
   );
 }
 
+// ---------------------------------------------------------------------------
+// TYPING A VALUE, not just picking one.
+//
+// The chips are derived from what the plan asked for, which makes the common case one
+// tap — but they are only ever five options, and an athlete who knows they have exactly
+// 40 minutes, or wants 12 km, or races at 4:35/km, had no way to say so. Ryan, 2026-08-12:
+// "allow to put your own pace, length and distance, like you can type it out instead of
+// clicking on the button."
+//
+// Typed values go through the SAME actions as the chips — `adjust`, `setDistance`,
+// `repace` — so every guard still applies: the rails can refuse, the stretch is still
+// capped, and the session is still rescaled honestly rather than having its header
+// rewritten. Nothing here is a second code path; it is a second way to name a number.
+// ---------------------------------------------------------------------------
+
+/** "90" → 90 min · "1:30" → 90 min · "1h30" → 90 min. Null when it isn't a duration. */
+function parseMinutes(raw: string): number | null {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return null;
+  const hm = /^(\d+)[h:](\d{1,2})$/.exec(s);
+  if (hm) {
+    const mins = Number(hm[2]);
+    if (mins > 59) return null;
+    return Number(hm[1]) * 60 + mins;
+  }
+  const h = /^(\d+(?:\.\d+)?)h$/.exec(s);
+  if (h) return Math.round(Number(h[1]) * 60);
+  if (!/^\d+(?:\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  return n > 0 && n <= 600 ? n : null;
+}
+
+/** Metres from what the athlete typed, in whatever unit the chips are showing. */
+function parseDistanceM(raw: string, unit: Unit, pool: boolean): number | null {
+  const s = raw.trim().replace(/[^\d.]/g, "");
+  if (!s || !/^\d+(?:\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  if (n <= 0) return null;
+  // A swim is prescribed in metres and shown in metres (fmtDistance), so it is read in
+  // metres too. Anything else follows the athlete's own unit.
+  if (pool) return n <= 20000 ? Math.round(n) : null;
+  const m = unit === "imperial" ? n * M_PER_MILE : n * 1000;
+  return m <= 400000 ? Math.round(m) : null;
+}
+
+/** "4:45" → 285 s · "250" → 250 W. Matches whatever `targetLabel` prints. */
+function parseTargetValue(raw: string, kind: "run-pace" | "swim-pace" | "bike-power"): number | null {
+  const s = raw.trim().replace(/\s+/g, "");
+  if (!s) return null;
+  if (kind === "bike-power") {
+    const n = Number(s.replace(/[^\d.]/g, ""));
+    return Number.isFinite(n) && n > 0 && n <= 2000 ? Math.round(n) : null;
+  }
+  const ms = /^(\d+):(\d{1,2})$/.exec(s);
+  if (ms) {
+    const sec = Number(ms[2]);
+    if (sec > 59) return null;
+    const total = Number(ms[1]) * 60 + sec;
+    return total > 0 && total <= 3600 ? total : null;
+  }
+  // A bare number is minutes-per-unit, which is how people say "five minute k".
+  if (/^\d+(?:\.\d+)?$/.test(s)) {
+    const total = Math.round(Number(s) * 60);
+    return total > 0 && total <= 3600 ? total : null;
+  }
+  return null;
+}
+
+/** A text field that sits alongside a row of chips and speaks the same language.
+ *
+ *  Commits on Enter or on the tick, never on every keystroke — resizing a session per
+ *  character would fire the responder a dozen times for one edit, and each pass would
+ *  re-announce itself. Clears only when the value parsed, so a typo stays on screen to be
+ *  corrected rather than vanishing. */
+function CustomValue({
+  placeholder,
+  suffix,
+  ariaLabel,
+  example,
+  onCommit,
+}: {
+  placeholder: string;
+  suffix: string;
+  ariaLabel: string;
+  /** shown when the entry can't be read, so "Set" is never a dead button (#108) */
+  example: string;
+  /** true when the value was understood, so the field can clear itself */
+  onCommit: (raw: string) => boolean;
+}) {
+  const [text, setText] = useState("");
+  const toast = useToast();
+  const commit = () => {
+    if (!text.trim()) return;
+    haptic("select");
+    if (onCommit(text)) {
+      setText("");
+      return;
+    }
+    // Unreadable input used to do nothing at all, which teaches an athlete the control is
+    // broken. Say what shape the answer takes instead.
+    toast({ text: `Couldn't read "${text.trim()}" — try ${example}.`, tone: "default", duration: 5000 });
+  };
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-line-soft py-0.5 pl-2 pr-0.5">
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        // decimal, not numeric: a pace is typed with a colon and a distance with a dot,
+        // and the plain number pad on iOS offers neither.
+        inputMode="decimal"
+        enterKeyHint="done"
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        className="w-[4.5rem] bg-transparent text-[0.82rem] tabular-nums outline-none placeholder:text-faint"
+      />
+      <span className="text-[0.7rem] text-faint">{suffix}</span>
+      <button
+        onClick={commit}
+        disabled={!text.trim()}
+        aria-label={`Set ${ariaLabel}`}
+        className="ml-0.5 rounded-full px-2 py-1 text-[0.75rem] font-semibold text-accent disabled:opacity-30"
+      >
+        Set
+      </button>
+    </span>
+  );
+}
+
 /** One labelled row of chips. Every control in Modify has the same shape, so the
  *  sheet reads as a list of properties of the session rather than five unrelated
  *  tools that happen to be stacked. */
@@ -146,6 +282,10 @@ function ModifyPanel({
     .filter((d) => d >= today);
   const baseSec = workout.prescribed?.estDurationSec ?? workout.estDurationSec;
   const baseM = workout.prescribed?.estDistanceM ?? workout.estDistanceM ?? 0;
+  const currentSlot = slotOf(workout);
+  // The athlete's own split names, when they've told us any — `slotChoices` puts those
+  // first, because "Chest Day" is the word they think in and push/pull/legs is ours.
+  const { profile } = useApp();
 
   return (
     <div className="mb-4 rounded-2xl border border-line bg-surface-2 p-3.5">
@@ -170,6 +310,18 @@ function ModifyPanel({
               </button>
             );
           })}
+          <CustomValue
+            placeholder="45"
+            suffix="min"
+            ariaLabel="custom length in minutes"
+            example='"45" or "1:15"' 
+            onCommit={(raw) => {
+              const mins = parseMinutes(raw);
+              if (mins == null) return false;
+              actions.adjust(workout.id, mins * 60);
+              return true;
+            }}
+          />
         </ModifyRow>
       )}
 
@@ -189,6 +341,18 @@ function ModifyPanel({
               </button>
             );
           })}
+          <CustomValue
+            placeholder={workout.discipline === "swim" ? "1800" : "12"}
+            suffix={workout.discipline === "swim" ? "m" : unit === "imperial" ? "mi" : "km"}
+            ariaLabel="custom distance"
+            example={workout.discipline === "swim" ? '"1800"' : '"12" or "12.5"'} 
+            onCommit={(raw) => {
+              const m = parseDistanceM(raw, unit, workout.discipline === "swim");
+              if (m == null) return false;
+              actions.setDistance(workout.id, m);
+              return true;
+            }}
+          />
         </ModifyRow>
       )}
 
@@ -208,12 +372,51 @@ function ModifyPanel({
               <span className="ml-1 text-[0.68rem] text-muted">Z{zone}</span>
             </button>
           ))}
+          <CustomValue
+            placeholder={kind === "bike-power" ? "250" : kind === "swim-pace" ? "1:40" : "4:45"}
+            // The unit matches what `targetLabel` prints on the chips beside it, so the
+            // typed value and the picked one can never mean different things.
+            suffix={kind === "bike-power" ? "W" : kind === "swim-pace" ? "/100m" : "/km"}
+            ariaLabel={kind === "bike-power" ? "custom power in watts" : "custom pace"}
+            example={kind === "bike-power" ? '"250"' : '"4:45"'} 
+            onCommit={(raw) => {
+              const value = parseTargetValue(raw, kind);
+              if (value == null) return false;
+              actions.repace(workout.id, value);
+              return true;
+            }}
+          />
         </ModifyRow>
       ) : paceWhy ? (
         <ModifyRow label="Pace">
           <p className="text-[0.72rem] leading-snug text-muted">{paceWhy}</p>
         </ModifyRow>
       ) : null}
+
+      {/* SPLIT — only for a gym session, and only when there is somewhere else to move it.
+          Ryan, 2026-08-12: "allow me to modify the day or my split for the workout so I
+          can change it from push to pull or whatever." Rebuilds the exercises rather than
+          relabelling the session, so the heading and the movements always agree. */}
+      {workout.discipline === "strength" && workout.status === "planned" && (
+        <ModifyRow
+          label="Split"
+          hint="Swaps in that day's exercises, keeping the time you've got. Your saved routine for that day comes with it."
+        >
+          {slotChoices(profile).map((s) => {
+            const isNow = s === currentSlot;
+            return (
+              <button
+                key={s}
+                onClick={() => { haptic("select"); actions.setSlot(workout.id, s); }}
+                aria-pressed={isNow}
+                className={`chip ${isNow ? "is-selected" : ""}`}
+              >
+                {slotLabel(s)}
+              </button>
+            );
+          })}
+        </ModifyRow>
+      )}
 
       {/* The hint has to say EASY. `replacementDraft` always builds an easy session
           of the new sport, so swapping a threshold run for a bike silently drops a
@@ -265,20 +468,41 @@ function ModifyPanel({
       </ModifyRow>
 
       <div className="border-t border-line pt-3">
-        <button
-          onClick={() => {
-            if (workout.status === "skipped") { haptic("light"); actions.unskip(workout.id); }
-            else { haptic("warning"); actions.skip(workout.id); onDone(); }
-          }}
-          className="btn btn-ghost w-full py-2.5 text-sm"
-          style={{ color: workout.status === "skipped" ? undefined : "var(--danger)" }}
-        >
-          {workout.status === "skipped"
-            ? workout.absorbedBy
-              ? "Put this session back anyway"
-              : "Un-skip this session"
-            : "Skip this session"}
-        </button>
+        {/* Skipping a session you already DID is not a thing you can do, so for
+            work the athlete put here themselves this slot is the delete instead —
+            the answer to a mis-logged sport, a mis-logged day, or the same ride
+            logged twice. It also gives back whatever the log absorbed off the
+            week (adapt.ts), which is why it isn't just "skip" with a red label. */}
+        {isAthleteLogged(workout) ? (
+          <>
+            <button
+              onClick={() => { haptic("warning"); actions.deleteLogged(workout.id); onDone(); }}
+              className="btn btn-ghost w-full py-2.5 text-sm"
+              style={{ color: "var(--danger)" }}
+            >
+              Delete this session
+            </button>
+            <p className="mt-1 px-1 text-center text-[0.7rem] leading-snug text-muted">
+              {workout.addedByAthlete ? "You added this one." : "You logged this one."} Removing it puts back anything
+              your week gave up for it.
+            </p>
+          </>
+        ) : (
+          <button
+            onClick={() => {
+              if (workout.status === "skipped") { haptic("light"); actions.unskip(workout.id); }
+              else { haptic("warning"); actions.skip(workout.id); onDone(); }
+            }}
+            className="btn btn-ghost w-full py-2.5 text-sm"
+            style={{ color: workout.status === "skipped" ? undefined : "var(--danger)" }}
+          >
+            {workout.status === "skipped"
+              ? workout.absorbedBy
+                ? "Put this session back anyway"
+                : "Un-skip this session"
+              : "Skip this session"}
+          </button>
+        )}
       </div>
     </div>
   );
