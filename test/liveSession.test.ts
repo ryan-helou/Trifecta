@@ -9,9 +9,17 @@
 // ---------------------------------------------------------------------------
 
 import {
+  REST_CIRCUIT_SEC,
+  REST_HEAVY_SEC,
+  REST_WORKING_SEC,
   addExercise,
   addSet,
+  clearRest,
+  completeSet,
   finishSession,
+  nudgeRest,
+  restRemainingSec,
+  restSecondsFor,
   patchSet,
   removeExercise,
   removeSet,
@@ -258,6 +266,90 @@ section("the congratulation is specific, or silent");
   const repsWin = compareLifts([{ name: "Bench Press", sets: [{ reps: 10, weightKg: 60 }] }], past);
   const m3 = congratulate(repsWin);
   ok(!!m3 && m3.includes("10 reps") && m3.includes("up from 8"), `a reps win says so: "${m3}"`);
+}
+
+// --- rest between sets ------------------------------------------------------
+//
+// The invariant that matters: rest is an ABSOLUTE END INSTANT, never a tick
+// count. A phone on a bench locks and the WebView suspends, so anything that
+// counted its own ticks would come back having lost exactly the interval it
+// exists to measure. Every assertion below advances the clock by hand — no
+// timers, no waiting — which is only possible because the module takes `nowISO`.
+section("rest is measured against the clock, not counted in ticks");
+{
+  const at = (sec: number) => new Date(Date.parse("2026-08-12T10:00:00.000Z") + sec * 1000).toISOString();
+  const s0 = startSession({ workoutId: "w1", startedISO: at(0), slot: "push", name: "Push", from: ROUTINE });
+
+  ok(restRemainingSec(s0, at(0)) === null, "a session nobody has ticked is not resting");
+
+  // Bench Press is 8 reps → the ordinary working set.
+  const resting = completeSet(s0, 0, 0, true, at(0));
+  ok(resting.exercises[0].sets[0].done, "ticking the set still ticks the set");
+  ok(restRemainingSec(resting, at(0)) === REST_WORKING_SEC, `an 8-rep set rests ${REST_WORKING_SEC}s`);
+  ok(restRemainingSec(resting, at(30)) === REST_WORKING_SEC - 30, "and it counts down with the clock");
+
+  // The case the whole design exists for: the screen was off for the entire rest.
+  ok(
+    restRemainingSec(resting, at(600)) === 0,
+    "a rest that elapsed while the phone was locked reads done — never a negative number",
+  );
+
+  ok(restRemainingSec(clearRest(resting), at(10)) === null, "Skip stops the clock");
+  ok(
+    restRemainingSec(completeSet(resting, 0, 0, false, at(10)), at(10)) === null,
+    "and un-ticking a set stops it too — that rest was for work that didn't happen",
+  );
+}
+
+section("rest length is prescribed by the set, per doc 01 §4 rule 4");
+{
+  ok(restSecondsFor({ reps: 3, weightKg: 100, done: true }) === REST_HEAVY_SEC, "a heavy triple gets the long recovery");
+  ok(restSecondsFor({ reps: 6, weightKg: 90, done: true }) === REST_HEAVY_SEC, "so does a 6");
+  ok(restSecondsFor({ reps: 8, weightKg: 60, done: true }) === REST_WORKING_SEC, "an 8 is an ordinary working set");
+  ok(restSecondsFor({ reps: 20, done: true }) === REST_CIRCUIT_SEC, "high-rep circuit work rests short");
+  ok(
+    REST_HEAVY_SEC > REST_WORKING_SEC && REST_WORKING_SEC > REST_CIRCUIT_SEC,
+    "heavier work always rests longer — the ordering IS the prescription",
+  );
+  // The specific mistake this guards: defaulting everything to a bodybuilder's
+  // 90s turns a triathlete's heavy triple into a fatigue set, which is the one
+  // stimulus doc 01 says they should not be buying.
+  ok(restSecondsFor({ reps: 3, done: true }) !== REST_WORKING_SEC, "heavy work is never given the hypertrophy default");
+}
+
+section("nudging rest");
+{
+  const at = (sec: number) => new Date(Date.parse("2026-08-12T10:00:00.000Z") + sec * 1000).toISOString();
+  const s = completeSet(
+    startSession({ workoutId: "w1", startedISO: at(0), slot: "push", name: "Push", from: ROUTINE }),
+    0, 0, true, at(0),
+  );
+  ok(restRemainingSec(nudgeRest(s, at(0), 30), at(0)) === REST_WORKING_SEC + 30, "+30s adds thirty seconds");
+  ok(restRemainingSec(nudgeRest(s, at(0), -30), at(0)) === REST_WORKING_SEC - 30, "and it goes the other way");
+  ok(
+    restRemainingSec(nudgeRest(s, at(0), -9999), at(0)) === 0,
+    "taking off more than is left lands on zero, not below it",
+  );
+  const notResting = startSession({ workoutId: "w1", startedISO: at(0), slot: "push", name: "Push", from: ROUTINE });
+  ok(
+    restRemainingSec(nudgeRest(notResting, at(0), 30), at(0)) === null,
+    "+30s with no timer running is a no-op — it must not conjure a rest nobody started",
+  );
+}
+
+section("rest never reaches what gets logged");
+{
+  const at = (sec: number) => new Date(Date.parse("2026-08-12T10:00:00.000Z") + sec * 1000).toISOString();
+  const s = completeSet(
+    startSession({ workoutId: "w1", startedISO: at(0), slot: "push", name: "Push", from: ROUTINE }),
+    0, 0, true, at(0),
+  );
+  const entries = finishSession(s);
+  ok(entries.length === 1 && entries[0].sets.length === 1, "the ticked set is logged");
+  ok(
+    !JSON.stringify(entries).includes("rest"),
+    "and no rest bookkeeping leaks into the strength history everything else is computed from",
+  );
 }
 
 console.log(`\n${checks - failures}/${checks} live-session invariants passed`);

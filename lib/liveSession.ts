@@ -49,6 +49,92 @@ export interface LiveSession {
   /** What the athlete calls this day — "My Push Day", or the session title. */
   name: string;
   exercises: LiveExercise[];
+  /** When the rest between sets is up — an ABSOLUTE instant, not a countdown.
+   *
+   *  This is the whole correctness story for the rest timer. A phone on a bench
+   *  locks, and a suspended WebView stops firing intervals; a timer that counted
+   *  ticks would come back having lost exactly the time the athlete was resting,
+   *  which is the one number it exists to report. Storing the END and deriving
+   *  the remainder from the clock is right whether the screen was on, off, or the
+   *  app was killed and reopened. Absent when they aren't resting. */
+  restUntilISO?: string;
+  /** How long the running rest was set to. Kept so +30s / −30s and the progress
+   *  ring have a denominator that doesn't move as the clock runs down. */
+  restSec?: number;
+}
+
+// ---- rest between sets ------------------------------------------------------
+//
+// The defaults are prescription, not decoration, and they follow doc 01 §4 rule 4:
+// a triathlete is not training for hypertrophy. They want strength/power and
+// durability, and that work is only strength/power work if the rest is long enough
+// to repay the ATP-PC system — cut a heavy triple's recovery to the 90 seconds a
+// bodybuilding app defaults to and you have converted it into a fatigue session,
+// which is the exact stimulus doc 01 says triathletes should NOT be buying.
+//
+// So rest is read off the set itself: heavy and low-rep gets the long recovery,
+// the middle gets the conventional minute and a half, and high-rep or bodyweight
+// circuit work gets the short one. The athlete can always overrule it.
+
+/** Heavy, low-rep: near-full phosphocreatine resynthesis before the next effort. */
+export const REST_HEAVY_SEC = 180;
+/** The ordinary working set. */
+export const REST_WORKING_SEC = 90;
+/** High-rep and bodyweight circuit work, where the point is density. */
+export const REST_CIRCUIT_SEC = 60;
+
+/** How long to rest after this set, before the athlete says otherwise. */
+export function restSecondsFor(set: LiveSet): number {
+  if (set.reps > 0 && set.reps <= 6) return REST_HEAVY_SEC;
+  if (set.reps > 12) return REST_CIRCUIT_SEC;
+  return REST_WORKING_SEC;
+}
+
+/** Start (or restart) the rest clock. */
+export function startRest(s: LiveSession, nowISO: string, seconds: number): LiveSession {
+  const sec = Math.max(0, Math.round(seconds));
+  return { ...s, restUntilISO: new Date(new Date(nowISO).getTime() + sec * 1000).toISOString(), restSec: sec };
+}
+
+/** Stop resting — skipped, or superseded by the next set going down. */
+export function clearRest(s: LiveSession): LiveSession {
+  const { restUntilISO: _u, restSec: _s, ...rest } = s;
+  return rest;
+}
+
+/** Add or remove time from a running rest. Never goes below zero, and never
+ *  starts one that wasn't running — "+30s" on no timer is a no-op, not a timer. */
+export function nudgeRest(s: LiveSession, nowISO: string, deltaSec: number): LiveSession {
+  if (!s.restUntilISO) return s;
+  const endMs = new Date(s.restUntilISO).getTime() + deltaSec * 1000;
+  const nowMs = new Date(nowISO).getTime();
+  return {
+    ...s,
+    restUntilISO: new Date(Math.max(nowMs, endMs)).toISOString(),
+    restSec: Math.max(0, (s.restSec ?? 0) + deltaSec),
+  };
+}
+
+/** Seconds left, or null when the athlete isn't resting. Clamped at zero — a rest
+ *  that elapsed while the phone was locked reads "done", never a negative number. */
+export function restRemainingSec(s: LiveSession, nowISO: string): number | null {
+  if (!s.restUntilISO) return null;
+  const ms = new Date(s.restUntilISO).getTime() - new Date(nowISO).getTime();
+  return Math.max(0, Math.ceil(ms / 1000));
+}
+
+/**
+ * Tick a set off (or back on) and move the rest clock with it.
+ *
+ * Separate from `setDone`, which stays a clockless set toggle: this is the one
+ * that knows a completed set is followed by rest. Un-ticking stops the clock,
+ * because the rest was for a set that, it turns out, hasn't happened.
+ */
+export function completeSet(s: LiveSession, ei: number, si: number, done: boolean, nowISO: string): LiveSession {
+  const next = setDone(s, ei, si, done);
+  if (!done) return clearRest(next);
+  const set = next.exercises[ei]?.sets[si];
+  return startRest(next, nowISO, set ? restSecondsFor(set) : REST_WORKING_SEC);
 }
 
 /** Start from a routine (or from whatever is already logged, when resuming a
