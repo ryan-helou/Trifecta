@@ -130,6 +130,32 @@ export function Sheet({
         document.documentElement.scrollTop = 0;
       }
     };
+    // …and then SCROLL THE FIELD BACK INTO VIEW.
+    //
+    // The two corrections above make room for the keyboard by shrinking the panel.
+    // Nothing put the focused input inside what was left, so tapping a field near
+    // the bottom of a long sheet left the athlete typing blind: measured on device,
+    // the Modify panel's "45 min" box sat ~700pt below the visible window while the
+    // keyboard was up. Ryan: "when i enter values in the modify workout section, and
+    // I enter values it bugs."
+    //
+    // WebKit's own scroll-into-view can't save us here — it scrolls the DOCUMENT,
+    // which `pin()` above deliberately puts straight back (a fixed sheet must not
+    // slide away with the page). The scroll that matters is the sheet's own
+    // container, and only this code knows about it.
+    //
+    // Centred rather than merely on-screen: with a numeric keypad up the window is
+    // short, and a field flush against its bottom edge is one autocomplete bar away
+    // from being hidden again.
+    const showFocused = () => {
+      const sc = scrollRef.current;
+      const el = document.activeElement as HTMLElement | null;
+      if (!sc || !el || !sc.contains(el)) return;
+      const box = sc.getBoundingClientRect();
+      const field = el.getBoundingClientRect();
+      if (field.top >= box.top + 8 && field.bottom <= box.bottom - 8) return; // already visible
+      sc.scrollTop += field.top - box.top - Math.max(0, (box.height - field.height) / 2);
+    };
     const vv = window.visualViewport;
     let frame = 0;
     const sync = () => {
@@ -155,10 +181,16 @@ export function Sheet({
         // number, set directly, has neither problem.
         const panel = panelRef.current;
         if (panel) panel.style.maxHeight = kb ? `${Math.round((vv.height + vv.offsetTop) * 0.92)}px` : "";
+        // INSIDE this frame, after the sizes above are applied. Measuring before them
+        // reads the pre-keyboard layout and scrolls by the wrong amount — which is
+        // exactly what the first attempt at this did, and on device it looked
+        // identical to no fix at all.
+        showFocused();
       });
     };
     const onFocus = () => {
-      // after WebKit has done its own scrolling, not before
+      // after WebKit has done its own scrolling, not before. `sync` re-runs the scroll
+      // itself, so the keyboard animating open corrects it repeatedly rather than once.
       requestAnimationFrame(sync);
       window.setTimeout(sync, 120);
       window.setTimeout(sync, 350);
