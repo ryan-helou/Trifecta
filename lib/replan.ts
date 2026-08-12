@@ -78,6 +78,14 @@ export const EDIT_HARD_DEADBAND = 15;
  *  has stopped being the session it was. */
 const MAX_EASE = 0.75;
 
+/** How much of a session an automatic sport-restoration must preserve.
+ *
+ *  Sized to the thing it guards rather than picked: the failure was a 60-minute ride
+ *  coming back as a 20-minute run (33%), and the mechanical cap moves in 5-minute steps,
+ *  so anything at or above ~70% is a session that has been trimmed to fit rather than
+ *  gutted. Below it, `restoreSport` declines and the ride stays a ride. */
+const MIN_RESTORE_KEEP = 0.7;
+
 export interface WeekDrift {
   designedSec: number;
   currentSec: number;
@@ -217,7 +225,7 @@ function restoreSport(
   week: Week,
   todayISO: string,
   exceptId: string,
-): { plan: Plan; id: string; from: Discipline; to: Discipline } | null {
+): { plan: Plan; id: string; from: Discipline; to: Discipline; wasSec: number; nowSec: number } | null {
   const drift = sportDrift(plan, week);
   const mods = injuryMods(plan.profile);
 
@@ -271,8 +279,24 @@ function restoreSport(
       // land a few percent long; this is a relocation, not an excuse to grow the
       // week, so anything longer than the session it replaces is refused.
       if (made.estDurationSec > w.estDurationSec) continue;
+      // ...and it must not DELETE time either (#219 — "Why did my 1h bike turn into a
+      // 20 min run").
+      //
+      // `swapDiscipline` never refuses: it fits the replacement to the week's remaining
+      // mechanical-impact headroom and, when there is none left, falls back to a
+      // 20-minute floor. That is the right answer for a swap the ATHLETE asked for —
+      // "sure, but keep it to twenty minutes" is what a coach says, and the capped
+      // reason is shown to them at the point they tapped it. It is the wrong answer for
+      // a conversion nobody requested. Measured: with the week's run headroom already
+      // spent, a 60-minute ride came back as a 20-minute run, and the sport count was
+      // "fixed" by quietly deleting forty minutes of training.
+      //
+      // So an automatic restoration has to be a RELOCATION or nothing. If the receiving
+      // sport cannot carry most of the session, the honest move is to leave the ride
+      // alone — the week is a run short either way, and `respondToEdit` says so.
+      if (made.estDurationSec < w.estDurationSec * MIN_RESTORE_KEEP) continue;
       if (railsRegressed(plan, next).length) continue;
-      return { plan: next, id: w.id, from: w.discipline, to: want };
+      return { plan: next, id: w.id, from: w.discipline, to: want, wasSec: w.estDurationSec, nowSec: made.estDurationSec };
     }
   }
   return null;
@@ -344,7 +368,18 @@ export function respondToEdit(
   if (restoredSport) {
     working = restoredSport.plan;
     sportIds.push(restoredSport.id);
-    sportLine = `That leaves you a ${restoredSport.to} short this week, so one of your ${restoredSport.from} sessions becomes a ${restoredSport.to}.`;
+    // Name the LENGTH when it changed. #219 was filed as a question — "Why did my 1h
+    // bike turn into a 20 min run" — and a sentence that says only which sport it became
+    // is exactly why it had to be asked. The mechanical cap can still legitimately trim
+    // the replacement; when it does, the athlete is told, in the same breath.
+    const wasMin = Math.round(restoredSport.wasSec / 60);
+    const nowMin = Math.round(restoredSport.nowSec / 60);
+    sportLine =
+      `That leaves you a ${restoredSport.to} short this week, so your ${wasMin} min ` +
+      `${restoredSport.from} becomes a ${restoredSport.to}` +
+      (nowMin < wasMin
+        ? ` — ${nowMin} min, because that is as much running as this week can take on safely.`
+        : ".");
   }
 
   const drift = weekDrift(working, week);
