@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.50",
+  "latest": "1.0.51",
   "bundles": [
-    {
-      "version": "1.0.48",
-      "sha256": "8b2c67d60ccde13c721bf440bb0683a63f59ef08b82983d0dc46b715b55ef83f",
-      "size": 810861,
-      "createdAtISO": "2026-08-12T18:22:30.519Z",
-      "comment": "type your own values, and change a gym split"
-    },
     {
       "version": "1.0.49",
       "sha256": "eb9f9d331e653218d34ed91d4eba48132d065e0e5890fcb218cc65e91b83c80e",
@@ -21,6 +14,13 @@
       "size": 804251,
       "createdAtISO": "2026-08-12T18:28:25.655Z",
       "comment": "drop the seed fixture that leaked into 1.0.49"
+    },
+    {
+      "version": "1.0.51",
+      "sha256": "ce47a42fff797dce3f5aa258ebf8ec23748b66db8399f1f2f35cc7bc241da474",
+      "size": 805380,
+      "createdAtISO": "2026-08-12T19:05:04.199Z",
+      "comment": "delete a logged session, correct match credit, gym rest timer"
     }
   ]
 }
