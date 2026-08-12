@@ -105,7 +105,21 @@ function prescribedImpactMinutes(plan: Plan, week: Week): number {
     // successive bonus runs came out 40, 40, 35, then 55 minutes, growing instead of
     // tightening. The baseline is what the PLAN asked for; extra work spends against it.
     if (w && !w.addedByAthlete) {
-      total += ((w.estDurationSec ?? 0) / 60) * (IMPACT_PER_MIN[w.discipline] ?? 0);
+      // The DESIGN, not what an edit left behind (#219).
+      //
+      // This read the session's CURRENT discipline, so swapping a run for a ride deleted
+      // that run's impact from the baseline — and the baseline is what decides how much
+      // running the week can take. The athlete swapped one run away and the engine
+      // concluded they could no longer run at all: converting anything back was capped to
+      // `swapDiscipline`'s 20-minute floor, which is how a 1-hour ride came back as a
+      // 20-minute run. The bug was self-inflicted and self-reinforcing — each swap out of
+      // running lowered the ceiling for swapping back into it.
+      //
+      // A swap preserves the original in `swappedFrom` for exactly this reason. Reading it
+      // makes the baseline mean what this function's own name and comment already promise:
+      // what the PLAN asked for, independent of what the athlete has since traded away.
+      const design = w.swappedFrom ?? w;
+      total += ((design.estDurationSec ?? 0) / 60) * (IMPACT_PER_MIN[design.discipline] ?? 0);
     }
   }
   return total;

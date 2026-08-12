@@ -239,12 +239,38 @@ section("never throws on degenerate input");
   ok((after?.plan ?? skipped).workouts[one.id].status === "skipped", "the skipped session is still skipped afterwards");
 
   // …and the behaviour this deliberately KEEPS: a swap is a trade, so the week's
-  // sport balance is still restored. Removing that would be a different bug.
+  // sport balance is restored WHERE THE WEEK CAN AFFORD IT.
+  //
+  // This assertion used to be a bare "something changed", and it passed for the wrong
+  // reason. In this very fixture the week has no run headroom left, so the only way to
+  // restore the mix was `swapDiscipline`'s 20-minute floor — a 100-minute ride came back
+  // as a 20-minute run, and the sport count was "fixed" by deleting 80 minutes of
+  // training. That is #219 ("Why did my 1h bike turn into a 20 min run"), and it was
+  // sitting green in this suite because nothing checked what the rebalance COST.
+  //
+  // The honest property is not "always rebalances" — sometimes it can't, safely. It is:
+  // the responder either relocates a session or leaves it alone, and never guts one.
   const run = upcoming.find((w) => w.discipline === "run");
   if (run) {
     const swapped = swapDiscipline(plan, run.id, "bike");
     const res = respondTo(swapped, today, { kind: "swapped", workoutId: run.id });
-    ok((res?.changedIds.length ?? 0) > 0, `a SWAP still rebalances the week (${res?.headline})`);
+    const after = res?.plan ?? swapped;
+    let gutted = 0;
+    for (const [id, w] of Object.entries(after.workouts)) {
+      const was = swapped.workouts[id];
+      if (!was || id === run.id || was.discipline === "rest") continue;
+      // a converted session must carry most of what it replaced
+      if (w.discipline !== was.discipline && w.estDurationSec < was.estDurationSec * 0.7) {
+        gutted++;
+        console.error(
+          `    (${was.title}: ${Math.round(was.estDurationSec / 60)}min ${was.discipline} -> ` +
+            `${Math.round(w.estDurationSec / 60)}min ${w.discipline})`,
+        );
+      }
+    }
+    ok(gutted === 0, `a swap never guts a session to fix the sport count (${gutted} gutted) — #219`);
+    ok(res == null || res.changedIds.length > 0 || res.headline.length > 0,
+      "and when it can't rebalance it says so rather than moving in silence");
   } else {
     ok(false, "precondition: a run to swap");
   }

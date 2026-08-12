@@ -27,7 +27,7 @@ import { generatePlan } from "../lib/planEngine";
 import { swapDiscipline, setStatus, unswapDiscipline, easeUpcoming } from "../lib/adapt";
 import { adjustSession, scaleWorkout } from "../lib/prescribe";
 import { checkRails } from "../lib/rails";
-import { hardDayConflicts } from "../lib/respond";
+import { hardDayConflicts, respondTo } from "../lib/respond";
 import { DISCIPLINE_META } from "../lib/zones";
 import {
   EDIT_HARD_DEADBAND,
@@ -423,6 +423,47 @@ section("boundaries");
       );
     }
   }
+}
+
+// --- 6b. #219 — a restoration relocates a session, it never deletes one -----
+//
+// `swapDiscipline` never refuses: it fits the replacement to the week's remaining
+// mechanical-impact headroom and falls back to a 20-minute floor when there is none.
+// Correct for a swap the athlete asked for; wrong for one the responder does on its
+// own. Reported as "Why did my 1h bike turn into a 20 min run" — and the week had
+// silently lost forty minutes to fix a sport count.
+section("an automatic sport restoration never guts the session it converts");
+{
+  const CASES: { name: string; wpw: number; perSport: Record<string, number> }[] = [
+    { name: "6/wk balanced", wpw: 6, perSport: { swim: 2, bike: 2, run: 2 } },
+    { name: "9/wk balanced", wpw: 9, perSport: { swim: 3, bike: 3, run: 3 } },
+    { name: "8/wk bike-heavy", wpw: 8, perSport: { swim: 2, bike: 4, run: 2 } },
+    { name: "5/wk light", wpw: 5, perSport: { swim: 1, bike: 2, run: 2 } },
+  ];
+  let converted = 0;
+  for (const c of CASES) {
+    const plan = generatePlan(profile(c.wpw, c.perSport), ANCHOR);
+    const today = d(2);
+    const runs = Object.values(plan.workouts).filter(
+      (w) => w.date >= today && w.discipline === "run" && w.status === "planned",
+    );
+    for (const run of runs.slice(0, 4)) {
+      const swapped = swapDiscipline(plan, run.id, "bike");
+      const res = respondTo(swapped, today, { kind: "swapped", workoutId: run.id });
+      const after = res?.plan ?? swapped;
+      for (const [id, w] of Object.entries(after.workouts)) {
+        const was = swapped.workouts[id];
+        if (!was || id === run.id || was.discipline === w.discipline) continue;
+        converted++;
+        ok(
+          w.estDurationSec >= was.estDurationSec * 0.7,
+          `${c.name}: ${was.title} ${Math.round(was.estDurationSec / 60)}min ${was.discipline} -> ` +
+            `${Math.round(w.estDurationSec / 60)}min ${w.discipline} keeps >=70% of the session`,
+        );
+      }
+    }
+  }
+  ok(converted > 0, `the sweep actually exercised some conversions (${converted})`);
 }
 
 // --- 7. the deadbands are where the measurements put them ------------------
