@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.55",
+  "latest": "1.0.56",
   "bundles": [
-    {
-      "version": "1.0.53",
-      "sha256": "86eb674466d507ce71a68a8d573762c1e4a08e780e60f1a64a72567fc15d54f1",
-      "size": 806093,
-      "createdAtISO": "2026-08-12T19:35:51.577Z",
-      "comment": "modify edits survive a relaunch"
-    },
     {
       "version": "1.0.54",
       "sha256": "c668f86b561357586c5a912eddde32856e79ca6a0705448cbb4fba03473b399f",
@@ -20,6 +13,13 @@
       "size": 806217,
       "createdAtISO": "2026-08-13T00:13:01.961Z",
       "comment": "the tab bar stays at the bottom of the screen"
+    },
+    {
+      "version": "1.0.56",
+      "sha256": "633fd643e8671113100fda3ee8e245e7e9d4a459811f194f6be9e8fd3b0dd13e",
+      "size": 806831,
+      "createdAtISO": "2026-08-13T13:49:35.063Z",
+      "comment": "#220 swap keeps its own record, #221 the sheet stops reserving space for a keyboard that left"
     }
   ]
 }
