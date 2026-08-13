@@ -50,24 +50,25 @@ appId: app.trifecta.mobile
 - tapOn: "Profile"
 - waitForAnimationToEnd:
     timeout: 5000
-# NOT centerElement. The bottom nav is `sticky bottom-0`, so mid-scroll these footer
-# links pass under it and a tap can land on the tab bar instead — that really happened
-# (a run ended up on Progress). Centring fixed that but broke the opposite way: these
-# links are the LAST thing in the scroll view, so there is nothing below them to scroll
-# and Maestro can never centre them — it scrolls to the end and reports "not found" on a
-# link that is plainly on screen.
+# NOT centerElement — these links are the LAST thing in the scroll view, so there is
+# nothing below them to scroll and Maestro can never centre them: it scrolls to the end
+# and reports "not found" on a link that is plainly on screen.
 #
-# So: scroll until it's there, then swipe once more to reach the TRUE end of the scroll
-# view. The nav is `sticky`, meaning at the end it returns to normal flow *below* the
-# content — only mid-scroll does it float over it. Both failures came from tapping while
-# it was still floating.
+# There used to be a blind extra swipe here as well. It existed because the nav was
+# `sticky bottom-0`: mid-scroll it floated over these links and a tap landed on the tab
+# bar instead (one run ended up on Progress), so the flow scrolled PAST them to the point
+# where sticky returned to normal flow and stopped covering anything.
+#
+# The nav is `fixed` now (see BottomNav — sticky pinned to a container whose height the
+# WKWebView doesn't always resolve to the screen, which stranded the bar mid-screen with
+# content unreachable below it). Fixed never returns to flow, so "scroll past it" is not a
+# thing that can work; instead the scroll region reserves the bar's height as padding, so
+# these links now clear it on their own. The extra swipe only overshoots into that padding
+# and lands the tap on nothing — which is exactly how this flow failed.
 - scrollUntilVisible:
     element: "Privacy"
     direction: DOWN
     timeout: 20000
-- swipe:
-    start: 50%, 70%
-    end: 50%, 40%
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn: "Privacy"

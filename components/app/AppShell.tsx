@@ -691,7 +691,14 @@ function AppShellInner() {
       }}
     >
         <div className="flex min-h-full flex-1 flex-col">
-          <div className="mx-auto w-full max-w-md flex-1">
+          {/* The nav is `fixed`, so it no longer occupies flow — the scroll region has to
+              reserve its height or the last card sits underneath it. One number here
+              rather than per-tab padding, so a new tab can't forget it. 61px of bar plus
+              the home indicator, plus a little air. */}
+          <div
+            className="mx-auto w-full max-w-md flex-1"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 76px)" }}
+          >
             {/* The realign + adaptation banners used to hang here, above EVERY tab, so
                 Plan/Progress/League all opened with the home screen's nagging stapled to
                 the top. The adaptation prompt now competes for Today's single prompt slot
