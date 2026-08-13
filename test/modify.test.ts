@@ -26,6 +26,8 @@ import { sessionLoad } from "../lib/load";
 import {
   canSetDistance,
   distanceChoices,
+  distanceOptions,
+  lengthOptions,
   repaceSession,
   resizeByDistance,
   targetChoices,
@@ -37,6 +39,7 @@ import {
   reslotStrength,
 } from "../lib/modify";
 import { slotOf } from "../lib/routines";
+import { fmtDistance } from "../lib/format";
 import type { Plan, Profile, StrengthSlot, Workout, Zone } from "../lib/types";
 
 let checks = 0;
@@ -380,6 +383,76 @@ section("a gym session can be moved to another day of the split");
   // a non-strength session is never reslotted
   const run = Object.values(plan.workouts).find((w) => w.discipline === "run" && w.status === "planned");
   if (run) ok(reslotStrength(plan, run.id, "push") === null, "a run has no split to change");
+}
+
+section("every chip the Modify panel shows is a chip that DOES something");
+{
+  // `adjustSession` has promised since #108 that it "returns null when nothing would
+  // change, so the UI never offers a button that does nothing" — and for a long time
+  // nothing asked it. The ladders were arithmetic on the prescribed value handed
+  // straight to the screen, so ~1 in 5 chips was inert: tap it, nothing happens, and
+  // (because the toast rendered behind the sheet) nothing is said either. Ryan: "it's
+  // not letting me set to distances in my… to modify workout."
+  //
+  // Swept across race distances and levels rather than one fixture, because the dead
+  // rungs appear wherever a ratio happens to round to no honest change — which is a
+  // property of the session, not of the plan.
+  let offered = 0;
+  for (const [raceType, level, wpw] of [
+    ["olympic", "beginner", 4],
+    ["olympic", "intermediate", 6],
+    ["half", "advanced", 8],
+    ["full", "intermediate", 6],
+    ["fitness", "beginner", 5],
+  ] as const) {
+    const p = generatePlan(profile({ raceType, level, workoutsPerWeek: wpw }), ANCHOR);
+    for (const w of Object.values(p.workouts)) {
+      if (w.status !== "planned" || w.discipline === "rest") continue;
+
+      const lengths = lengthOptions(p, w.id);
+      for (const c of lengths) {
+        offered++;
+        if (c.current) continue; // "you are here" — selected, not a dead button
+        ok(!!adjustSession(p, w.id, c.value), `${raceType}/${level} ${w.title}: ${Math.round(c.value / 60)} min length chip does something`);
+      }
+      if (lengths.length) ok(lengths.some((c) => c.current), `${raceType}/${level} ${w.title}: the length row shows where you are`);
+
+      const distances = distanceOptions(p, w.id);
+      for (const c of distances) {
+        offered++;
+        if (c.current) continue;
+        ok(!!resizeByDistance(p, w.id, c.value), `${raceType}/${level} ${w.title}: ${c.value}m distance chip does something`);
+      }
+      if (distances.length) ok(distances.some((c) => c.current), `${raceType}/${level} ${w.title}: the distance row shows where you are`);
+      // A session that can't be resized by distance offers no distance chips at all,
+      // rather than a row of buttons that all refuse.
+      if (!canSetDistance(w)) ok(distances.length === 0, `${raceType}/${level} ${w.title}: no distance row when distance can't be set`);
+    }
+  }
+  ok(offered > 1000, `the sweep actually covered the ladders (${offered} chips checked)`);
+
+  // No two chips may READ the same. fmtDistance prints whole kilometres on purpose
+  // (#187) while the ladder steps in 500s, so a short session offered "3 km · 4 km ·
+  // 4 km · 5 km" — two identical-looking buttons doing different things.
+  for (const [raceType, level] of [["olympic", "beginner"], ["half", "advanced"]] as const) {
+    const p = generatePlan(profile({ raceType, level }), ANCHOR);
+    for (const w of Object.values(p.workouts)) {
+      if (!canSetDistance(w)) continue;
+      for (const unit of ["metric", "imperial"] as const) {
+        const label = (m: number) => fmtDistance(m, unit, w.discipline === "swim");
+        const labels = distanceOptions(p, w.id, label).map((c) => label(c.value));
+        ok(new Set(labels).size === labels.length, `${raceType}/${unit} ${w.title}: no two distance chips read the same (${labels.join(", ")})`);
+      }
+    }
+  }
+
+  // The ladder itself is unchanged — `distanceChoices` is still the raw rungs, and
+  // the menu is a SUBSET of it plus at most the athlete's current value.
+  const w = Object.values(plan.workouts).find((x) => canSetDistance(x))!;
+  const raw = new Set(distanceChoices(w));
+  const menu = distanceOptions(plan, w.id);
+  const extras = menu.filter((c) => !raw.has(c.value));
+  ok(extras.every((c) => c.current), "anything offered beyond the ladder is only ever the current value");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

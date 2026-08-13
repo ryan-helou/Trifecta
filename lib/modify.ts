@@ -39,7 +39,7 @@ import { slotLabel, slotOf } from "./routines";
 import { dayIndexOf } from "./dates";
 import { ZONES } from "./zones";
 import type { Adjustment } from "./prescribe";
-import { scaleWorkout } from "./prescribe";
+import { adjustChoices, adjustSession, scaleWorkout } from "./prescribe";
 import type { PaceModel, Plan, Profile, Segment, StrengthSlot, Workout, Zone } from "./types";
 
 /** What kind of intensity target this session can be given. */
@@ -254,14 +254,118 @@ export function canSetDistance(w: Workout): boolean {
 
 /** The distances offered, derived from what the plan asked for. Same shape as
  *  `adjustChoices` and for the same reason: real athletes think "I want to get
- *  ten k in", not "I want 115% of prescribed". */
+ *  ten k in", not "I want 115% of prescribed".
+ *
+ *  This is the LADDER, not the menu — it says nothing about whether the engine
+ *  would accept each rung. Use `distanceOptions` to render a row. */
 export function distanceChoices(w: Workout): number[] {
   const base = w.prescribed?.estDistanceM ?? w.estDistanceM ?? 0;
   if (base <= 0) return [];
-  const step = base >= 10000 ? 1000 : base >= 3000 ? 500 : 100;
-  const round = (m: number) => Math.max(step, Math.round(m / step) * step);
+  const round = (m: number) => Math.max(distanceStep(w), Math.round(m / distanceStep(w)) * distanceStep(w));
   const out = [0.5, 0.7, 0.85, 1, 1.25].map((f) => round(base * f));
   return [...new Set(out)].sort((a, b) => a - b);
+}
+
+/** Rounding granularity of the distance ladder — also the tolerance for "you are
+ *  already at this one", which has to be HALF a rung or the rung you're standing on
+ *  looks unselected. */
+function distanceStep(w: Workout): number {
+  const base = w.prescribed?.estDistanceM ?? w.estDistanceM ?? 0;
+  return base >= 10000 ? 1000 : base >= 3000 ? 500 : 100;
+}
+
+// ---------------------------------------------------------------------------
+// What the Modify row may actually OFFER
+//
+// `adjustSession` has promised since #108 that it "returns null when nothing would
+// change, so the UI never offers a button that does nothing" — but nothing ever
+// asked it. The ladders above are built from arithmetic on the prescribed value and
+// handed straight to the screen, so a rung the engine will refuse (no honest change
+// at that ratio, or the rails won't have it) renders as an ordinary chip that does
+// NOTHING when tapped. Measured across real plans: 15–21% of distance chips and
+// 20–27% of length chips were dead, and on a 6-a-week Olympic plan 63 of 64
+// sessions showed at least one. Ryan: "it's not letting me set to distances in my…
+// to modify workout."
+//
+// So the menu is the ladder filtered through the engine that has to honour it. Two
+// rules beyond that:
+//   - the rung you are standing on is always kept, and marked, even though resizing
+//     to it would be a no-op — that is the "you are here", not a dead button;
+//   - if no rung is within half a step of where you are, your actual value becomes
+//     its own rung, so the row can always show where you are and always offer a way
+//     back to it.
+// ---------------------------------------------------------------------------
+
+/** One chip in a Modify row. */
+export interface ModifyChoice {
+  /** seconds for a length, metres for a distance */
+  value: number;
+  /** this is what the session is right now — render it selected, not tappable-dead */
+  current: boolean;
+}
+
+function options(
+  raw: number[],
+  now: number,
+  tolerance: number,
+  accepts: (value: number) => boolean,
+): ModifyChoice[] {
+  // The nearest rung to where we are, if we're standing close enough to call it ours.
+  let currentValue: number | null = null;
+  let best = Infinity;
+  for (const v of raw) {
+    const d = Math.abs(v - now);
+    if (d < best) { best = d; currentValue = v; }
+  }
+  if (currentValue === null || best > tolerance) currentValue = now > 0 ? now : null;
+
+  const kept = raw.filter((v) => v === currentValue || accepts(v));
+  if (currentValue !== null && !kept.includes(currentValue)) kept.push(currentValue);
+  return kept
+    .sort((a, b) => a - b)
+    .map((value) => ({ value, current: value === currentValue }));
+}
+
+/** The length chips this session may actually be given, newest engine rules applied. */
+export function lengthOptions(plan: Plan, workoutId: string): ModifyChoice[] {
+  const w = plan.workouts[workoutId];
+  if (!w) return [];
+  return options(
+    adjustChoices(w),
+    w.estDurationSec,
+    150, // half of the ladder's 5-minute rounding
+    (sec) => !!adjustSession(plan, workoutId, sec),
+  );
+}
+
+/** The distance chips this session may actually be given.
+ *
+ *  `label` collapses rungs that would READ the same. `fmtDistance` prints whole
+ *  kilometres on purpose (#187, "why 5.7"), while the ladder steps in 500s, so a
+ *  short session offered "3 km · 4 km · 4 km · 5 km" — two identical-looking buttons
+ *  that did different things. Pass the same formatter the row renders with and the
+ *  duplicate goes, the athlete's current value winning the tie. */
+export function distanceOptions(
+  plan: Plan,
+  workoutId: string,
+  label?: (m: number) => string,
+): ModifyChoice[] {
+  const w = plan.workouts[workoutId];
+  if (!w || !canSetDistance(w)) return [];
+  const all = options(
+    distanceChoices(w),
+    w.estDistanceM ?? 0,
+    distanceStep(w) / 2,
+    (m) => !!resizeByDistance(plan, workoutId, m),
+  );
+  if (!label) return all;
+  const byLabel = new Map<string, ModifyChoice>();
+  for (const c of all) {
+    const key = label(c.value);
+    const held = byLabel.get(key);
+    if (!held || (c.current && !held.current)) byLabel.set(key, c);
+  }
+  return [...byLabel.values()].sort((a, b) => a.value - b.value);
 }
 
 /**
