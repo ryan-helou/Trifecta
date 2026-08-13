@@ -553,6 +553,31 @@ export function swapDiscipline(plan: Plan, id: string, discipline: Discipline): 
     estDurationSec: w.estDurationSec,
     estDistanceM: w.estDistanceM,
     primaryZone: w.primaryZone,
+    // COMPLETION EVIDENCE BELONGS TO THE SESSION THAT EARNED IT (#220).
+    //
+    // A swap changes what the session IS. Every record of how the OLD one went —
+    // device actuals, the actual time and distance, the RPE and feel — describes a
+    // session that no longer exists, and the spread below used to carry all of it
+    // onto the new sport. Ryan opened a run reading "HOW IT WENT 47 min · 7 km" and
+    // "Completed": every one of those numbers came from a RIDE he had done, and the
+    // ledger was crediting them as RUN minutes, which also feeds the mechanical
+    // impact model that decides how much running the week can take.
+    //
+    // Snapshotted rather than deleted, so `unswapDiscipline` can hand it back and an
+    // undo never costs the athlete a completion.
+    ...(w.status !== "planned" || w.actuals || w.actualDurationSec != null || w.rpe != null || w.strengthLog
+      ? {
+          completed: {
+            status: w.status,
+            ...(w.actuals ? { actuals: w.actuals } : {}),
+            ...(w.actualDurationSec != null ? { actualDurationSec: w.actualDurationSec } : {}),
+            ...(w.actualDistanceM != null ? { actualDistanceM: w.actualDistanceM } : {}),
+            ...(w.rpe != null ? { rpe: w.rpe } : {}),
+            ...(w.feel ? { feel: w.feel } : {}),
+            ...(w.strengthLog ? { strengthLog: w.strengthLog } : {}),
+          },
+        }
+      : {}),
   };
   p.workouts[id] = {
     ...w,
@@ -565,6 +590,16 @@ export function swapDiscipline(plan: Plan, id: string, discipline: Discipline): 
     estDistanceM: draft.estDistanceM,
     primaryZone: draft.primaryZone,
     status: "planned",
+    // ...and the old session's completion goes with it. Listed explicitly because the
+    // spread above copies every field: leaving these behind is what put a ride's 47
+    // minutes and 7 km on a run, under a "Completed" tick (#220). They are safe in
+    // `swappedFrom.completed` and come back on undo.
+    actuals: undefined,
+    actualDurationSec: undefined,
+    actualDistanceM: undefined,
+    rpe: undefined,
+    feel: undefined,
+    strengthLog: undefined,
     // The swap IS the new prescription for this slot, so the old one has to go.
     // `prescribed` is the baseline every later resize measures against, and it
     // still described the sport that just left: `scaleWorkout` derives distance
@@ -597,7 +632,16 @@ export function unswapDiscipline(plan: Plan, id: string): Plan {
     estDurationSec: o.estDurationSec,
     estDistanceM: o.estDistanceM,
     primaryZone: o.primaryZone,
-    status: "planned",
+    // Undo restores the session AND how it went. Without this, completing a ride,
+    // swapping it to a run and changing your mind quietly erased the completion —
+    // the swap took the evidence away and nothing gave it back (#220).
+    status: o.completed?.status ?? "planned",
+    actuals: o.completed?.actuals,
+    actualDurationSec: o.completed?.actualDurationSec,
+    actualDistanceM: o.completed?.actualDistanceM,
+    rpe: o.completed?.rpe,
+    feel: o.completed?.feel,
+    strengthLog: o.completed?.strengthLog,
     // Same reasoning as the swap: the restored session is its own baseline, and
     // keeping a baseline minted for the sport being removed is how the two
     // disagree (#201).

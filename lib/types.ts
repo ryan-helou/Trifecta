@@ -125,6 +125,25 @@ export interface Workout {
     estDurationSec: number;
     estDistanceM?: number;
     primaryZone: Zone;
+    /** What the athlete had actually DONE before the swap, when they had (#220).
+     *
+     *  A swap changes what the session IS, so the evidence of the old one — device
+     *  actuals, the time and distance, the RPE — describes a session that no longer
+     *  exists. It cannot stay on the new one: Ryan opened a run that read "HOW IT
+     *  WENT 47 min · 7 km" and "Completed", and every one of those numbers came from
+     *  a RIDE. But it must not be destroyed either, or undoing a swap silently loses
+     *  a completion. So it moves in here, and `unswapDiscipline` puts it back. */
+    completed?: {
+      status: Workout["status"];
+      actuals?: WorkoutActuals;
+      actualDurationSec?: number;
+      actualDistanceM?: number;
+      rpe?: number;
+      feel?: Feel;
+      /** Strength is one of the four swappable sports, so the sets you logged are
+       *  evidence too — and the only copy of them. */
+      strengthLog?: StrengthEntry[];
+    };
   };
   /** The session exactly as the engine first prescribed it, captured the first
    *  time anything rescales it and never overwritten after. Adaptation always
