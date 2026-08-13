@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.54",
+  "latest": "1.0.55",
   "bundles": [
-    {
-      "version": "1.0.52",
-      "sha256": "f09559c2684f93a303c1a91aafafcad41759cc5ee68454c5f0a7ce0a1ed3e244",
-      "size": 805883,
-      "createdAtISO": "2026-08-12T19:16:22.849Z",
-      "comment": "real gym session length + progressive overload"
-    },
     {
       "version": "1.0.53",
       "sha256": "86eb674466d507ce71a68a8d573762c1e4a08e780e60f1a64a72567fc15d54f1",
@@ -20,6 +13,13 @@
       "sha256": "c668f86b561357586c5a912eddde32856e79ca6a0705448cbb4fba03473b399f",
       "size": 806211,
       "createdAtISO": "2026-08-12T20:22:34.702Z"
+    },
+    {
+      "version": "1.0.55",
+      "sha256": "50ecb15f50d20faee4019bceb64f9b4c4f96b26a069f4127be67458340dc9c06",
+      "size": 806217,
+      "createdAtISO": "2026-08-13T00:13:01.961Z",
+      "comment": "the tab bar stays at the bottom of the screen"
     }
   ]
 }
