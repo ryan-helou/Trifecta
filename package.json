@@ -1,6 +1,6 @@
 {
   "name": "trifecta",
-  "version": "1.0.56",
+  "version": "1.0.57",
   "private": true,
   "engines": {
     "node": ">=20.9.0"
