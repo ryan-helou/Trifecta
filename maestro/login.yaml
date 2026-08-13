@@ -87,7 +87,20 @@ appId: app.trifecta.mobile
 # so Enter submits natively — no need to locate the button at all, and nothing can
 # overlap a keypress.
 - pressKey: Enter                            # submit → POST /api/auth/login
+# EITHER post-login screen proves what this flow is actually testing: the round-trip
+# succeeded and the athlete's state loaded.
+#
+# This used to assert onboarding's first question outright, which silently depended on
+# `simtest_qa` having NO plan on the server. That premise rotted — the account picked one
+# up (13 weeks, 93 workouts) and the flow began failing on an assertion the app could
+# never satisfy, while login itself worked perfectly. Half a dozen runs were spent looking
+# for a regression in the app that was really a stale fixture.
+#
+# So: match onboarding's question OR the signed-in shell. "Progress" is a bottom-nav label
+# and appears nowhere in onboarding, so the alternation can't be satisfied by the wrong
+# screen. A flow that depends on hidden server state is a flow that will lie to you again.
 - extendedWaitUntil:
-    visible: "What are you training for?"    # onboarding = auth succeeded + state loaded
+    visible: "(What are you training for\\?|Progress)"
     timeout: 30000          # login round-trip (incl. possible Railway cold start) + render
+- assertNotVisible: "Username"               # and we are definitively off the login screen
 - takeScreenshot: 03-loggedin

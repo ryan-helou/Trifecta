@@ -25,7 +25,24 @@ export function BottomNav({
   const activeIndex = TABS.findIndex((t) => t.key === tab);
 
   return (
-    <nav className="sticky bottom-0 z-30 border-t border-line bg-background safe-b">
+    // FIXED, NOT STICKY.
+    //
+    // `sticky bottom-0` pins to the bottom of the nav's CONTAINING BLOCK, and that block
+    // is the app shell — whose height comes from `min-h-full` resolving `100%` against
+    // html. In a browser that is the screen and everything is fine. In the Capacitor
+    // WKWebView it is not always the screen, and when the container comes out shorter
+    // than its content the nav pins to the container's bottom instead of the viewport's:
+    // the bar lands in the MIDDLE of the screen with the rest of Today spilling out
+    // underneath it, unreachable. Ryan sent a photo of exactly that — the tab bar across
+    // the middle, then the week card, form strip and "Race & plan details" stranded below.
+    //
+    // `fixed` cannot fail that way: it is positioned against the viewport, so the bar is
+    // at the bottom of the screen regardless of what any ancestor's height resolves to.
+    // The one thing that breaks `fixed` is a transformed ancestor — TabDeck's track and
+    // PullToRefresh both set transforms — and neither is an ancestor of the nav; it is
+    // their sibling, and its chain to <html> is transform-free. The scroll region pays for
+    // this with bottom padding (see AppShell) so nothing hides behind the bar.
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-background safe-b">
       <div className="relative mx-auto flex max-w-md">
         {/* the champagne underline that slides to sit under the active tab */}
         <div
