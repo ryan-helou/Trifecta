@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { haptic } from "@/lib/haptics";
 import { keyboardInset, raisesKeyboard, sheetMaxHeight, type ViewportReading } from "@/lib/keyboard";
+import { jumpTo } from "@/lib/scroll";
 
 const DISMISS_DISTANCE = 96; // px dragged before release dismisses
 const DISMISS_VELOCITY = 0.55; // px/ms downward flick that dismisses regardless
@@ -102,7 +103,7 @@ export function Sheet({
     };
   }, []);
 
-  // Keep the DOCUMENT pinned while a sheet is open.
+  // Keep the DOCUMENT still while a sheet is open — still, not at the top.
   //
   // Focusing an input inside the sheet makes iOS scroll the page to reveal it. The
   // sheet is `position: fixed`, so it doesn't scroll with content — it just leaves,
@@ -126,11 +127,22 @@ export function Sheet({
   // screen. Both halves are needed: the pin stops the sheet sliding away, the padding
   // stops the footer hiding.
   useEffect(() => {
+    // WHERE the page was when this sheet opened — that is what gets held, not zero.
+    //
+    // Pinning to 0 threw the athlete's place away: scroll the Plan list down to
+    // Sunday, tap Friday's run, close it, and you are back at Monday looking at a
+    // list you have to find your way down again. Nothing about a fixed sheet
+    // requires the page behind it to be at the top; it only requires the page to
+    // STOP MOVING. Holding the offset it already had does that and leaves the
+    // background exactly as the athlete left it, so there is nothing to restore on
+    // close either.
+    const held = window.scrollY;
     const pin = () => {
-      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0) {
-        window.scrollTo(0, 0);
-        document.documentElement.scrollTop = 0;
-      }
+      // Instant, never animated. A bare scrollTo obeys `html { scroll-behavior:
+      // smooth }`, and since this very function is the `scroll` listener, the first
+      // frame of its own animation re-enters it and restarts the animation — 246
+      // restarts and a page still gliding a second later. See lib/scroll.ts.
+      if (Math.abs(window.scrollY - held) > 1) jumpTo(held);
     };
     // …and then SCROLL THE FIELD BACK INTO VIEW.
     //

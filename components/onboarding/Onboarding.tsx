@@ -11,6 +11,7 @@ import { generatePlan } from "@/lib/planEngine";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
 import { CatalogRace } from "@/lib/raceCatalog";
 import { planSummaryContext } from "@/lib/adapt";
+import { jumpToTop } from "@/lib/scroll";
 import { apiIntake, apiPlanSummary, ParsedInjury } from "@/lib/api";
 import { RUN_PR_OPTIONS, SWIM_PR_OPTIONS, BIKE_PR_OPTIONS, prLabel } from "@/lib/paces";
 import { projectRace } from "@/lib/predict";
@@ -277,7 +278,9 @@ export function Onboarding({ onLogin }: { onLogin?: () => void } = {}) {
   // floating over the next two steps' labels.
   useEffect(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
-    window.scrollTo(0, 0);
+    // Jump, not glide — see lib/scroll.ts. A new step should already BE at its top,
+    // not arrive there a moment later.
+    jumpToTop();
   }, [idx]);
 
   const step = STEPS[idx];
