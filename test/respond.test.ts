@@ -14,7 +14,8 @@
 // ---------------------------------------------------------------------------
 
 import { generatePlan } from "../lib/planEngine";
-import { logCheckin, moveWorkout, setStatus, swapDiscipline } from "../lib/adapt";
+import { logCheckin, moveWorkout, setStatus, swapDiscipline, unswapDiscipline } from "../lib/adapt";
+import { creditedDiscipline, creditedSeconds } from "../lib/credit";
 import { HORIZON_SESSIONS } from "../lib/prescribe";
 import { hardDayConflicts, isHardImpact, respondTo, type AthleteEvent } from "../lib/respond";
 import type { Plan, Profile, Workout } from "../lib/types";
@@ -308,6 +309,78 @@ section("skipping never buys the athlete MORE work");
     }
   }
   ok(grew === 0, `no session is lengthened because something was skipped (${grew} grew)`);
+}
+
+// --- #220 — a swap must not inherit the old session's completion ------------
+//
+// Ryan: "Why does it say a future run it completed". He opened an Easy Aerobic Run
+// showing "HOW IT WENT 47 min · 7 km" over a "Completed" tick — and every one of those
+// numbers came from a RIDE. `swapDiscipline` spreads the whole workout and overrode only
+// the prescription fields, so the device actuals, the actual time and distance, and the
+// RPE all rode across onto a sport that never did them. The ledger then credited a ride's
+// 47 minutes as RUN time, which also feeds the mechanical impact model deciding how much
+// running the week can safely take.
+section("swapping a completed session does not carry its completion to the new sport");
+{
+  const plan0 = generatePlan(profile(), ANCHOR);
+  const target = Object.values(plan0.workouts).find((w) => w.discipline === "bike" && w.status === "planned")!;
+  ok(!!target, "the fixture has a bike to complete");
+
+  // complete it, the way a device sync does
+  const done = logCheckin(plan0, target.id, { rpe: 6, feel: "ok", actualDurationSec: 47 * 60, actualDistanceM: 7000 });
+  const beforeW = done.workouts[target.id];
+  ok(beforeW.status === "done", "it is completed before the swap");
+  ok(Math.round(creditedSeconds(beforeW) / 60) === 47, `and credits 47 min to ${creditedDiscipline(beforeW)}`);
+
+  const swapped = swapDiscipline(done, target.id, "run");
+  const sw = swapped.workouts[target.id];
+  ok(sw.discipline === "run", "the swap happened");
+  ok(sw.status === "planned", "the new session is not marked complete");
+  ok(sw.actualDurationSec == null, "the old session's actual DURATION does not come across");
+  ok(sw.actualDistanceM == null, "…nor its actual DISTANCE");
+  ok(sw.actuals == null, "…nor the device record that produced them");
+  ok(sw.rpe == null && sw.feel == null, "…nor how the old session felt");
+  ok(
+    creditedSeconds(sw) !== 47 * 60,
+    `the ledger stops crediting a ride's 47 min as ${creditedDiscipline(sw)} (now ${Math.round(creditedSeconds(sw) / 60)} min)`,
+  );
+
+  // …and none of it is destroyed: undo puts the completion back exactly.
+  const undone = unswapDiscipline(swapped, target.id);
+  const un = undone.workouts[target.id];
+  ok(un.discipline === "bike", "undo restores the original sport");
+  ok(un.status === beforeW.status, "undo restores the completed status");
+  ok(un.actualDurationSec === beforeW.actualDurationSec, "undo restores the actual duration");
+  ok(un.actualDistanceM === beforeW.actualDistanceM, "undo restores the actual distance");
+  ok(un.rpe === beforeW.rpe && un.feel === beforeW.feel, "undo restores the check-in");
+
+  // a swap of a session that was never completed carries nothing and stashes nothing
+  const cleanSwap = swapDiscipline(plan0, target.id, "run");
+  ok(cleanSwap.workouts[target.id].swappedFrom?.completed == null, "an untouched session stashes no completion");
+
+  // Strength is one of the four sports on the swap row, and the sets you logged live
+  // nowhere else — the stash is their only copy.
+  const gymPlan = generatePlan(
+    profile({ strength: { enabled: true, daysPerWeek: 2, split: "full" } }),
+    ANCHOR,
+  );
+  const gym = Object.values(gymPlan.workouts).find((w) => w.discipline === "strength");
+  ok(!!gym, "the gym fixture has a strength session");
+  if (gym) {
+    const sets = [{ name: "Back Squat", sets: [{ reps: 5, kg: 100 }] }];
+    const logged = {
+      ...gymPlan,
+      workouts: { ...gymPlan.workouts, [gym.id]: { ...gym, status: "done" as const, strengthLog: sets } },
+    };
+    const toRun = swapDiscipline(logged, gym.id, "run");
+    ok(toRun.workouts[gym.id].strengthLog == null, "a swap away from strength drops the sets from the new sport");
+    ok(
+      toRun.workouts[gym.id].swappedFrom?.completed?.strengthLog?.length === 1,
+      "…and keeps them in the stash",
+    );
+    const back = unswapDiscipline(toRun, gym.id);
+    ok(back.workouts[gym.id].strengthLog?.[0]?.name === "Back Squat", "undo hands the sets back");
+  }
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);
