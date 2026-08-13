@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.57",
+  "latest": "1.0.58",
   "bundles": [
-    {
-      "version": "1.0.55",
-      "sha256": "50ecb15f50d20faee4019bceb64f9b4c4f96b26a069f4127be67458340dc9c06",
-      "size": 806217,
-      "createdAtISO": "2026-08-13T00:13:01.961Z",
-      "comment": "the tab bar stays at the bottom of the screen"
-    },
     {
       "version": "1.0.56",
       "sha256": "633fd643e8671113100fda3ee8e245e7e9d4a459811f194f6be9e8fd3b0dd13e",
@@ -21,6 +14,13 @@
       "size": 806896,
       "createdAtISO": "2026-08-13T14:30:23.697Z",
       "comment": "the page stops scrolling by itself, and opening a session keeps your place in the list"
+    },
+    {
+      "version": "1.0.58",
+      "sha256": "30634e296b9c9ea2cf1a548fc183577b6d70af93fc84ee66ea95961cbdd795db",
+      "size": 807267,
+      "createdAtISO": "2026-08-13T15:31:43.508Z",
+      "comment": "every chip in Modify does something, and the app tells you when it can't"
     }
   ]
 }
