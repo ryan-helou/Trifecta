@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { haptic } from "@/lib/haptics";
+import { keyboardInset, raisesKeyboard, sheetMaxHeight, type ViewportReading } from "@/lib/keyboard";
 
 const DISMISS_DISTANCE = 96; // px dragged before release dismisses
 const DISMISS_VELOCITY = 0.55; // px/ms downward flick that dismisses regardless
@@ -29,6 +30,7 @@ function unlockBodyScroll() {
 // Open sheets, bottom to top. Escape dismisses only the topmost — without this,
 // one keypress would dismiss a whole stack at once.
 const sheetStack: object[] = [];
+
 
 /*
   Bottom sheet with iOS-style drag-to-dismiss. Grab the handle (or drag down from
@@ -157,6 +159,15 @@ export function Sheet({
       sc.scrollTop += field.top - box.top - Math.max(0, (box.height - field.height) / 2);
     };
     const vv = window.visualViewport;
+    // What the sizing decisions in lib/keyboard.ts get to see. `typing` is the part
+    // that matters: a stale reservation is worse than no reservation, and the gap
+    // between the viewports can outlive the keyboard that opened it (#221).
+    const reading = (): ViewportReading => ({
+      innerHeight: window.innerHeight,
+      viewportHeight: vv?.height ?? window.innerHeight,
+      viewportOffsetTop: vv?.offsetTop ?? 0,
+      typing: raisesKeyboard(document.activeElement),
+    });
     let frame = 0;
     const sync = () => {
       pin();
@@ -171,7 +182,8 @@ export function Sheet({
       // rAF-coalesced: visualViewport fires continuously while the keyboard animates.
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+        const v = reading();
+        const kb = keyboardInset(v);
         el.style.paddingBottom = kb ? `${kb}px` : "";
         // Cap the panel from the measured space, in pixels, rather than by adding a
         // competing utility class. `max-h-[92vh]` and `max-h-full` on the same element
@@ -179,31 +191,60 @@ export function Sheet({
         // and kept its footer under the keyboard; and a percentage doesn't resolve here
         // because the wrapper between frame and panel has no definite height. One
         // number, set directly, has neither problem.
+        const cap = sheetMaxHeight(v);
         const panel = panelRef.current;
-        if (panel) panel.style.maxHeight = kb ? `${Math.round((vv.height + vv.offsetTop) * 0.92)}px` : "";
+        if (panel) panel.style.maxHeight = cap === null ? "" : `${cap}px`;
         // INSIDE this frame, after the sizes above are applied. Measuring before them
         // reads the pre-keyboard layout and scrolls by the wrong amount — which is
         // exactly what the first attempt at this did, and on device it looked
         // identical to no fix at all.
-        showFocused();
+        //
+        // Only while a keyboard is actually up: with the screen fully available there
+        // is nothing to rescue, and re-running it on every DOM change (below) would
+        // otherwise drag the athlete's scroll position back to the focused field
+        // every time the view re-rendered underneath them.
+        if (kb) showFocused();
       });
     };
-    const onFocus = () => {
+    let timers: number[] = [];
+    const settle = () => {
       // after WebKit has done its own scrolling, not before. `sync` re-runs the scroll
       // itself, so the keyboard animating open corrects it repeatedly rather than once.
+      timers.forEach(clearTimeout);
       requestAnimationFrame(sync);
-      window.setTimeout(sync, 120);
-      window.setTimeout(sync, 350);
+      timers = [window.setTimeout(sync, 120), window.setTimeout(sync, 350)];
     };
     sync();
     window.addEventListener("scroll", pin, { passive: true });
-    document.addEventListener("focusin", onFocus);
+    document.addEventListener("focusin", settle);
+    // focusout catches the keyboard going down — including the routes that leave no
+    // viewport event, like flicking it away by swiping over it. It has to go through
+    // `settle` rather than measure on the spot: focusout fires BEFORE the focusin of
+    // whatever was tapped next, so an instant re-measure would collapse and re-expand
+    // the reservation on every hop between two fields. The delays let focus land.
+    document.addEventListener("focusout", settle);
     vv?.addEventListener("resize", sync);
     vv?.addEventListener("scroll", sync);
+    // Leaving the app with the keyboard up and coming back is the third route: iOS
+    // takes the keyboard away while nothing here is listening, and rAF is frozen for
+    // a backgrounded webview, so the resize that did fire was coalesced into nothing.
+    document.addEventListener("visibilitychange", settle);
+    window.addEventListener("pageshow", settle);
+    // The last route: when React unmounts the focused field there is no focus event
+    // and no viewport event — the keyboard simply leaves. A mutation is the only
+    // signal that reaches us, and `sync` is rAF-coalesced, so re-checking on every DOM
+    // change costs a couple of property reads.
+    const mo = typeof MutationObserver !== "undefined" ? new MutationObserver(sync) : null;
+    if (panelRef.current) mo?.observe(panelRef.current, { childList: true, subtree: true });
     return () => {
       cancelAnimationFrame(frame);
+      timers.forEach(clearTimeout);
+      mo?.disconnect();
       window.removeEventListener("scroll", pin);
-      document.removeEventListener("focusin", onFocus);
+      document.removeEventListener("focusin", settle);
+      document.removeEventListener("focusout", settle);
+      document.removeEventListener("visibilitychange", settle);
+      window.removeEventListener("pageshow", settle);
       vv?.removeEventListener("resize", sync);
       vv?.removeEventListener("scroll", sync);
     };
