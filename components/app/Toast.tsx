@@ -98,8 +98,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastCtx.Provider value={show}>
       {children}
+      {/* z-[60] is ABOVE the sheets (z-50), not below them.
+          At z-40 every message raised from inside a sheet rendered BEHIND it and was
+          never seen — and the Modify panel lives in a sheet, so its refusals ("that
+          session can't be resized to that distance") were silent. The athlete taps,
+          nothing happens, nothing is said. Ryan: "it's not letting me set to
+          distances in my… to modify workout." A toast is the app answering; it has to
+          outrank whatever prompted the question. */}
       {toast && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(env(safe-area-inset-bottom)+74px)]">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] px-4 pb-[calc(env(safe-area-inset-bottom)+74px)]">
           <div className="mx-auto max-w-md">
             <div
               role="status"

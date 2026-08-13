@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Discipline, Plan, Segment, Unit, Workout, Zone } from "@/lib/types";
 import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
@@ -12,11 +12,10 @@ import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
 import { buildWorkoutFit, fitFilename } from "@/lib/fit";
 import { whyAddsContext, whyForWorkout } from "@/lib/why";
-import { adjustChoices } from "@/lib/prescribe";
 import { isAthleteLogged } from "@/lib/adapt";
 import {
-  canSetDistance,
-  distanceChoices,
+  distanceOptions,
+  lengthOptions,
   targetChoices,
   targetKindFor,
   targetLabel,
@@ -263,8 +262,14 @@ function ModifyPanel({
   onDone: () => void;
   onClose: () => void;
 }) {
-  const lengths = adjustChoices(workout);
-  const distances = canSetDistance(workout) ? distanceChoices(workout) : [];
+  // Filtered through the engine that has to honour them, so a chip on screen is
+  // always a chip that does something (#108). Memoised because each option costs a
+  // trial resize plus a rails check, and this panel re-renders on every edit.
+  const lengths = useMemo(() => lengthOptions(plan, workout.id), [plan, workout.id]);
+  const distances = useMemo(
+    () => distanceOptions(plan, workout.id, (m) => fmtDistance(m, unit, workout.discipline === "swim")),
+    [plan, workout.id, unit, workout.discipline],
+  );
   const kind = targetKindFor(workout, plan.paces);
   const paceWhy = targetUnavailableReason(workout, plan.paces);
   const paces = kind ? targetChoices(plan.paces, kind) : [];
@@ -296,17 +301,16 @@ function ModifyPanel({
 
       {lengths.length > 0 && (
         <ModifyRow label="Length" hint="Keeps its shape — whole intervals in or out, never a quiet rewrite.">
-          {lengths.map((sec) => {
-            const isNow = Math.abs(sec - workout.estDurationSec) < 60;
+          {lengths.map(({ value: sec, current }) => {
             const isPlanned = Math.abs(sec - baseSec) < 60;
             return (
               <button
                 key={sec}
                 onClick={() => { haptic("select"); actions.adjust(workout.id, sec); }}
-                aria-pressed={isNow}
-                className={`chip ${isNow ? "is-selected" : ""}`}
+                aria-pressed={current}
+                className={`chip ${current ? "is-selected" : ""}`}
               >
-                {fmtDuration(sec)}{isPlanned && !isNow ? " · planned" : ""}
+                {fmtDuration(sec)}{isPlanned && !current ? " · planned" : ""}
               </button>
             );
           })}
@@ -327,17 +331,16 @@ function ModifyPanel({
 
       {distances.length > 0 && (
         <ModifyRow label="Distance" hint="Time moves with it, so the header never disagrees with the steps.">
-          {distances.map((m) => {
-            const isNow = Math.abs(m - (workout.estDistanceM ?? 0)) < 50;
+          {distances.map(({ value: m, current }) => {
             const isPlanned = Math.abs(m - baseM) < 50;
             return (
               <button
                 key={m}
                 onClick={() => { haptic("select"); actions.setDistance(workout.id, m); }}
-                aria-pressed={isNow}
-                className={`chip ${isNow ? "is-selected" : ""}`}
+                aria-pressed={current}
+                className={`chip ${current ? "is-selected" : ""}`}
               >
-                {fmtDistance(m, unit, workout.discipline === "swim")}{isPlanned && !isNow ? " · planned" : ""}
+                {fmtDistance(m, unit, workout.discipline === "swim")}{isPlanned && !current ? " · planned" : ""}
               </button>
             );
           })}
