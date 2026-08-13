@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.56",
+  "latest": "1.0.57",
   "bundles": [
-    {
-      "version": "1.0.54",
-      "sha256": "c668f86b561357586c5a912eddde32856e79ca6a0705448cbb4fba03473b399f",
-      "size": 806211,
-      "createdAtISO": "2026-08-12T20:22:34.702Z"
-    },
     {
       "version": "1.0.55",
       "sha256": "50ecb15f50d20faee4019bceb64f9b4c4f96b26a069f4127be67458340dc9c06",
@@ -20,6 +14,13 @@
       "size": 806831,
       "createdAtISO": "2026-08-13T13:49:35.063Z",
       "comment": "#220 swap keeps its own record, #221 the sheet stops reserving space for a keyboard that left"
+    },
+    {
+      "version": "1.0.57",
+      "sha256": "797b898df653ad35aa03fea34ca0b4b4e3f4bbc21ed6a749d31f7875bcdcfa01",
+      "size": 806896,
+      "createdAtISO": "2026-08-13T14:30:23.697Z",
+      "comment": "the page stops scrolling by itself, and opening a session keeps your place in the list"
     }
   ]
 }
