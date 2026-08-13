@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { haptic } from "@/lib/haptics";
+import { jumpToTop } from "@/lib/scroll";
 import { TabKey } from "./ui";
 
 const ORDER: TabKey[] = ["today", "plan", "progress", "friends", "profile"];
@@ -113,7 +114,10 @@ export function TabDeck({
       trackRef.current.style.transition = "none";
       trackRef.current.style.transform = "translateX(0)";
     }
-    window.scrollTo(0, 0);
+    // Jump, don't glide. `html { scroll-behavior: smooth }` makes a bare scrollTo an
+    // animation, so switching tabs from halfway down one used to slide the new tab up
+    // from wherever the old one was instead of simply being at its top.
+    jumpToTop();
   }, [tab]);
 
   return (
