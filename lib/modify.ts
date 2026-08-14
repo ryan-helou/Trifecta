@@ -273,6 +273,22 @@ export function distanceChoices(w: Workout): number[] {
 /** Rounding granularity of the distance ladder — also the tolerance for "you are
  *  already at this one", which has to be HALF a rung or the rung you're standing on
  *  looks unselected. */
+/**
+ * How far from a rung still counts as standing on it.
+ *
+ * ONE constant, used by the row that decides which chip is CURRENT and by the guard
+ * that decides whether tapping it is a no-op. It was written in two places and they
+ * disagreed at exactly the boundary: `options()` treats a rung as current when the gap
+ * is `<= tolerance`, while the guard tested `<`, so a session 150s from its rung
+ * rendered the chip as selected AND let the tap through to be refused. Nine sessions
+ * across the profile matrix — every one an elite `Aerobic Endurance Swim` sitting
+ * exactly 2:30 off its rung.
+ *
+ * A boundary encoded twice is a boundary that will be wrong somewhere; this is the
+ * second bug in this file from that same shape.
+ */
+export const LENGTH_TOLERANCE_SEC = 150;
+
 function distanceStep(w: Workout): number {
   const base = w.prescribed?.estDistanceM ?? w.estDistanceM ?? 0;
   return base >= 10000 ? 1000 : base >= 3000 ? 500 : 100;
@@ -299,13 +315,13 @@ function distanceStep(w: Workout): number {
  * 9 km as current) is a real change and still goes through.
  */
 export function isAtDistance(w: Workout, metres: number): boolean {
-  return Math.abs((w.estDistanceM ?? 0) - metres) < distanceStep(w) / 2;
+  return Math.abs((w.estDistanceM ?? 0) - metres) <= distanceStep(w) / 2;
 }
 
-/** The length-side twin of `isAtDistance`. Same reasoning, and the same 150s window
- *  `lengthOptions` uses to pick the current rung. */
+/** The length-side twin of `isAtDistance`, sharing `LENGTH_TOLERANCE_SEC` with the
+ *  row that decides which chip is current. */
 export function isAtLength(w: Workout, sec: number): boolean {
-  return Math.abs(w.estDurationSec - sec) < 150;
+  return Math.abs(w.estDurationSec - sec) <= LENGTH_TOLERANCE_SEC;
 }
 
 // ---------------------------------------------------------------------------
@@ -367,7 +383,7 @@ export function lengthOptions(plan: Plan, workoutId: string): ModifyChoice[] {
   return options(
     adjustChoices(w),
     w.estDurationSec,
-    150, // half of the ladder's 5-minute rounding
+    LENGTH_TOLERANCE_SEC, // half of the ladder's 5-minute rounding
     (sec) => !!adjustSession(plan, workoutId, sec),
   );
 }
