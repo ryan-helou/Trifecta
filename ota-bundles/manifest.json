@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.60",
+  "latest": "1.0.61",
   "bundles": [
-    {
-      "version": "1.0.58",
-      "sha256": "30634e296b9c9ea2cf1a548fc183577b6d70af93fc84ee66ea95961cbdd795db",
-      "size": 807267,
-      "createdAtISO": "2026-08-13T15:31:43.508Z",
-      "comment": "every chip in Modify does something, and the app tells you when it can't"
-    },
     {
       "version": "1.0.59",
       "sha256": "01dcca6f41ba036cc80eb0e9a4aac248fe6e947b8845de25d987825e779be7e1",
@@ -20,6 +13,13 @@
       "size": 809788,
       "createdAtISO": "2026-08-14T14:54:52.318Z",
       "comment": "the changes you make to your plan stick, and the plan answers what you actually do"
+    },
+    {
+      "version": "1.0.61",
+      "sha256": "88fd901325e3df81372ff7646d0848da161f408a053953bcdafbbd680be8350e",
+      "size": 809971,
+      "createdAtISO": "2026-08-14T15:57:05.475Z",
+      "comment": "sessions built from plain distance blocks can be resized again"
     }
   ]
 }
