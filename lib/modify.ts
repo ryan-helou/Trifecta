@@ -278,6 +278,36 @@ function distanceStep(w: Workout): number {
   return base >= 10000 ? 1000 : base >= 3000 ? 500 : 100;
 }
 
+/**
+ * Is this session already at that value?
+ *
+ * The Modify rows always render a chip for where the session currently stands — that
+ * is what makes the row able to show your position and offer a way back to it. But
+ * the chip was a live button, so TAPPING THE ONE YOU ARE ALREADY ON called the action,
+ * the action correctly reported that nothing would change, and the UI turned that into
+ * "That session can't be resized to that distance." Reported by Ryan against 1.0.61,
+ * and the sentence is both false and alarming: the session absolutely can be resized,
+ * he had simply asked for the length it already was.
+ *
+ * Measured across the profile matrix: 0 failures on chips offered as selectable, and
+ * 4,842 on the current one. So it fired on essentially every session, for anyone who
+ * tapped the highlighted chip — which is the natural thing to do when you are checking
+ * what a control does.
+ *
+ * The tolerance matches the one `options()` uses to decide which chip IS current, so
+ * the two can never disagree about it. A rung NEAR the current value (8.8 km showing
+ * 9 km as current) is a real change and still goes through.
+ */
+export function isAtDistance(w: Workout, metres: number): boolean {
+  return Math.abs((w.estDistanceM ?? 0) - metres) < distanceStep(w) / 2;
+}
+
+/** The length-side twin of `isAtDistance`. Same reasoning, and the same 150s window
+ *  `lengthOptions` uses to pick the current rung. */
+export function isAtLength(w: Workout, sec: number): boolean {
+  return Math.abs(w.estDurationSec - sec) < 150;
+}
+
 // ---------------------------------------------------------------------------
 // What the Modify row may actually OFFER
 //

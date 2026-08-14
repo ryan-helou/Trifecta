@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { Plan, Profile } from "@/lib/types";
+import { mergeCompletions } from "@/lib/planMerge";
 import { cacheHasUnsavedEdits, profileToPersist, resolveProfile } from "@/lib/session";
 import { dedupeSyncedSessions } from "@/lib/activity";
 import { repairSwappedDistances } from "@/lib/repair";
@@ -121,37 +122,11 @@ function writeCache(username: string, profile: Profile | null, plan: Plan | null
   }
 }
 
-/** Fold the server's copy into ours after a 409 save conflict. Server-side writers
- *  (Strava webhook/sync) only ever mark sessions done + attach device actuals, so
- *  that narrow field set is all we adopt; local wins everywhere else. Returns the
- *  input plan unchanged (same reference) when there's nothing to merge. */
-function mergeServerPlan(local: Plan | null, server: Plan | null | undefined): Plan | null {
-  if (!local || !server) return local;
-  let changed = false;
-  const workouts = { ...local.workouts };
-  for (const [id, sw] of Object.entries(server.workouts ?? {})) {
-    const lw = workouts[id];
-    if (!lw || lw.status !== "planned" || sw.status !== "done") continue;
-    workouts[id] = {
-      ...lw,
-      status: sw.status,
-      actuals: sw.actuals ?? lw.actuals,
-      actualDurationSec: sw.actualDurationSec ?? lw.actualDurationSec,
-      actualDistanceM: sw.actualDistanceM ?? lw.actualDistanceM,
-    };
-    changed = true;
-  }
-  // union the date-keyed readiness log + eased weeks; local wins a same-key clash
-  const readiness = { ...(server.readiness ?? {}), ...(local.readiness ?? {}) };
-  if (Object.keys(readiness).length !== Object.keys(local.readiness ?? {}).length) changed = true;
-  const easedWeeks = [...new Set([...(local.easedWeeks ?? []), ...(server.easedWeeks ?? [])])].sort((a, b) => a - b);
-  if (easedWeeks.length !== (local.easedWeeks ?? []).length) changed = true;
-  if (!changed) return local;
-  const merged: Plan = { ...local, workouts };
-  if (Object.keys(readiness).length) merged.readiness = readiness;
-  if (easedWeeks.length) merged.easedWeeks = easedWeeks;
-  return merged;
-}
+/** Fold the server's copy into ours after a 409 save conflict, or at boot when the
+ *  cache is dirty. The rule now lives in lib/planMerge.ts because the Strava
+ *  auto-sync needs exactly the same one — it used to replace the plan wholesale,
+ *  which is how an undo could be reverted by a timer. */
+const mergeServerPlan = mergeCompletions;
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [booted, setBooted] = useState(false);

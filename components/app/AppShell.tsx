@@ -46,8 +46,9 @@ import { adjustSession } from "@/lib/prescribe";
 import { addSession as buildAddedSession, suggestSession, type AddChoice } from "@/lib/addSession";
 import { settleUnplanned } from "@/lib/equilibrium";
 import { apiMarkNotificationsRead, apiNotifications } from "@/lib/api";
-import { repaceSession, reslotStrength, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
+import { isAtDistance, isAtLength, repaceSession, reslotStrength, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
 import type { Plan } from "@/lib/types";
+import { mergeCompletions } from "@/lib/planMerge";
 import { logReadiness, readinessScore, READY_LOW } from "@/lib/readiness";
 import { track } from "@/lib/analytics";
 import { calibratePaces } from "@/lib/calibrate";
@@ -249,15 +250,32 @@ function AppShellInner() {
   const applySyncedPlan = useCallback(
     (next: Plan, anchorId?: string) => {
       if (!plan) return;
-      const newlyDone = Object.values(next.workouts)
+      // MERGE, DON'T REPLACE.
+      //
+      // `next` is the server's whole plan, and adopting it wholesale meant every
+      // local edit made since the last save was silently destroyed — the save is
+      // debounced, the sync now runs every two minutes, so the window is wide open.
+      // Ryan un-ticked a completed run and watched it come back on its own: the
+      // server's copy still said done, so the next tick reinstated it, `newlyDone`
+      // then read it as a fresh completion, and the plan re-adapted around it. Every
+      // two minutes.
+      //
+      // mergeCompletions takes only what the server can know that we can't — what
+      // Strava says the athlete DID — and never resurrects an activity they detached.
+      const merged = mergeCompletions(plan, next);
+      // Same reference means the server told us nothing new. Skipping here is what
+      // stops a poll that found nothing from writing the plan back and re-rendering
+      // it, which is most of what the two-minute timer was doing.
+      if (!merged || merged === plan) return;
+      const newlyDone = Object.values(merged.workouts)
         .filter((w) => w.status === "done" && plan.workouts[w.id]?.status !== "done")
         .sort((a, b) => a.date.localeCompare(b.date));
       const id = anchorId ?? newlyDone[newlyDone.length - 1]?.id;
       if (!id) {
-        applyPlan(next);
+        applyPlan(merged);
         return;
       }
-      respond(next, { kind: "logged", workoutId: id });
+      respond(merged, { kind: "logged", workoutId: id });
     },
     [plan, applyPlan, respond],
   );
@@ -557,6 +575,11 @@ function AppShellInner() {
     // null when nothing would move, so no toast ever claims a change that didn't
     // happen (#108).
     adjust: (id, targetSec) => {
+      // Asking for the length it already is is not a failure, and must not be reported
+      // as one — see `isAtLength`. Silent, because the chip is already showing you the
+      // answer: you are on it.
+      const at = plan.workouts[id];
+      if (at && isAtLength(at, targetSec)) return;
       const res = adjustSession(plan, id, targetSec);
       if (!res) {
         toast({ text: "That session is already as close to that as it can get.", tone: "default" });
@@ -578,6 +601,10 @@ function AppShellInner() {
     // and duration move together inside resizeByDistance, so the header can never
     // end up disagreeing with the steps beneath it.
     setDistance: (id, targetM) => {
+      // Same as `adjust`: tapping the distance you are already at is a no-op, not
+      // "that session can't be resized to that distance" (Ryan, against 1.0.61).
+      const at = plan.workouts[id];
+      if (at && isAtDistance(at, targetM)) return;
       const res = resizeByDistance(plan, id, targetM);
       if (!res) {
         toast({ text: "That session can't be resized to that distance.", tone: "default" });

@@ -1,7 +1,7 @@
 import type { Store } from "./db";
 import type { StravaConn } from "./db";
 import type { Discipline, Plan, Workout, WorkoutActuals, Zone } from "./types";
-import { setStatus, reindexWeeks } from "./adapt";
+import { isDetached, setStatus, reindexWeeks } from "./adapt";
 import { duplicateActivity } from "./activity";
 import { dayIndexOf } from "./dates";
 
@@ -238,6 +238,14 @@ export interface ApplyResult {
   alreadyDone?: boolean;
   /** true when a Strava "update" event refreshed the stored actuals in place */
   updated?: boolean;
+  /** the athlete un-completed this activity; it is not offered to the plan again */
+  detached?: boolean;
+}
+
+/** Was this session created BY a sync (rather than prescribed by the engine)?
+ *  Matches the id shape minted in addBonusWorkoutFromStrava. */
+export function isSyncedId(id: string): boolean {
+  return id.startsWith("synced-");
 }
 
 /** Create a bonus workout for an activity that didn't match any planned session. */
@@ -292,6 +300,17 @@ export async function applyActivityToUser(store: Store, userId: string, a: Strav
     const plan = (data.plan ?? null) as Plan | null;
     if (!plan || !plan.workouts) return { matched: false };
 
+    // THE ATHLETE'S UNDO OUTRANKS THE SYNC.
+    //
+    // First question asked, before matching or refreshing anything: did they tell us
+    // this activity doesn't complete a session? The sync re-reads three weeks of
+    // activities on every pass, so without this the same ride is re-offered to the
+    // same session every two minutes and an undo cannot survive its own timer.
+    // Checked here rather than inside the match so it also blocks the bonus-session
+    // branch below — otherwise un-ticking a session would spawn a synced- copy of the
+    // very activity that was just rejected, which is worse than the bug.
+    if (isDetached(plan, a.id)) return { matched: false, detached: true };
+
     // One activity, one session: whatever its status now, a workout that already
     // carries this activity id owns it — update in place, never match a second.
     const carrier = Object.values(plan.workouts).find((w) => w.actuals?.activityId === a.id);
@@ -302,6 +321,14 @@ export async function applyActivityToUser(store: Store, userId: string, a: Strav
         actuals: acts,
         actualDurationSec: acts.durationSec ?? carrier.actualDurationSec,
         actualDistanceM: acts.distanceM ?? carrier.actualDistanceM,
+        // Rename on Strava, rename here — but ONLY for sessions Strava created.
+        // A bonus session IS the activity, so its title going stale means the app
+        // shows a name the athlete has since changed (Ryan had two rides both still
+        // reading "MyWhoosh - Hudayriyat Outer Loop" long after renaming them "Z1
+        // recovery" and "Another Z1 bike"). A PLANNED session is different: its title
+        // is the prescription — "Easy Aerobic Run" — and must not be overwritten by
+        // whatever the athlete happened to call the ride that completed it.
+        ...(isSyncedId(carrier.id) && a.name && a.name !== carrier.title ? { title: a.name } : {}),
       };
       if (JSON.stringify(refreshed) === JSON.stringify(carrier)) {
         return { matched: true, workoutId: carrier.id, title: carrier.title, alreadyDone: true };
