@@ -25,7 +25,7 @@ import {
   upsertRoutine,
 } from "../lib/routines";
 import { EXERCISE_CATALOG, canonicalName, searchExercises } from "../lib/exerciseCatalog";
-import { exerciseHistory } from "../lib/strength";
+import { exerciseHistory, setCount, summarise } from "../lib/strength";
 import type { Profile, StrengthEntry, StrengthSlot, Workout } from "../lib/types";
 
 let checks = 0;
@@ -145,15 +145,19 @@ section("Saving a routine");
   ok(r.exercises[0].sets[0].weightKg === 80, "weights carry over — starting from last week's numbers is the point");
   ok(r.updatedISO === ANCHOR, "the timestamp is passed in, never read from a clock");
 
-  // Half-typed rows must not become permanent zeroes in a reusable template.
+  // A row with no NAME is nothing. A row with no NUMBERS is a plan — that reversed
+  // when Ryan pointed out nobody knows their working weights before they've lifted,
+  // so a numberless set is now kept as a blank rather than deleted as an abandonment.
+  // What must never happen either way is a phantom ZERO landing in a reusable template.
   const messy: StrengthEntry[] = [
     { name: "Squat", sets: [{ reps: 5, weightKg: 100 }, { reps: 0 }] },
     { name: "  ", sets: [{ reps: 5 }] },
-    { name: "Abandoned", sets: [{ reps: 0 }] },
+    { name: "Planned, not yet done", sets: [{ reps: 0 }] },
   ];
   const cleaned = routineFromEntries("legs", "Legs", messy)!;
-  ok(cleaned.exercises.length === 1, `empty and unnamed rows are dropped (got ${cleaned.exercises.length})`);
-  ok(cleaned.exercises[0].sets.length === 1, "and a zero-rep set inside a kept exercise goes too");
+  ok(cleaned.exercises.length === 2, `unnamed rows are dropped, numberless ones are kept (got ${cleaned.exercises.length})`);
+  ok(cleaned.exercises[0].sets.length === 2, "a numberless set inside a kept exercise stays as a planned set");
+  ok(cleaned.exercises[0].sets[1].reps == null, "…stored as absent, never as a zero");
   ok(routineFromEntries("push", "Nothing", []) === null, "nothing worth saving returns null, so the button can stay honest");
 
   // One routine per slot: saving again REPLACES rather than accumulating, or the
@@ -336,7 +340,7 @@ section("a gym day opens with the session the plan prescribes");
   for (const [slot, w] of bySlot) {
     const ex = prescribedExercises(w);
     ok(ex.length >= 4, `${slot}: the prescribed circuit parses into ${ex.length} exercises`);
-    ok(ex.every((e) => e.sets.length >= 2 && e.sets.every((x) => x.reps > 0)), `${slot}: every exercise has real sets and reps`);
+    ok(ex.every((e) => e.sets.length >= 2 && e.sets.every((x) => (x.reps ?? 0) > 0)), `${slot}: every exercise has real sets and reps`);
     ok(ex.every((e) => e.name && !/×|\d/.test(e.name)), `${slot}: names are clean (${ex.map((e) => e.name).slice(0, 2).join(", ")}…)`);
   }
 
@@ -345,7 +349,7 @@ section("a gym day opens with the session the plan prescribes");
   ok(push.some((e) => e.name === "Push-Up"), "'push-up' is canonicalised to the catalog's 'Push-Up', not left as free text");
   const pull = prescribedExercises(bySlot.get("pull")!);
   ok(pull.some((e) => /each side/.test(e.name)), "'×12/side' becomes a per-side note rather than a bogus rep count");
-  ok(pull.every((e) => e.sets.every((x) => x.reps <= 20)), "and no exercise ends up with a nonsense rep count");
+  ok(pull.every((e) => e.sets.every((x) => (x.reps ?? 0) <= 20)), "and no exercise ends up with a nonsense rep count");
 
   // A saved routine always wins — it's the athlete's own programme.
   const w = bySlot.get("push")!;
@@ -369,6 +373,100 @@ section("a gym day opens with the session the plan prescribes");
      "while the PLAN still decides the sets and reps — history supplies only the number the plan couldn't know");
   ok(seeded.entries.find((e) => e.name === "Dip")?.sets.every((x) => x.weightKg == null) === true,
      "and a lift with no history is left blank rather than given an invented weight");
+}
+
+section("a routine can be built before you know your numbers");
+{
+  // Ryan: "don't force them to put the amount of reps and kilograms because when
+  // they build it for their first time, they're not gonna know … let them leave it
+  // as empty so that when they do their first workout, then they fill it in, and
+  // that's the baseline."
+  //
+  // Building a gym day is PLANNING. Sets with no numbers used to be stripped, and
+  // the exercise deleted with them, so a first-time athlete could not save a routine
+  // at all without inventing weights they had never lifted.
+  const blank: StrengthEntry[] = [
+    { name: "Barbell Bench Press", sets: [{}, {}, {}] },
+    { name: "Overhead Press", sets: [{}, {}] },
+  ];
+  const routine = routineFromEntries("push", "Push day", blank, ANCHOR);
+  ok(!!routine, "a routine of movements with no numbers SAVES");
+  ok(routine?.exercises.length === 2, "both exercises survive");
+  ok(routine?.exercises[0].sets.length === 3, "and every empty set survives — three sets of bench is three sets");
+  ok(
+    routine!.exercises.every((e) => e.sets.every((s) => s.reps == null && s.weightKg == null)),
+    "nothing is invented to fill the gap — no phantom zeros",
+  );
+
+  // An empty set is unrecorded, never zero work.
+  const counted = setCount(routine!.exercises);
+  ok(counted.sets === 5, "it counts as five planned sets");
+  ok(counted.recorded === 0 && counted.reps === 0, "and as no recorded work at all");
+  ok(!/0 reps/.test(summarise(routine!.exercises)), `the card never says "0 reps" (${summarise(routine!.exercises)})`);
+
+  // Half-filled is allowed too — you might know the reps and not the weight.
+  const half = routineFromEntries("pull", "Pull", [{ name: "Barbell Row", sets: [{ reps: 8 }, {}] }], ANCHOR);
+  ok(half?.exercises[0].sets.length === 2, "a half-filled exercise keeps both sets");
+  ok(half?.exercises[0].sets[0].reps === 8 && half?.exercises[0].sets[1].reps == null, "and keeps exactly what was typed");
+
+  // Still refuses genuine nothing.
+  ok(routineFromEntries("push", "x", [], ANCHOR) === null, "no exercises is still nothing to save");
+  ok(routineFromEntries("push", "x", [{ name: "  ", sets: [{}] }], ANCHOR) === null, "a nameless row is still nothing to save");
+}
+
+section("the first session you do fills the blanks in, and becomes the baseline");
+{
+  const profile = { ...profileFor("push-pull-legs"), routines: [
+    routineFromEntries("push", "Push day", [
+      { name: "Barbell Bench Press", sets: [{}, {}, {}] },
+      { name: "Overhead Press", sets: [{}, {}] },
+    ], ANCHOR)!,
+  ] } as Profile;
+  const plan = generatePlan(profile, ANCHOR);
+  const pushDay = Object.values(plan.workouts).find((w) => w.discipline === "strength" && slotOf(w) === "push")!;
+  ok(!!pushDay, "the plan has a push day");
+
+  // BEFORE the first session: nothing to inherit, so the card is honestly blank.
+  const first = cardForWorkout(profile, pushDay, []);
+  ok(first.source === "routine", "the card comes from the athlete's routine");
+  ok(first.entries[0].sets.every((s) => s.reps == null), "and opens blank, because there is nothing yet to know");
+
+  // They train it and fill the numbers in.
+  const logged: Workout = {
+    ...pushDay,
+    id: "logged-push",
+    date: "2026-08-10",
+    status: "done",
+    strengthLog: [
+      { name: "Barbell Bench Press", sets: [{ reps: 5, weightKg: 60 }, { reps: 5, weightKg: 60 }, { reps: 4, weightKg: 60 }] },
+      { name: "Overhead Press", sets: [{ reps: 8, weightKg: 30 }, { reps: 8, weightKg: 30 }] },
+    ],
+  };
+  const history = exerciseHistory([logged]);
+
+  // AFTER: the same routine opens at what they actually lifted.
+  const next = cardForWorkout(profile, pushDay, history);
+  ok(next.source === "routine", "it is still their routine");
+  const bench = next.entries.find((e) => e.name === "Barbell Bench Press")!;
+  ok(bench.sets[0].weightKg === 60, "the weight they lifted comes back");
+  ok(bench.sets[0].reps === 5 && bench.sets[2].reps === 4, "set by set, not smeared into one number");
+  const ohp = next.entries.find((e) => e.name === "Overhead Press")!;
+  ok(ohp.sets.every((s) => s.weightKg === 30 && s.reps === 8), "every exercise, not just the first");
+
+  // A number the athlete DID write into the routine is a prescription and outranks history.
+  const prescribedProfile = { ...profile, routines: [
+    routineFromEntries("push", "Push day", [{ name: "Barbell Bench Press", sets: [{ reps: 3 }, { reps: 3 }] }], ANCHOR)!,
+  ] } as Profile;
+  const kept = cardForWorkout(prescribedProfile, pushDay, history);
+  ok(kept.entries[0].sets.every((s) => s.reps === 3), "a rep scheme they chose is not overwritten by what they last did");
+  ok(kept.entries[0].sets.every((s) => s.weightKg === 60), "…while the blank weight still fills from history");
+
+  // A blank set never becomes history itself — it would seed the hole it closes.
+  const halfLogged: Workout = { ...logged, id: "half", strengthLog: [{ name: "Barbell Bench Press", sets: [{ reps: 5, weightKg: 60 }, {}] }] };
+  const h = exerciseHistory([halfLogged]);
+  ok(h[0].lastSets.length === 1, "only the recorded set becomes last time's");
+  const allBlank: Workout = { ...logged, id: "blank", strengthLog: [{ name: "Zercher Squat", sets: [{}, {}] }] };
+  ok(exerciseHistory([allBlank]).length === 0, "an exercise with nothing recorded contributes no history at all");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

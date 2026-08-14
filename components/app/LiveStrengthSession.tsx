@@ -145,7 +145,7 @@ export function LiveStrengthSession({
         session,
         clean,
         prior?.lastSets.length
-          ? prior.lastSets.map((s) => ({ reps: s.reps, ...(s.weightKg != null ? { weightKg: s.weightKg } : {}) , done: false }))
+          ? prior.lastSets.map((s) => ({ reps: s.reps ?? 0, ...(s.weightKg != null ? { weightKg: s.weightKg } : {}) , done: false }))
           : undefined,
       ),
     );

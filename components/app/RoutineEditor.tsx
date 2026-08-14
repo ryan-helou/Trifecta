@@ -141,6 +141,15 @@ export function RoutineEditor({
           onChange={setEntries}
         />
 
+        {/* Said out loud, because the empty reps/kg boxes look like something you
+            forgot. Ryan: "when they build it for their first time, they're not gonna
+            know" — so the fields are an invitation, not a requirement, and the first
+            session is what fills them. */}
+        <p className="-mt-2 text-xs leading-relaxed text-muted">
+          Leave reps and weight blank if you don&apos;t know them yet — the first time you do
+          this session, what you enter becomes the baseline it opens with after that.
+        </p>
+
         {built && (
           <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-sm">
             <span className="font-semibold">{built.name}</span>
@@ -161,7 +170,7 @@ export function RoutineEditor({
           </button>
         </div>
         {!built && (
-          <p className="-mt-2 text-center text-xs text-muted">Add at least one exercise with a set to save.</p>
+          <p className="-mt-2 text-center text-xs text-muted">Add an exercise to save this day.</p>
         )}
 
         {existing && onDelete && (

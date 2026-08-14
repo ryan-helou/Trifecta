@@ -61,15 +61,25 @@ const toDraft = (entries: StrengthEntry[], unit: Unit): DraftEntry[] =>
     sets: e.sets.map((s) => ({ reps: s.reps ? String(s.reps) : "", weight: kgToDisplay(s.weightKg, unit) })),
   }));
 
-/** Drop sets with no reps, then exercises left with nothing in them — a half-typed
- *  row the athlete abandoned shouldn't become a permanent zero in their history. */
+/** Keep every set the athlete put on screen, numbers or not; drop only nameless rows.
+ *
+ *  Empty sets used to be stripped here and the exercise deleted along with them, which
+ *  made it impossible to BUILD a gym day before you had trained it — the one moment you
+ *  certainly don't know your working weights. An empty set is not a zero; it is a set
+ *  with nothing recorded yet, and `StrengthSet.reps` is optional so it can say so.
+ *  Everything that counts work ignores them. */
 const fromDraft = (draft: DraftEntry[], unit: Unit): StrengthEntry[] =>
   draft
     .map((e) => ({
       name: e.name.trim(),
-      sets: e.sets
-        .map((s) => ({ reps: parseInt(s.reps, 10) || 0, weightKg: displayToKg(s.weight, unit) }))
-        .filter((s) => s.reps > 0),
+      sets: e.sets.map((s) => {
+        const reps = parseInt(s.reps, 10);
+        const weightKg = displayToKg(s.weight, unit);
+        return {
+          ...(Number.isFinite(reps) && reps > 0 ? { reps } : {}),
+          ...(weightKg != null ? { weightKg } : {}),
+        };
+      }),
     }))
     .filter((e) => e.name && e.sets.length > 0);
 
