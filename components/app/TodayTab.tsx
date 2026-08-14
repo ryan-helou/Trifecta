@@ -461,7 +461,15 @@ function TodayHero({ workout }: { workout: Workout }) {
         )}
       </div>
 
-      <button onClick={() => openWorkout(workout.id)} className="mt-1.5 block w-full text-left">
+      {/* A stable, spoken name for the card. Screen readers otherwise announce the
+          whole block of text with no indication it opens anything, and it gives the
+          Modify end-to-end flow (maestro/modify.yaml) a handle that does not depend
+          on today's session title, which changes as the plan adapts. */}
+      <button
+        onClick={() => openWorkout(workout.id)}
+        aria-label={`Open today's session: ${workout.title}`}
+        className="mt-1.5 block w-full text-left"
+      >
         <div className="flex items-start gap-3">
           <span
             className="mt-0.5 flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[13px]"
