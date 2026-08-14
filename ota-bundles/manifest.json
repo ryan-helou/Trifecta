@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.66",
+  "latest": "1.0.67",
   "bundles": [
-    {
-      "version": "1.0.64",
-      "sha256": "22d7f3a4d6f37626f590212ce3e0ebe04e7be8c03cd97f3c0c3c92e7c3ad4a8c",
-      "size": 810528,
-      "createdAtISO": "2026-08-14T18:35:12.690Z"
-    },
     {
       "version": "1.0.65",
       "sha256": "3480cd2ee2149557d97bb384edd619e8cd72a4b275666805db9cb8c634bc510b",
@@ -19,6 +13,13 @@
       "size": 810722,
       "createdAtISO": "2026-08-14T19:32:51.023Z",
       "comment": "you can make a session as long as you mean to"
+    },
+    {
+      "version": "1.0.67",
+      "sha256": "f2be51184aa055ab9270d312a4848c47873d7de2b205654df992a1f4a5f3565e",
+      "size": 810729,
+      "createdAtISO": "2026-08-14T19:46:05.340Z",
+      "comment": "the gym day you choose stays the gym day you chose"
     }
   ]
 }
