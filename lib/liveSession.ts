@@ -29,7 +29,12 @@
 
 import type { StrengthEntry, StrengthSlot } from "./types";
 
-/** One set, mid-session. `done` is the whole point — see the header. */
+/** One set, mid-session. `done` is the whole point — see the header.
+ *
+ *  `reps` stays REQUIRED here, with 0 meaning "not entered yet", because a live
+ *  session is where numbers get typed — `finish` already refuses to record a set
+ *  with none. A routine's optional reps (`StrengthSet.reps`) are coerced on the way
+ *  in, which is the one place the two models meet. */
 export interface LiveSet {
   reps: number;
   weightKg?: number;
@@ -184,7 +189,7 @@ export function startSession(opts: {
     name: opts.name,
     exercises: (opts.from ?? []).map((e) => ({
       name: e.name,
-      sets: e.sets.map((s) => ({ reps: s.reps, ...(s.weightKg != null ? { weightKg: s.weightKg } : {}), done: false })),
+      sets: e.sets.map((s) => ({ reps: s.reps ?? 0, ...(s.weightKg != null ? { weightKg: s.weightKg } : {}), done: false })),
     })),
   };
 }

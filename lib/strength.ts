@@ -43,16 +43,24 @@ export function volumeLoad(entries: StrengthEntry[]): number {
 
 /** Working sets and reps, which is the progression signal for bodyweight work
  *  where tonnage reads zero. */
-export function setCount(entries: StrengthEntry[]): { sets: number; reps: number } {
+export function setCount(entries: StrengthEntry[]): { sets: number; reps: number; recorded: number } {
   let sets = 0;
   let reps = 0;
+  let recorded = 0;
   for (const e of entries) {
     for (const s of e.sets) {
+      // `sets` counts every set on the card, including ones with no numbers yet — a
+      // routine saying "three sets of bench" is three sets whether or not you have
+      // decided the weight. `reps`/`recorded` count only what was actually entered,
+      // so a blank plan never reads as a session of zero-rep work.
       sets++;
-      reps += s.reps || 0;
+      if (s.reps != null && s.reps > 0) {
+        recorded++;
+        reps += s.reps;
+      }
     }
   }
-  return { sets, reps };
+  return { sets, reps, recorded };
 }
 
 /** The heaviest single set of one exercise, for a personal best. Estimated 1RM is
@@ -88,13 +96,18 @@ export function exerciseHistory(workouts: Workout[]): ExerciseHistory[] {
     for (const e of w.strengthLog ?? []) {
       const key = e.name.trim().toLowerCase();
       if (!key) continue;
-      const best = e.sets.reduce((m, s) => Math.max(m, s.weightKg ?? 0), 0);
+      // Only RECORDED sets are history. A set left blank is one the athlete didn't
+      // fill in; handing it back as "what you did last time" would seed the next
+      // session with the very hole it is meant to close.
+      const done = e.sets.filter((s) => s.reps != null && s.reps > 0);
+      if (!done.length) continue;
+      const best = done.reduce((m, s) => Math.max(m, s.weightKg ?? 0), 0);
       const existing = byName.get(key);
       if (!existing) {
         byName.set(key, {
           name: e.name.trim(),
           lastDoneISO: w.date,
-          lastSets: e.sets,
+          lastSets: done,
           bestWeightKg: best > 0 ? best : null,
         });
       } else if (best > (existing.bestWeightKg ?? 0)) {
@@ -150,7 +163,7 @@ export function strengthUnitOf(profile: Profile | null | undefined): Unit {
 }
 
 export function summarise(entries: StrengthEntry[], unit: Unit = "metric"): string {
-  const { sets, reps } = setCount(entries);
+  const { sets, reps, recorded } = setCount(entries);
   const kg = volumeLoad(entries);
   const parts = [`${sets} set${sets === 1 ? "" : "s"}`];
   // Took no unit at all and hard-coded "kg", so an imperial athlete read their own
@@ -159,7 +172,11 @@ export function summarise(entries: StrengthEntry[], unit: Unit = "metric"): stri
   if (kg > 0) {
     const v = Math.round(unit === "imperial" ? kg * LB_PER_KG : kg);
     parts.push(`${v.toLocaleString()} ${unit === "imperial" ? "lb" : "kg"}`);
-  } else parts.push(`${reps} reps`);
+  }
+  // Nothing entered yet is its own state, not "0 reps". A freshly built routine reads
+  // "4 sets · numbers on your first session" rather than announcing work never done.
+  else if (recorded === 0) parts.push("numbers on your first session");
+  else parts.push(`${reps} reps`);
   return parts.join(" · ");
 }
 

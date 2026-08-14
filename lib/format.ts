@@ -173,13 +173,20 @@ export function fmtWeight(kg: number, unit: Unit = "metric"): string {
  *  rather than four identical rows. Consecutive identical sets group; a change in
  *  reps or load starts a new group, so the shape of the session survives. */
 export function fmtSets(sets: StrengthSet[], unit: Unit = "metric"): string {
-  const groups: { n: number; reps: number; weightKg?: number }[] = [];
+  // A set with no reps yet has no numbers to print — a routine built before its
+  // first session is "3 sets", not "3×undefined". Sets that DO have numbers still
+  // read normally, so a half-filled card shows what it knows.
+  const groups: { n: number; reps?: number; weightKg?: number }[] = [];
   for (const s of sets) {
     const last = groups[groups.length - 1];
     if (last && last.reps === s.reps && last.weightKg === s.weightKg) last.n++;
     else groups.push({ n: 1, reps: s.reps, weightKg: s.weightKg });
   }
   return groups
-    .map((g) => `${g.n}×${g.reps}${g.weightKg ? ` @ ${fmtWeight(g.weightKg, unit)}` : ""}`)
+    .map((g) =>
+      g.reps == null
+        ? `${g.n} set${g.n === 1 ? "" : "s"}`
+        : `${g.n}×${g.reps}${g.weightKg ? ` @ ${fmtWeight(g.weightKg, unit)}` : ""}`,
+    )
     .join(", ");
 }

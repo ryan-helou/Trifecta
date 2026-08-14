@@ -67,7 +67,14 @@ function cleanEntries(entries: StrengthEntry[]): StrengthEntry[] {
   return entries
     .map((e) => ({
       name: e.name.trim(),
-      sets: e.sets.filter((s) => (s.reps || 0) > 0).map((s) => ({ reps: s.reps, ...(s.weightKg != null ? { weightKg: s.weightKg } : {}) })),
+      // Empty sets SURVIVE. A routine is a plan — "three sets of bench" is a complete
+      // thought before you know what you bench — and dropping the numberless ones took
+      // the whole exercise with them, so a first-time athlete could not save a routine
+      // at all without inventing weights they had never lifted.
+      sets: e.sets.map((s) => ({
+        ...(s.reps != null && s.reps > 0 ? { reps: s.reps } : {}),
+        ...(s.weightKg != null ? { weightKg: s.weightKg } : {}),
+      })),
     }))
     .filter((e) => e.name && e.sets.length > 0);
 }
@@ -253,7 +260,7 @@ export function cardForWorkout(
   history?: ExerciseHistory[],
 ): { entries: StrengthEntry[]; source: CardSource } {
   const routine = routineForWorkout(profile, w);
-  if (routine?.exercises.length) return { entries: routine.exercises, source: "routine" };
+  if (routine?.exercises.length) return { entries: withLastTime(routine.exercises, history), source: "routine" };
   const prescribed = prescribedExercises(w);
   if (prescribed.length) return { entries: withKnownLoads(prescribed, history), source: "plan" };
   return { entries: [], source: "empty" };
@@ -270,6 +277,39 @@ export function cardForWorkout(
  * never in a position to supply. An athlete who wants their own rep scheme saves
  * a routine, and that wins outright.
  */
+/**
+ * A routine built before it was ever trained, arriving with what you actually did.
+ *
+ * Routines may be authored with empty sets — that is what makes them a PLAN (see
+ * `StrengthSet.reps`). Left alone such a routine would open blank every week and the
+ * athlete would retype the same numbers forever, so the first session they fill in
+ * becomes the baseline: a set with nothing in it takes the matching set from last
+ * time, by position, falling back to the last set logged when the routine asks for
+ * more sets than were done.
+ *
+ * ONLY the blanks. A number deliberately written into a routine is a prescription and
+ * outranks history — "an athlete who wants their own rep scheme saves a routine, and
+ * that wins outright" has to keep meaning that.
+ */
+function withLastTime(entries: StrengthEntry[], history: ExerciseHistory[] | undefined): StrengthEntry[] {
+  if (!history?.length) return entries;
+  return entries.map((e) => {
+    const prior = history.find((p) => p.name.trim().toLowerCase() === e.name.trim().toLowerCase());
+    if (!prior?.lastSets.length) return e;
+    return {
+      ...e,
+      sets: e.sets.map((s, i) => {
+        const was = prior.lastSets[i] ?? prior.lastSets[prior.lastSets.length - 1];
+        return {
+          ...s,
+          ...(s.reps == null && was.reps != null ? { reps: was.reps } : {}),
+          ...(s.weightKg == null && was.weightKg != null ? { weightKg: was.weightKg } : {}),
+        };
+      }),
+    };
+  });
+}
+
 function withKnownLoads(entries: StrengthEntry[], history: ExerciseHistory[] | undefined): StrengthEntry[] {
   if (!history?.length) return entries;
   return entries.map((e) => {

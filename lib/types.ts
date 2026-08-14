@@ -292,7 +292,17 @@ export interface SportFreq {
  *  — a set of press-ups has reps and no load, and refusing to record it would
  *  make the log useless to exactly the athletes who train at home. */
 export interface StrengthSet {
-  reps: number;
+  /** Absent means "a set goes here, we don't know your numbers yet".
+   *
+   *  Building a routine is planning, not recording. Ryan: "when they build it for
+   *  their first time, they're not gonna know" — nobody setting up Push day knows
+   *  what they'll bench before they've benched. So a routine may be a list of
+   *  movements with empty sets, and the first session fills them in and becomes the
+   *  baseline every session after it inherits.
+   *
+   *  Anything that counts WORK must therefore treat a repless set as unrecorded and
+   *  never as zero: it is not a set done badly, it is a set not yet done. */
+  reps?: number;
   weightKg?: number;
 }
 
