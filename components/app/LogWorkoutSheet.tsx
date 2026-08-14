@@ -11,6 +11,7 @@ import { useUI } from "./ui";
 import { StrengthLog } from "./StrengthLog";
 import { slotLabel } from "@/lib/routines";
 import { useApp } from "../AppProvider";
+import { strengthUnitOf } from "@/lib/strength";
 import { fmtFullDate, addDays } from "@/lib/dates";
 import { parseClock } from "@/lib/format";
 
@@ -272,7 +273,7 @@ export function LogWorkoutSheet({ plan, today, onClose }: { plan: Plan; today: s
               initial={picked?.exercises}
               history={Object.values(plan.workouts)}
               slot={picked?.slot}
-              unit={unit}
+              unit={strengthUnitOf(profile)}
               onChange={setStrengthLog}
             />
           </div>

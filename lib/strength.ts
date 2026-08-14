@@ -28,7 +28,8 @@
 // Pure — no clock, no I/O.
 // ---------------------------------------------------------------------------
 
-import type { StrengthEntry, StrengthSet, Workout } from "./types";
+import type { Profile, StrengthEntry, StrengthSet, Unit, Workout } from "./types";
+import { LB_PER_KG } from "./format";
 
 /** Total kilograms moved: Σ reps × weight. Bodyweight sets contribute 0, which
  *  is honest — they're real work but this particular number can't see them. */
@@ -137,12 +138,28 @@ export function newPersonalBests(
 // file is what the numbers CAN honestly support: volume, progression and PBs.
 
 /** A one-line summary for the session card: "18 sets · 4,050 kg". */
-export function summarise(entries: StrengthEntry[]): string {
+/** The unit LIFTED WEIGHT is shown in.
+ *
+ *  The one place the fallback lives. Unset `strengthUnit` means "follow the distance
+ *  setting", which is what every existing athlete already sees, so nothing moves
+ *  under anyone who has not chosen. Everything that renders a weight comes through
+ *  here rather than reading `unitPreference` — that shortcut is what tied the barbell
+ *  to the road. */
+export function strengthUnitOf(profile: Profile | null | undefined): Unit {
+  return profile?.strengthUnit ?? profile?.unitPreference ?? "metric";
+}
+
+export function summarise(entries: StrengthEntry[], unit: Unit = "metric"): string {
   const { sets, reps } = setCount(entries);
   const kg = volumeLoad(entries);
   const parts = [`${sets} set${sets === 1 ? "" : "s"}`];
-  if (kg > 0) parts.push(`${kg.toLocaleString()} kg`);
-  else parts.push(`${reps} reps`);
+  // Took no unit at all and hard-coded "kg", so an imperial athlete read their own
+  // routines in kilograms whatever they had set. Volume load is a total, not a plate
+  // weight, so it rounds to whole units either way.
+  if (kg > 0) {
+    const v = Math.round(unit === "imperial" ? kg * LB_PER_KG : kg);
+    parts.push(`${v.toLocaleString()} ${unit === "imperial" ? "lb" : "kg"}`);
+  } else parts.push(`${reps} reps`);
   return parts.join(" · ");
 }
 

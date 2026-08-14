@@ -19,7 +19,7 @@ import { resolveProfile } from "@/lib/session";
 import { slotLabel, deleteRoutine, slotsForProfile, upsertRoutine } from "@/lib/routines";
 import { RoutineEditor } from "./RoutineEditor";
 import type { StrengthRoutine, StrengthSlot } from "@/lib/types";
-import { summarise } from "@/lib/strength";
+import { strengthUnitOf, summarise } from "@/lib/strength";
 
 export function ProfileTab() {
   const { plan, username, profile: storedProfile, logout, deleteAccount, resetPlan, updateProfile } = useApp();
@@ -119,7 +119,8 @@ export function ProfileTab() {
           k="Gym"
           v={profile.strength?.enabled ? `${profile.strength.daysPerWeek}× / week` : "Off"}
         />
-        <Row k="Units" v={unit === "metric" ? "Kilometres" : "Miles"} />
+        <Row k="Distance" v={unit === "metric" ? "Kilometres" : "Miles"} />
+        <Row k="Gym weights" v={strengthUnitOf(profile) === "metric" ? "Kilograms" : "Pounds"} />
         <ActionRow onClick={openSettings} label="Change any of this" />
       </Section>
 
@@ -138,7 +139,7 @@ export function ProfileTab() {
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{r.name}</div>
               <div className="text-xs text-muted">
-                {slotLabel(r.slot)} · {summarise(r.exercises)}
+                {slotLabel(r.slot)} · {summarise(r.exercises, strengthUnitOf(profile))}
               </div>
             </div>
             <span className="shrink-0 text-xs font-semibold text-accent-soft">Edit</span>

@@ -430,6 +430,18 @@ export interface Profile {
   longSessionDay?: number; // 0=Mon … 6=Sun, the day with most time for long sessions (default Sat=5)
   focusDiscipline?: Discipline; // a limiter they want to bias toward
   unitPreference?: Unit; // km vs mi for distance/pace display (default metric)
+  /** Unit for LIFTED WEIGHT, independent of the distance unit above.
+   *
+   *  These were one setting, and one setting is wrong. Ryan, 2026-08-14: "i use lbs
+   *  and km" — the ordinary combination for anyone in Canada or the UK, not an edge
+   *  case: you race in kilometres and you load plates in pounds. Tying the barbell to
+   *  the road meant the only way to get lb in the gym was to accept miles and min/mi
+   *  on every run and ride.
+   *
+   *  Unset means "follow `unitPreference`", so nobody's display moves until they
+   *  choose. Read it through `strengthUnitOf` — the fallback is the part that must
+   *  not be duplicated. */
+  strengthUnit?: Unit;
   // ---- deep personalization (all optional; the engine honours them) ----
   perSport?: SportFreq; // explicit swim/bike/run sessions per week
   strength?: StrengthPref; // resistance training preference
