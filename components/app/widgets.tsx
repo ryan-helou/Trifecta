@@ -24,6 +24,20 @@ export function workoutsOn(plan: Plan, iso: string): Workout[] {
     .sort((a, b) => b.estDurationSec - a.estDurationSec);
 }
 
+/** The sessions from THIS week that fall on `iso`.
+ *
+ *  Date is the single source of truth. The Plan tab builds its day heading from
+ *  `week.startDate + day` but used to pick the sessions by `w.dayIndex` — a second,
+ *  independently-maintained answer to "which day is this?". When the two drifted, a
+ *  session rendered under a heading it did not belong to, and the card gave no hint:
+ *  Ryan saw a run he finished on Friday sitting under Saturday, still marked
+ *  completed, which reads as the app claiming he completed a run in the future. */
+export function weekSessionsOn(plan: Plan, week: Week, iso: string): Workout[] {
+  return week.workoutIds
+    .map((id) => plan.workouts[id])
+    .filter((w): w is Workout => !!w && w.date === iso);
+}
+
 /** The next real sessions after `iso` (soonest first) — powers Today's "Up next"
  *  peek so the home screen answers "what's coming?", not just "what's today". */
 export function upcomingAfter(plan: Plan, iso: string, n = 1): Workout[] {
