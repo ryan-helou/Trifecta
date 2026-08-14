@@ -304,6 +304,43 @@ restore.** Snapshot-only, single-instance Postgres is a *development* database.
   POST/PUT for the JSON API (largely OK), but add defense-in-depth (verify
   `Origin`/`Sec-Fetch-Site`, or CSRF tokens).
 
+#### 3.6.1 Read-only API keys (`lib/apiKeys.ts`, `/api/tokens`)
+*Added 2026-08-14 so other apps (JARVIS, scripts) can read the plan without holding
+the password.*
+- **Two credential types now arrive as `Authorization: Bearer …`** and must never be
+  confused: a **session token** (HMAC we verify; reads *and* writes; what the native
+  app sends) and a **`tri_…` API key** (opaque; **read-only**; independently
+  revocable). A `tri_` string simply fails `verifySessionToken`, so they cannot be
+  mistaken for one another by accident.
+- **The load-bearing rule:** `PUT /api/state` calls `presentedApiKey(req)` and
+  returns **403** if a key is present — *before* authenticating, and regardless of
+  whether a valid session cookie also rides along (**fail closed**). This is an
+  explicit refusal, not a side effect of the token format: if the two types ever
+  converge, the implicit version would silently start authorizing writes.
+  `test/tokens.test.ts` fails if the check is deleted (mutation-verified).
+  The same refusal guards all of `/api/tokens` — a read key must not be able to
+  mint or revoke keys, or it is a write credential with a read label.
+- **Reads** go through `authenticateRead(req)`, which tries the session path first
+  (unchanged) and only then the key. It fails **closed** on a store error, exactly
+  like `getUserIdFromRequest`.
+- **Storage:** `api_keys` holds **SHA-256 of the key and nothing else** — the
+  plaintext is returned once, at mint, and is unrecoverable thereafter. `ApiKeyRow`
+  has **no hash field**, so no route can leak it by accident. Deliberately *not*
+  scrypt: the key is 256 bits of CSPRNG, so there is no dictionary to slow down —
+  a KDF would only add ~50-100ms of event-loop blocking per authenticated read
+  (contrast §3.6 on passwords, where slowness is the whole point).
+- **Revocation is a timestamp, not a DELETE** (a killed key stays visible as
+  killed), ownership lives inside the `UPDATE` so a key id is not a capability, and
+  the FK cascade takes keys with the account on GDPR erasure.
+- **No rate limiting on key auth, deliberately:** unlike `/api/auth/login` (§3.6,
+  still a P0), a 256-bit random key has no brute-force surface worth throttling.
+- **`?meta=1` on GET `/api/state`** returns `{version, updatedAtISO}` (~55 bytes vs
+  ~114KB measured for a 16-week 70.3 plan) so a polling consumer only downloads on
+  change. A `?since=<date>` returning *changed* workouts was considered and
+  rejected: nothing records when a workout changed, and `Plan.weeks[]` holds ids
+  into `Plan.workouts`, so a filtered copy is a Plan-shaped object with dangling
+  references.
+
 ### 3.7 Application security (rest of the surface)
 - **🔴 Strava tokens stored in plaintext.** `strava_connections` holds the access
   **and refresh** tokens as bearer credentials to *all* of an athlete's private

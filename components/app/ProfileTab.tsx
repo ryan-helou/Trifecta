@@ -10,6 +10,7 @@ import { raceCategoryName, isFitnessGoal } from "@/lib/planEngine";
 import { terrainLabel, terrainOf } from "@/lib/terrain";
 import { InstallHint } from "./InstallHint";
 import { Connections } from "./Connections";
+import { ApiKeys } from "./ApiKeys";
 import { Notifications } from "./Notifications";
 import { Wordmark } from "../Wordmark";
 import { currentBundleVersion } from "@/lib/ota";
@@ -197,6 +198,11 @@ export function ProfileTab() {
       <Section title="Account">
         <ActionRow first onClick={logout} label="Log out" />
       </Section>
+
+      {/* Read-only keys for your other apps. Below Account and above the danger
+          zone: it's account-shaped, but minting a revocable read credential isn't
+          destructive, so it doesn't belong behind the red boundary. */}
+      <ApiKeys />
 
       <div>
         <div className="eyebrow mb-2 text-[0.72rem] text-danger">Danger zone</div>
