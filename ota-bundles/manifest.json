@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.64",
+  "latest": "1.0.65",
   "bundles": [
-    {
-      "version": "1.0.62",
-      "sha256": "fb134de150fdee574d573682f6e27c9d79775c7bb56dfda67178bdc966e81bc1",
-      "size": 810222,
-      "createdAtISO": "2026-08-14T16:29:02.598Z",
-      "comment": "the plan keeps itself current with Strava, every two minutes"
-    },
     {
       "version": "1.0.63",
       "sha256": "0ee49e0011139ddc70dc1cecb846f547f03915b0b9ea11e31efb3736d181920c",
@@ -20,6 +13,12 @@
       "sha256": "22d7f3a4d6f37626f590212ce3e0ebe04e7be8c03cd97f3c0c3c92e7c3ad4a8c",
       "size": 810528,
       "createdAtISO": "2026-08-14T18:35:12.690Z"
+    },
+    {
+      "version": "1.0.65",
+      "sha256": "3480cd2ee2149557d97bb384edd619e8cd72a4b275666805db9cb8c634bc510b",
+      "size": 810531,
+      "createdAtISO": "2026-08-14T18:54:20.262Z"
     }
   ]
 }
