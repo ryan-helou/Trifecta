@@ -1,4 +1,5 @@
 import { decryptToken, encryptToken } from "./tokenCrypto";
+import type { ApiKeyScope } from "./apiKeyFormat";
 import type { Pool as PgPool } from "pg";
 import type {
   League,
@@ -43,6 +44,22 @@ export interface StravaConn {
   lastSyncAtISO?: string;
 }
 
+/** A read-only API key, as everything except the authenticator sees it.
+ *
+ *  Note what is NOT on this type: the hash. It is write-only from the store's
+ *  point of view — it goes in via createApiKey and is matched by
+ *  findApiKeyByHash, but never rides on a row. A field that doesn't exist can't
+ *  be leaked into a JSON response by a future `return { key }`. */
+export interface ApiKeyRow {
+  id: string;
+  userId: string;
+  name: string;
+  scope: ApiKeyScope;
+  createdAtISO: string;
+  lastUsedAtISO?: string;
+  revokedAtISO?: string;
+}
+
 export interface Store {
   init(): Promise<void>;
   getUserByUsername(username: string): Promise<UserRow | null>;
@@ -69,6 +86,24 @@ export interface Store {
   revokeAllSessions(userId: string): Promise<void>;
   /** Append product events. Best-effort: analytics must never fail a request. */
   recordEvents(userId: string, events: { name: string; props?: unknown; atISO?: string }[]): Promise<void>;
+  // ---- read-only API keys (lib/apiKeys.ts) ----
+  /** Store a new key. Takes the HASH — the plaintext never reaches this layer. */
+  createApiKey(userId: string, name: string, keyHash: string, scope: ApiKeyScope): Promise<ApiKeyRow>;
+  /** Every key this user has, newest first. Revoked ones included, so the athlete
+   *  can see that a key they killed is in fact dead. */
+  listApiKeys(userId: string): Promise<ApiKeyRow[]>;
+  /** The authentication lookup: one indexed hit on the hash. Returns revoked keys
+   *  too — the CALLER decides, so "revoked" and "never existed" stay distinguishable
+   *  here even though the HTTP layer answers 401 to both. */
+  findApiKeyByHash(keyHash: string): Promise<ApiKeyRow | null>;
+  /** Bookkeeping after a successful authentication. Best-effort by contract:
+   *  failing to record a timestamp must never fail the read it was recording. */
+  touchApiKey(id: string): Promise<void>;
+  /** Revoke one key. Scoped to its owner — a key id is not a capability. Returns
+   *  false when the key isn't theirs or is already revoked. */
+  revokeApiKey(userId: string, id: string): Promise<boolean>;
+  /** Live (non-revoked) keys, for the per-account cap. */
+  countLiveApiKeys(userId: string): Promise<number>;
   // Strava
   getStravaByUser(userId: string): Promise<StravaConn | null>;
   getStravaByAthlete(athleteId: number): Promise<StravaConn | null>;
@@ -259,6 +294,33 @@ class PgStore implements Store {
                last_sync_at TIMESTAMPTZ
              )`,
           ),
+        )
+        .then(() =>
+          // Read-only API keys, so another app can read the plan without holding
+          // the password (lib/apiKeys.ts). key_hash is SHA-256 of the plaintext and
+          // is the ONLY copy we keep — losing this table leaks nothing usable, and
+          // nobody, including us, can recover a key from it.
+          //
+          // UNIQUE on key_hash does double duty: it's the index the authentication
+          // lookup rides, and it makes a hash collision a write error rather than an
+          // ambiguous read. Revocation is a timestamp, not a DELETE, so a key that
+          // was killed stays visible as killed.
+          this.pool.query(
+            `CREATE TABLE IF NOT EXISTS api_keys (
+               id TEXT PRIMARY KEY,
+               user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+               name TEXT NOT NULL,
+               key_hash TEXT UNIQUE NOT NULL,
+               scope TEXT NOT NULL DEFAULT 'read',
+               created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+               last_used_at TIMESTAMPTZ,
+               revoked_at TIMESTAMPTZ
+             )`,
+          ),
+        )
+        .then(() =>
+          // "show me my keys" — the only query that isn't the hash lookup
+          this.pool.query("CREATE INDEX IF NOT EXISTS api_keys_user_idx ON api_keys (user_id, created_at DESC)"),
         )
         .then(() =>
           this.pool.query(
@@ -649,6 +711,75 @@ class PgStore implements Store {
   async deletePushToken(token: string): Promise<void> {
     await this.init();
     await this.pool.query("DELETE FROM push_tokens WHERE token = $1", [token]);
+  }
+
+  private mapApiKey(row: Record<string, unknown>): ApiKeyRow {
+    return {
+      id: row.id as string,
+      userId: row.user_id as string,
+      name: row.name as string,
+      scope: row.scope as ApiKeyScope,
+      createdAtISO: new Date(row.created_at as string).toISOString(),
+      lastUsedAtISO: row.last_used_at ? new Date(row.last_used_at as string).toISOString() : undefined,
+      revokedAtISO: row.revoked_at ? new Date(row.revoked_at as string).toISOString() : undefined,
+    };
+  }
+
+  async createApiKey(userId: string, name: string, keyHash: string, scope: ApiKeyScope): Promise<ApiKeyRow> {
+    await this.init();
+    const r = await this.pool.query(
+      `INSERT INTO api_keys (id, user_id, name, key_hash, scope) VALUES ($1,$2,$3,$4,$5)
+       RETURNING id, user_id, name, scope, created_at, last_used_at, revoked_at`,
+      [newId(), userId, name, keyHash, scope],
+    );
+    return this.mapApiKey(r.rows[0]);
+  }
+
+  async listApiKeys(userId: string): Promise<ApiKeyRow[]> {
+    await this.init();
+    // Columns are named rather than SELECT * on purpose: key_hash must not be able
+    // to ride out of here just because someone adds a passthrough later.
+    const r = await this.pool.query(
+      `SELECT id, user_id, name, scope, created_at, last_used_at, revoked_at
+         FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
+      [userId],
+    );
+    return r.rows.map((row) => this.mapApiKey(row));
+  }
+
+  async findApiKeyByHash(keyHash: string): Promise<ApiKeyRow | null> {
+    await this.init();
+    const r = await this.pool.query(
+      `SELECT id, user_id, name, scope, created_at, last_used_at, revoked_at
+         FROM api_keys WHERE key_hash = $1`,
+      [keyHash],
+    );
+    return r.rows[0] ? this.mapApiKey(r.rows[0]) : null;
+  }
+
+  async touchApiKey(id: string): Promise<void> {
+    await this.init();
+    await this.pool.query("UPDATE api_keys SET last_used_at = now() WHERE id = $1", [id]);
+  }
+
+  async revokeApiKey(userId: string, id: string): Promise<boolean> {
+    await this.init();
+    // user_id in the WHERE clause, not checked afterwards: ownership is part of the
+    // statement, so there is no window in which the wrong row could be touched.
+    const r = await this.pool.query(
+      "UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
+      [id, userId],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async countLiveApiKeys(userId: string): Promise<number> {
+    await this.init();
+    const r = await this.pool.query(
+      "SELECT COUNT(*)::int AS n FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL",
+      [userId],
+    );
+    return Number(r.rows[0]?.n ?? 0);
   }
 
   private mapStrava(row: Record<string, unknown>): StravaConn {
@@ -1184,6 +1315,11 @@ class MemoryStore implements Store {
   private kudos = new Set<string>(); // "fromId::ownerId::workoutId"
   private revoked = new Map<string, number>(); // "userId::sid" -> token expiry (unix s)
   private sessionEpoch = new Map<string, number>(); // userId -> sign-out-everywhere mark
+  // Mirrors api_keys. The hash is held BESIDE the row, not on it, so this store
+  // has the same property the Postgres one does: no code path can read a row and
+  // find key material on it.
+  private apiKeys = new Map<string, ApiKeyRow>(); // id -> row
+  private apiKeyHashes = new Map<string, string>(); // key_hash -> id
 
   async init(): Promise<void> {}
   async getUserByUsername(username: string): Promise<UserRow | null> {
@@ -1233,6 +1369,36 @@ class MemoryStore implements Store {
     // dev store: keep it bounded so a long session can't grow without limit
     this.events.set(userId, list.slice(-500));
   }
+  async createApiKey(userId: string, name: string, keyHash: string, scope: ApiKeyScope): Promise<ApiKeyRow> {
+    const row: ApiKeyRow = { id: newId(), userId, name, scope, createdAtISO: new Date().toISOString() };
+    this.apiKeys.set(row.id, row);
+    this.apiKeyHashes.set(keyHash, row.id);
+    return { ...row };
+  }
+  async listApiKeys(userId: string): Promise<ApiKeyRow[]> {
+    return [...this.apiKeys.values()]
+      .filter((k) => k.userId === userId)
+      .sort((a, b) => (a.createdAtISO < b.createdAtISO ? 1 : -1))
+      .map((k) => ({ ...k }));
+  }
+  async findApiKeyByHash(keyHash: string): Promise<ApiKeyRow | null> {
+    const id = this.apiKeyHashes.get(keyHash);
+    const row = id ? this.apiKeys.get(id) : undefined;
+    return row ? { ...row } : null;
+  }
+  async touchApiKey(id: string): Promise<void> {
+    const row = this.apiKeys.get(id);
+    if (row) row.lastUsedAtISO = new Date().toISOString();
+  }
+  async revokeApiKey(userId: string, id: string): Promise<boolean> {
+    const row = this.apiKeys.get(id);
+    if (!row || row.userId !== userId || row.revokedAtISO) return false;
+    row.revokedAtISO = new Date().toISOString();
+    return true;
+  }
+  async countLiveApiKeys(userId: string): Promise<number> {
+    return [...this.apiKeys.values()].filter((k) => k.userId === userId && !k.revokedAtISO).length;
+  }
   async isSessionLive(userId: string, sid: string, issuedAt: number): Promise<boolean> {
     if (!this.users.has(userId)) return false; // deleted account ⇒ dead token
     if (this.revoked.has(`${userId}::${sid}`)) return false;
@@ -1255,6 +1421,13 @@ class MemoryStore implements Store {
     this.strava.delete(userId);
     this.sessionEpoch.delete(userId);
     for (const k of [...this.revoked.keys()]) if (k.startsWith(`${userId}::`)) this.revoked.delete(k);
+    // API keys die with the account — an erased user's key must not stay live and
+    // reading. Postgres gets this from the api_keys FK cascade.
+    for (const [id, row] of this.apiKeys) {
+      if (row.userId !== userId) continue;
+      this.apiKeys.delete(id);
+      for (const [h, kid] of this.apiKeyHashes) if (kid === id) this.apiKeyHashes.delete(h);
+    }
     for (const f of [...this.follows]) {
       const [a, b] = f.split("::");
       if (a === userId || b === userId) this.follows.delete(f);

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { NextRequest } from "next/server";
+import { bearerToken, isApiKey } from "./apiKeyFormat";
 
 // ---------------------------------------------------------------------------
 // Dependency-free auth: scrypt password hashing + an HMAC-signed session token
@@ -140,6 +141,71 @@ export async function getUserIdFromRequest(req: NextRequest): Promise<string | n
     // alternative is that a database blip silently restores the old behaviour.
     return null;
   }
+}
+
+// ---- API keys (lib/apiKeys.ts) --------------------------------------------
+//
+// Two kinds of credential now arrive as `Authorization: Bearer …`, and the whole
+// safety of the feature is that they are never confused:
+//
+//   session token  — minted by login, carries the password's authority. Reads AND
+//                    writes. The native app sends one on every request.
+//   tri_… API key  — minted from an existing session, read-only, revocable on its
+//                    own, and NOT derivable from or convertible back to a password.
+//
+// They can't be mistaken for one another: a session token is an HMAC we verify, so
+// a `tri_` string simply fails verifySessionToken. But "fails to verify" is not a
+// strong enough guarantee to hang a write on, which is why the write path asks
+// presentedApiKey() outright rather than relying on the absence of a valid session.
+
+/** How a request proved who it is. Callers that mutate must check this. */
+export type AuthVia = "session" | "apiKey";
+
+export interface RequestAuth {
+  userId: string;
+  via: AuthVia;
+}
+
+/** The `tri_…` key presented on this request, if any. Says nothing about whether
+ *  it is valid, live, or anyone's — this is the question "is a read-only
+ *  credential being waved at me", which is what a write path needs to refuse. */
+export function presentedApiKey(req: NextRequest): string | null {
+  const raw = bearerToken(req.headers.get("authorization"));
+  return isApiKey(raw) ? raw : null;
+}
+
+/** Authenticate a READ. Session first (unchanged behaviour for the web and native
+ *  apps), then an API key.
+ *
+ *  Never call this from a mutating handler — the `via` it returns is the only thing
+ *  separating a read credential from a write one, and a caller that ignores it has
+ *  handed a read-only key full write access. Mutating routes keep calling
+ *  getUserIdFromRequest, which cannot authenticate a key at all. */
+export async function authenticateRead(req: NextRequest): Promise<RequestAuth | null> {
+  const uid = await getUserIdFromRequest(req);
+  if (uid) return { userId: uid, via: "session" };
+
+  const raw = presentedApiKey(req);
+  if (!raw) return null;
+
+  const { getStore } = await import("./db");
+  const { hashApiKey } = await import("./apiKeys");
+  let row;
+  try {
+    row = await getStore().findApiKeyByHash(hashApiKey(raw));
+  } catch {
+    return null; // fail CLOSED, same as the session path
+  }
+  if (!row || row.revokedAtISO) return null;
+
+  // Bookkeeping only. A store that can't record "last used" has not said anything
+  // about whether the key is good, so it must not turn a valid read into a 401.
+  try {
+    await getStore().touchApiKey(row.id);
+  } catch {
+    /* ignore */
+  }
+  return { userId: row.userId, via: "apiKey" };
 }
 
 /** Wrap an ALREADY-ISSUED token in the session cookie.

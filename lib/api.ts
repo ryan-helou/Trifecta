@@ -150,6 +150,40 @@ export async function apiSaveState(
   };
 }
 
+// ---- read-only API keys (lib/apiKeys.ts) ----
+//
+// Note there is no client helper that *uses* a key. These three manage keys from
+// inside the signed-in app; the keys themselves are for OTHER apps, which talk to
+// the API directly with `Authorization: Bearer tri_…`.
+
+/** A key as the athlete sees it afterwards — everything except the key. */
+export interface ApiKeyInfo {
+  id: string;
+  name: string;
+  scope: "read";
+  createdAtISO: string;
+  lastUsedAtISO?: string;
+  revokedAtISO?: string;
+}
+
+export async function apiListTokens(): Promise<{ ok: boolean; keys: ApiKeyInfo[] }> {
+  const { ok, data } = await jsonFetch("/api/tokens");
+  return { ok, keys: ok ? ((data as { keys?: ApiKeyInfo[] }).keys ?? []) : [] };
+}
+
+/** Mint a key. `key` is the plaintext and comes back exactly once — if the caller
+ *  drops it, it is gone, and the only remedy is to revoke and mint again. */
+export async function apiCreateToken(name: string): Promise<{ ok: boolean; key?: string; error?: string }> {
+  const { ok, data } = await jsonFetch("/api/tokens", { method: "POST", body: JSON.stringify({ name }) });
+  const d = data as { key?: string; error?: string };
+  return ok ? { ok: true, key: d.key } : { ok: false, error: d.error || "Couldn't create the key." };
+}
+
+export async function apiRevokeToken(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { ok, data } = await jsonFetch(`/api/tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return ok ? { ok: true } : { ok: false, error: (data as { error?: string }).error || "Couldn't revoke the key." };
+}
+
 export async function apiCoach(context: string, question: string) {
   const { data } = await jsonFetch("/api/coach", {
     method: "POST",
