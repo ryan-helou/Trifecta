@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { SwipeableWorkout } from "./SwipeableWorkout";
-import { weekOfDate } from "./widgets";
+import { weekOfDate, weekSessionsOn } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
 import { addDays, weekdayShort, fmtDayMonth } from "@/lib/dates";
 import { haptic } from "@/lib/haptics";
@@ -138,7 +138,7 @@ export function PlanTab() {
       <div className="mt-5 space-y-5">
         {Array.from({ length: 7 }).map((_, day) => {
           const iso = addDays(week.startDate, day);
-          const items = week.workoutIds.map((id) => plan.workouts[id]).filter((w) => w && w.dayIndex === day);
+          const items = weekSessionsOn(plan, week, iso);
           const isToday = iso === today;
           return (
             <div key={day}>
@@ -176,7 +176,7 @@ function DayStrip({ week, today, plan }: { week: Week; today: string; plan: Plan
     <div className="flex gap-1.5">
       {Array.from({ length: 7 }).map((_, day) => {
         const iso = addDays(week.startDate, day);
-        const items = week.workoutIds.map((id) => plan.workouts[id]).filter((w) => w && w.dayIndex === day);
+        const items = weekSessionsOn(plan, week, iso);
         const isToday = iso === today;
         // The dots are zone colours (--z1..--z5) and nothing on screen says so, which
         // left the strip decorative to sighted users and completely silent to VoiceOver

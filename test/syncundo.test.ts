@@ -21,6 +21,7 @@
 import assert from "node:assert";
 import { DETACHED_MAX, isDetached, setStatus } from "../lib/adapt";
 import { mergeCompletions } from "../lib/planMerge";
+import { weekSessionsOn } from "../components/app/widgets";
 import { applyActivityToUser } from "../lib/strava";
 import type { AppState, Store } from "../lib/db";
 import type { Plan, Workout } from "../lib/types";
@@ -181,6 +182,25 @@ async function main() {
   });
   await applyActivityToUser(planned.store, "u1", { id: 999, type: "Run", name: "Tempoish Run", start_date_local: "2026-07-21T10:00:00Z", moving_time: 1472 });
   ok("a planned session keeps its prescribed title", planned.plan().workouts.r1.title === "Easy Aerobic Run");
+
+
+  // ---- the Plan tab renders a session on the day it is DATED ------------------------
+  section("a session shows on its own day");
+  // Ryan's screenshot: a run he finished on Friday, sitting under SATURDAY, marked
+  // completed — "its saying I completed a run in the future". The heading came from
+  // `week.startDate + day`; the sessions came from `w.dayIndex`. Two answers to one
+  // question, and when they drifted the card moved and said nothing.
+  const wkPlan = planOf({
+    fri: { ...completed("fri", "2026-07-24", "run", 4242), dayIndex: 5 }, // dayIndex LIES: 24 Jul is a Friday (4)
+    sat: w("sat", "2026-07-25", "bike", 3600),
+  });
+  wkPlan.weeks = [{ index: 0, startDate: "2026-07-20", workoutIds: ["fri", "sat"] }] as Plan["weeks"];
+  const friday = weekSessionsOn(wkPlan, wkPlan.weeks[0], "2026-07-24").map((x) => x.id);
+  const saturday = weekSessionsOn(wkPlan, wkPlan.weeks[0], "2026-07-25").map((x) => x.id);
+  ok("THE BUG: a drifted dayIndex cannot move a session off its date", friday.join() === "fri");
+  ok("and it does not appear on the next day", !saturday.includes("fri"));
+  ok("the session actually dated there still shows", saturday.join() === "sat");
+  ok("a day with nothing on it stays empty", weekSessionsOn(wkPlan, wkPlan.weeks[0], "2026-07-26").length === 0);
 
   console.log(`\n✅ sync/undo: ${pass} assertions passed\n`);
 }
