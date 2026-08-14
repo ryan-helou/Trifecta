@@ -78,6 +78,27 @@ export const MIN_SESSION_SEC = 15 * 60;
  *  the plan designed and the ramp rails would have to argue about it anyway. */
 export const MAX_STRETCH = 1.5;
 
+/**
+ * How far the ATHLETE may stretch a session when they ask for it by hand.
+ *
+ * `MAX_STRETCH` is the ceiling on growth the SYSTEM initiates — "never add load" —
+ * and it stays where it is. This is the other side of that asymmetry, which
+ * `scaleWorkout` has always described in words and then not honoured: a person
+ * deliberately typing a bigger number is not the plan piling work onto them.
+ *
+ * At 1.5 it was, in practice, a refusal that did not admit to being one. Ryan asked
+ * to take a 4 km run to 12 km and got 4.6 km back, under a toast reading "is now
+ * 4.6 km" — the app neither doing what he asked nor saying it had declined:
+ * "i cant change my aug 15 4km run to 12 stop trying to stop me".
+ *
+ * Still bounded, because a typo should not silently produce a 120 km run — but
+ * bounded far enough that a real training decision fits inside it, and when the
+ * bound does bite the athlete is TOLD (see `adjustSession` / `resizeByDistance`),
+ * never quietly given something smaller than they asked for. The rails still get
+ * the final say on whether the week can carry it.
+ */
+export const ATHLETE_MAX_STRETCH = 4;
+
 /** Total prescribed seconds a segment represents, including its repeats and
  *  children. The header duration must always equal this over the whole session;
  *  a title that disagrees with the structure under it is its own bug class. */
@@ -232,7 +253,7 @@ export function scaleWorkout(w: Workout, factor: number, opts?: { allowLonger?: 
   // deliberately asking for a longer session (adjustSession). A person choosing to do
   // more is not the system piling load on them — that asymmetry is the whole point of
   // the rule — and the choice is still bounded and rails-gated where it is made.
-  const f = opts?.allowLonger ? Math.min(MAX_STRETCH, factor) : Math.min(1, factor);
+  const f = opts?.allowLonger ? Math.min(ATHLETE_MAX_STRETCH, factor) : Math.min(1, factor);
   const base = baselineOf(w);
   const prescribed = w.prescribed ?? {
     estDurationSec: base.estDurationSec,
@@ -398,7 +419,10 @@ export function adjustChoices(w: Workout): number[] {
   const base = (w.prescribed?.estDurationSec ?? w.estDurationSec) || 0;
   if (base <= 0) return [];
   const round5 = (sec: number) => Math.round(sec / 300) * 300;
-  const out = [0.5, 0.7, 0.85, 1, MAX_STRETCH]
+  // Reaches 2× rather than stopping at MAX_STRETCH: the ladder is what the athlete
+  // can express in one tap, and capping it at the SYSTEM's growth limit made "make
+  // this session properly long" unreachable without typing.
+  const out = [0.5, 0.7, 0.85, 1, 1.5, 2]
     .map((f) => round5(base * f))
     .filter((sec) => sec >= MIN_SESSION_SEC);
   return [...new Set(out)].sort((a, b) => a - b);
@@ -443,8 +467,21 @@ export function adjustSession(plan: Plan, workoutId: string, targetSec: number):
   const wasSec = w.estDurationSec;
   const nowSec = scaled.estDurationSec;
   const back = scaled.prescribed && nowSec === scaled.prescribed.estDurationSec;
+  // NEVER HAND BACK SOMETHING SMALLER THAN WAS ASKED FOR WITHOUT SAYING SO.
+  //
+  // The clamp used to be invisible: ask for 12 km, receive 4.6 km, and read a toast
+  // announcing 4.6 km as though that had been the request. Silently substituting a
+  // different answer is worse than refusing, because there is nothing to argue with.
+  //
+  // Detected on the requested FACTOR, not on the resulting seconds. Only `main`
+  // segments scale — the warm-up and cool-down keep their length — so the derived
+  // total almost never lands exactly on the ask, and testing the result would have
+  // announced a cap on ordinary requests that were honoured perfectly well.
+  const shortOfAsk = targetSec / base > ATHLETE_MAX_STRETCH;
   const summary = back
     ? `${scaled.title} is back to its full ${Math.round(nowSec / 60)} min.`
-    : `${scaled.title} is now ${Math.round(nowSec / 60)} min${nowSec < wasSec ? "" : ""} — same shape, ${nowSec < wasSec ? "less" : "more"} of it.`;
+    : shortOfAsk
+    ? `${scaled.title} is now ${Math.round(nowSec / 60)} min — that's as far as one session can stretch in a single step. Ask again from here to go further.`
+    : `${scaled.title} is now ${Math.round(nowSec / 60)} min — same shape, ${nowSec < wasSec ? "less" : "more"} of it.`;
   return { plan: next, workout: scaled, summary };
 }
