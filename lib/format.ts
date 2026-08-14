@@ -159,7 +159,7 @@ export function repsSummary(w: Workout): string | null {
   return u ? `${rep.repeat} × ${u}` : `${rep.repeat}×`;
 }
 
-const LB_PER_KG = 2.20462;
+export const LB_PER_KG = 2.20462;
 
 /** A lifted weight in the athlete's own unit (#199). Stored in kg always; shown
  *  in lb for imperial, because nobody in a US gym loads 61.2 kg. */

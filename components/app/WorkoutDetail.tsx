@@ -6,7 +6,7 @@ import { DISCIPLINE_META, ZONES } from "@/lib/zones";
 import { DisciplineIcon, Icon, IconName } from "./icons";
 import { targetView } from "@/lib/targets";
 import { M_PER_MILE, fmtDistance, fmtDuration, fmtSets, repsSummary } from "@/lib/format";
-import { compareLifts, congratulate, exerciseHistory, newPersonalBests, summarise } from "@/lib/strength";
+import { compareLifts, congratulate, exerciseHistory, newPersonalBests, strengthUnitOf, summarise } from "@/lib/strength";
 import { addDays, dayIndexOf, fmtDayMonth, todayISO, weekdayShort } from "@/lib/dates";
 import { IntervalBar } from "./IntervalBar";
 import { Sheet } from "./Sheet";
@@ -779,7 +779,7 @@ export function WorkoutDetail({ workout, plan, autoStartGym }: { workout: Workou
                 {workout.actualDurationSec != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDuration(workout.actualDurationSec)}</span>}
                 {workout.actualDistanceM != null && <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{fmtDistance(workout.actualDistanceM, unit, workout.discipline === "swim")}</span>}
                 {!!workout.strengthLog?.length && (
-                  <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{summarise(workout.strengthLog)}</span>
+                  <span className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-sm tabular-nums">{summarise(workout.strengthLog, strengthUnitOf(profile))}</span>
                 )}
               </div>
 
@@ -800,7 +800,7 @@ export function WorkoutDetail({ workout, plan, autoStartGym }: { workout: Workou
                             </span>
                           )}
                         </span>
-                        <span className="shrink-0 tabular-nums text-muted">{fmtSets(e.sets, unit)}</span>
+                        <span className="shrink-0 tabular-nums text-muted">{fmtSets(e.sets, strengthUnitOf(profile))}</span>
                       </div>
                     );
                   })}
@@ -948,7 +948,7 @@ export function WorkoutDetail({ workout, plan, autoStartGym }: { workout: Workou
       <LiveStrengthSession
         session={live}
         history={Object.values(plan.workouts)}
-        unit={unit}
+        unit={strengthUnitOf(profile)}
         routineName={routine?.name ?? null}
         onChange={setLive}
         onClose={() => setLiveOpen(false)}

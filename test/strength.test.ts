@@ -12,10 +12,11 @@
 // Pure, no clock, no I/O. Run: npx tsx test/strength.test.ts
 // ---------------------------------------------------------------------------
 
-import { exerciseHistory, heaviestSet, newPersonalBests, setCount, summarise, volumeLoad } from "../lib/strength";
+import { exerciseHistory, heaviestSet, newPersonalBests, setCount, strengthUnitOf, summarise, volumeLoad } from "../lib/strength";
 import { effectiveRpe, sessionLoad } from "../lib/load";
 import { logCheckin, logWorkout } from "../lib/adapt";
 import { fmtSets, fmtWeight } from "../lib/format";
+import type { Profile } from "../lib/types";
 import type { Plan, StrengthEntry, Workout } from "../lib/types";
 
 let checks = 0;
@@ -224,6 +225,43 @@ section("Reading it back");
   const ramp = [...sets(3, 8, 60), ...sets(1, 6, 70)];
   ok(fmtSets(ramp) === "3×8 @ 60 kg, 1×6 @ 70 kg", `a top set stays visible (got "${fmtSets(ramp)}")`);
   ok(fmtSets(sets(3, 15)) === "3×15", `bodyweight sets show no load (got "${fmtSets(sets(3, 15))}")`);
+}
+
+
+// ---------------------------------------------------------------------------
+// Gym weight has its OWN unit (Ryan, 2026-08-14: "i use lbs and km").
+//
+// Distance and barbell load shared one `unitPreference`, so the only way to get
+// pounds on the bar was to accept miles and min/mi on every run and ride. km + lb
+// is the ordinary combination outside the US, not an edge case.
+{
+  section("gym weights are their own unit");
+  const metric = { unitPreference: "metric" } as Profile;
+  const imperial = { unitPreference: "imperial" } as Profile;
+
+  ok(strengthUnitOf(metric) === "metric", "unset follows the distance setting (metric)");
+  ok(strengthUnitOf(imperial) === "imperial", "unset follows the distance setting (imperial)");
+  ok(strengthUnitOf(undefined) === "metric", "no profile at all is metric, not a crash");
+  ok(strengthUnitOf(null) === "metric", "…and neither is null");
+
+  // THE POINT: km on the road, lb on the bar.
+  const ryan = { unitPreference: "metric", strengthUnit: "imperial" } as Profile;
+  ok(strengthUnitOf(ryan) === "imperial", "THE FIX: lb in the gym while distance stays metric");
+  const mirrored = { unitPreference: "imperial", strengthUnit: "metric" } as Profile;
+  ok(strengthUnitOf(mirrored) === "metric", "and kg in the gym while distance stays imperial");
+
+  // summarise() hard-coded "kg" and took no unit at all, so an imperial athlete read
+  // their own routines in kilograms whatever they had chosen.
+  const entries = [{ name: "Squat", sets: [{ reps: 5, weightKg: 100 }] }];
+  const inKg = summarise(entries, "metric");
+  const inLb = summarise(entries, "imperial");
+  ok(inKg.includes("kg") && !inKg.includes("lb"), `metric summary is kg (${inKg})`);
+  ok(inLb.includes("lb") && !inLb.includes("kg"), `THE BUG: imperial summary is lb, not kg (${inLb})`);
+  ok(inLb.includes("1,102"), `converted, not relabelled — 500 kg of volume is 1,102 lb (${inLb})`);
+  ok(summarise(entries).includes("kg"), "the default stays metric, so no existing caller changes");
+
+  ok(fmtWeight(100, "metric") === "100 kg", "100 kg shows as 100 kg");
+  ok(fmtWeight(100, "imperial") === "220.5 lb", `100 kg shows as 220.5 lb (got ${fmtWeight(100, "imperial")})`);
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

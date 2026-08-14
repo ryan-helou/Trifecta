@@ -30,7 +30,7 @@ import { Sheet } from "./Sheet";
 import { StrengthLog } from "./StrengthLog";
 import type { Profile, StrengthEntry, StrengthRoutine, StrengthSlot, Unit, Workout } from "@/lib/types";
 import { defaultRoutineName, routineFromEntries, slotLabel, slotsForProfile } from "@/lib/routines";
-import { summarise } from "@/lib/strength";
+import { strengthUnitOf, summarise } from "@/lib/strength";
 import { haptic } from "@/lib/haptics";
 
 export function RoutineEditor({
@@ -136,7 +136,7 @@ export function RoutineEditor({
           initial={entries}
           history={history}
           slot={slot}
-          unit={unit}
+          unit={strengthUnitOf(profile)}
           heading="The session"
           onChange={setEntries}
         />
@@ -144,7 +144,7 @@ export function RoutineEditor({
         {built && (
           <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-sm">
             <span className="font-semibold">{built.name}</span>
-            <span className="text-muted"> · {summarise(built.exercises)}</span>
+            <span className="text-muted"> · {summarise(built.exercises, strengthUnitOf(profile))}</span>
           </div>
         )}
 

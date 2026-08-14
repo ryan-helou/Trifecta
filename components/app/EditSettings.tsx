@@ -13,6 +13,7 @@ import { addDays, fmtFullDate, todayISO } from "@/lib/dates";
 import { RaceCatalogPicker } from "@/components/RaceCatalogPicker";
 import { Sheet } from "./Sheet";
 import { haptic } from "@/lib/haptics";
+import { strengthUnitOf } from "@/lib/strength";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
 import { Icon, IconName } from "./icons";
@@ -91,6 +92,9 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
   const [showCatalog, setShowCatalog] = useState(false);
   const [level, setLevel] = useState<Level>(profile.level);
   const [unit, setUnit] = useState<Unit>(profile.unitPreference ?? "metric");
+  // Gym weight is its OWN unit. Seeded from `strengthUnitOf`, so an athlete who has
+  // never chosen sees exactly what they see today.
+  const [wUnit, setWUnit] = useState<Unit>(strengthUnitOf(profile));
   // Seed from the engine's derived split when the athlete has no explicit per-sport
   // counts — otherwise opening + saving silently rewrites their weekly volume to 2/2/2.
   const [perSport, setPerSport] = useState(profile.perSport ?? defaultSportSplit(profile));
@@ -180,6 +184,7 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
       raceDateISO: fitness ? "" : raceDateISO,
       level,
       unitPreference: unit,
+      strengthUnit: wUnit,
       workoutsPerWeek: wpwClamped,
       perSport,
       strength,
@@ -350,11 +355,21 @@ export function EditSettings({ profile, onClose }: { profile: Profile; onClose: 
             </div>
           </Field>
 
-          {/* units */}
-          <Field label="Units">
+          {/* units — TWO settings, because they are two questions. Distance and
+              barbell load used to share one toggle, so wanting pounds in the gym meant
+              accepting miles on every run. km + lb is the ordinary combination for
+              most of the world outside the US, not an edge case. */}
+          <Field label="Distance">
             <div className="grid grid-cols-2 gap-2">
               <Pill on={unit === "metric"} onClick={() => setUnit("metric")}>Kilometres</Pill>
               <Pill on={unit === "imperial"} onClick={() => setUnit("imperial")}>Miles</Pill>
+            </div>
+          </Field>
+
+          <Field label="Gym weights">
+            <div className="grid grid-cols-2 gap-2">
+              <Pill on={wUnit === "metric"} onClick={() => setWUnit("metric")}>Kilograms</Pill>
+              <Pill on={wUnit === "imperial"} onClick={() => setWUnit("imperial")}>Pounds</Pill>
             </div>
           </Field>
 
