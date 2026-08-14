@@ -512,6 +512,10 @@ export function reslotStrength(
     : slot === "home" ? W.strengthHome(ctx, min)
     : W.strength(ctx, min);
 
+  // Ledgered like every other athlete choice. Without this a reslot was the one
+  // decision that still silently reverted: measured, Tuesday set to Legs was back to
+  // Push after a single rebuild, which is the exact failure the ledger exists to end.
+  const withLedger = recordDecision(plan, w, { kind: "reslot", slot });
   const next: Workout = {
     ...w,
     title: draft.title,
@@ -529,7 +533,7 @@ export function reslotStrength(
   };
 
   return {
-    plan: { ...plan, workouts: { ...plan.workouts, [workoutId]: next } },
+    plan: { ...withLedger, workouts: { ...plan.workouts, [workoutId]: next } },
     workout: next,
     summary: `${fmtDayName(w.date)} is a ${slotLabel(slot)} day now — ${Math.round(next.estDurationSec / 60)} min.`,
   };

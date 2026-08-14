@@ -10,7 +10,7 @@ import { creditedDiscipline, creditedSeconds } from "./credit";
 import { forgetDecisions, ledgerOf, liveDecisions, recordDecision, replayDecisions, type ReplayOps } from "./decisions";
 import { formDeviation, FORM_DEBT_EASE_PCT } from "./load";
 import { swapAllowance } from "./mechanical";
-import { repaceSession } from "./modify";
+import { repaceSession, reslotStrength } from "./modify";
 import { adjustSession } from "./prescribe";
 
 // re-exported so existing importers keep working; the definitions live in credit.ts
@@ -795,6 +795,7 @@ const REPLAY_OPS: ReplayOps = {
   resize: (p, id, sec) => adjustSession(p, id, sec)?.plan ?? p,
   repace: (p, id, pacedAt) => repaceSession(p, id, pacedAt.value)?.plan ?? p,
   move: (p, id, toISO) => moveWorkout(p, id, toISO),
+  reslot: (p, id, slot) => reslotStrength(p, id, slot)?.plan ?? p,
   skip: (p, id) => setStatus(p, id, "skipped"),
 };
 
