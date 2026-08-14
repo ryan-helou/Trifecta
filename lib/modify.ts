@@ -40,7 +40,7 @@ import { slotLabel, slotOf } from "./routines";
 import { dayIndexOf } from "./dates";
 import { ZONES } from "./zones";
 import type { Adjustment } from "./prescribe";
-import { adjustChoices, adjustSession, scaleWorkout } from "./prescribe";
+import { ATHLETE_MAX_STRETCH, adjustChoices, adjustSession, scaleWorkout } from "./prescribe";
 import type { PaceModel, Plan, Profile, Segment, StrengthSlot, Workout, Zone } from "./types";
 
 /** What kind of intensity target this session can be given. */
@@ -266,7 +266,10 @@ export function distanceChoices(w: Workout): number[] {
   const base = w.prescribed?.estDistanceM ?? w.estDistanceM ?? 0;
   if (base <= 0) return [];
   const round = (m: number) => Math.max(distanceStep(w), Math.round(m / distanceStep(w)) * distanceStep(w));
-  const out = [0.5, 0.7, 0.85, 1, 1.25].map((f) => round(base * f));
+  // Reaches 2×, matching `adjustChoices`. At 1.25 the top rung of a 4 km run was
+  // 5 km, so "make this my long run" was not expressible in the row at all — the
+  // ladder was a wall even when the underlying scale allowed more.
+  const out = [0.5, 0.7, 0.85, 1, 1.5, 2].map((f) => round(base * f));
   return [...new Set(out)].sort((a, b) => a - b);
 }
 
@@ -440,9 +443,15 @@ export function resizeByDistance(plan: Plan, workoutId: string, targetM: number)
   if (railsRegressed(plan, nextPlan).length) return null;
 
   const km = (scaled.estDistanceM ?? 0) / 1000;
-  const summary = `${scaled.title} is now ${km >= 10 ? km.toFixed(0) : km.toFixed(1)} km — ${Math.round(
-    scaled.estDurationSec / 60,
-  )} min at the same effort.`;
+  const fmt = (m: number) => (m / 1000 >= 10 ? (m / 1000).toFixed(0) : (m / 1000).toFixed(1));
+  // Same rule as `adjustSession`, and detected the same way: on the requested factor,
+  // because scaffolding that does not scale means the result rarely equals the ask.
+  const shortOfAsk = targetM / base > ATHLETE_MAX_STRETCH;
+  const summary = shortOfAsk
+    ? `${scaled.title} is now ${fmt(scaled.estDistanceM ?? 0)} km — that's as far as one session can stretch in a single step. Ask again from here to go further.`
+    : `${scaled.title} is now ${km >= 10 ? km.toFixed(0) : km.toFixed(1)} km — ${Math.round(
+        scaled.estDurationSec / 60,
+      )} min at the same effort.`;
   return { plan: nextPlan, workout: scaled, summary };
 }
 

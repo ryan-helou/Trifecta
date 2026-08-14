@@ -40,6 +40,7 @@ import {
   represcribe,
   retitleMinutes,
   retitleRepeat,
+  ATHLETE_MAX_STRETCH,
   scaleWorkout,
   segmentSeconds,
   workoutSeconds,
@@ -282,7 +283,11 @@ section("adjustSession: the athlete's own change, honest and still bounded");
   ok(choices.length > 1, `offers real options (${choices.map((c) => Math.round(c / 60) + "m").join(", ")})`);
   ok(choices.includes(Math.round((w.estDurationSec / 300)) * 300) || choices.some((c) => Math.abs(c - w.estDurationSec) <= 300), "the original duration is among them, so putting it back is one tap");
   ok(choices.every((c) => c >= MIN_SESSION_SEC), "never offers something too short to be training");
-  ok(choices.every((c) => c <= w.estDurationSec * MAX_STRETCH + 300), `never offers more than ${MAX_STRETCH}× the prescription`);
+  // The LADDER reaches 2×. It used to stop at MAX_STRETCH (1.5), which is the ceiling
+  // on growth the SYSTEM initiates — a different rule entirely — and capping what the
+  // athlete can express in one tap at the system's limit made "make this my long run"
+  // unreachable from the row. Ryan: "i cant change my aug 15 4km run to 12".
+  ok(choices.every((c) => c <= w.estDurationSec * 2 + 300), "never offers more than 2× the prescription");
   ok(choices.every((c, i) => i === 0 || c > choices[i - 1]), "options are sorted and de-duplicated");
 
   // shorter
@@ -305,11 +310,32 @@ section("adjustSession: the athlete's own change, honest and still bounded");
   const auto = scaleWorkout(w, 1.3);
   ok(auto === null || auto.estDurationSec <= w.estDurationSec, "scaleWorkout without allowLonger still never lengthens");
 
-  // bounded: asking for triple is clamped, never honoured
-  const absurd = adjustSession(plan, w.id, w.estDurationSec * 3);
+  // A DELIBERATE ASK IS HONOURED, AND A BOUND THAT BITES IS ANNOUNCED.
+  //
+  // This used to assert that asking for 3× was clamped to 1.5×. That was the bug, not
+  // the contract: Ryan asked to take a 4 km run to 12 km, received 4.6 km, and read a
+  // toast presenting 4.6 km as the answer — the app neither doing the thing nor saying
+  // it had declined. `MAX_STRETCH` governs growth the SYSTEM initiates and is asserted
+  // separately above; a person typing a number is the other half of that asymmetry.
+  const tripled = adjustSession(plan, w.id, w.estDurationSec * 3);
+  ok(!!tripled, "asking for 3× is honoured, not refused");
+  if (tripled) {
+    ok(
+      tripled.workout.estDurationSec > w.estDurationSec * MAX_STRETCH,
+      `and genuinely exceeds the system's own ceiling (${Math.round(tripled.workout.estDurationSec / 60)} min vs ${Math.round((w.estDurationSec * MAX_STRETCH) / 60)} min)`,
+    );
+    ok(!/as far as one session/.test(tripled.summary), "…without claiming it had to cap anything");
+  }
+  // …but it is still bounded, and when the bound bites the athlete is TOLD rather than
+  // quietly handed something smaller than they asked for.
+  const absurd = adjustSession(plan, w.id, w.estDurationSec * 20);
   ok(
-    absurd === null || absurd.workout.estDurationSec <= Math.ceil(w.estDurationSec * MAX_STRETCH) + 1,
-    `asking for 3× is capped at ${MAX_STRETCH}× (got ${absurd ? absurd.workout.estDurationSec : "null"})`,
+    absurd === null || absurd.workout.estDurationSec <= Math.ceil(w.estDurationSec * ATHLETE_MAX_STRETCH) + 300,
+    `a runaway ask is capped at ${ATHLETE_MAX_STRETCH}× (got ${absurd ? absurd.workout.estDurationSec : "null"})`,
+  );
+  ok(
+    absurd === null || /as far as one session/.test(absurd.summary),
+    "and the cap says so out loud, instead of presenting the smaller number as the answer",
   );
 
   // convergence still holds for the manual path
