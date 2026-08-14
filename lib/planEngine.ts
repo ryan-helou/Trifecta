@@ -61,8 +61,14 @@ const MAX_PLAN_WEEKS = 104; // ~2 years — a guardrail for bad dates, not real 
  * 2 — quality is budgeted before easy volume and in time-in-zone, so intensity scales with
  *     the athlete instead of being diluted by their volume; weekly hours report what is
  *     actually prescribed; injury caps hold in every sport.
+ * 4 — the per-sport frequency the athlete asked for is honoured in EVERY week, including
+ *     recovery weeks, which now deload by cutting volume rather than deleting sessions.
+ *     A stored plan built before this hands a 3/3/3 athlete a 2/2/2 deload week every
+ *     fourth week for the rest of their block, which is the frequency contract broken on
+ *     a schedule. The rebuild that carries them over replays their decision ledger
+ *     (lib/decisions.ts), so it costs them nothing they had chosen.
  */
-export const ENGINE_VERSION = 3;
+export const ENGINE_VERSION = 4;
 // The build/"specific-prep" phase is a *bounded* block (~6–12 wk in Friel/traditional
 // periodization; even shorter, rotated, under block periodization). It carries near-peak
 // load, so it must NOT grow with lead time — the aerobic base does that instead. These
@@ -423,21 +429,26 @@ function weekSportCounts(
     }
   }
 
+  // A RECOVERY WEEK CUTS VOLUME, NEVER FREQUENCY (Ryan's call, 2026-08-13).
+  //
+  // The counts used to be multiplied by 0.7 here, which handed a 3/3/3 athlete a
+  // 2/2/2 week and read, correctly, as the app ignoring what they asked for:
+  // "when someone tells you how many times a week they want for each sport, stick
+  // to it." It was also double-dipping. `targetHours` is already multiplied by
+  // 0.62 for a recovery week, so the deload was being applied twice — once by
+  // deleting sessions and again by shrinking the hours the survivors divide up.
+  //
+  // Keeping the sessions and letting the smaller hour budget spread across them
+  // produces the same weekly load through shorter, easier sessions, which is what
+  // a deload is for. It also preserves the thing frequency actually buys in a
+  // triathlon: skill and feel in three sports, which is exactly what you lose by
+  // not swimming for a week. The same reasoning already applied to strength
+  // (#194) — this extends it to the sports that were still being cut.
   let c: SportCounts = { ...adj, strength: base.strength };
-  if (isRecovery) {
-    c = {
-      swim: Math.max(0, Math.round(c.swim * 0.7)),
-      bike: Math.max(c.bike > 0 ? 1 : 0, Math.round(c.bike * 0.7)),
-      run: Math.max(0, Math.round(c.run * 0.7)),
-      // Strength is NOT cut in a deload (#194, Ryan's call). A recovery week
-      // exists to drop ENDURANCE volume — the swim/bike/run ×0.7 above is the
-      // deload. Gym frequency is a commitment the athlete made about their week,
-      // and quietly turning "3 times" into 1 read as the app ignoring them.
-      // Doc 01 §4 #4 backs this up: in-season strength is a maintenance dose, and
-      // maintenance is exactly what you keep through a lighter week.
-      strength: c.strength,
-    };
-  }
+  // The taper keeps its cap. Race week has a RACE in it, and the last days before
+  // an A-race are the one place where fewer sessions is the prescription rather
+  // than a compromise — so this is the single documented exception to the
+  // frequency contract above.
   if (phase === "taper") {
     c.strength = Math.min(c.strength, 1);
     c = capTotal(c, 8);

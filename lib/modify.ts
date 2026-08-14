@@ -32,6 +32,7 @@
 // ---------------------------------------------------------------------------
 
 import { railsRegressed } from "./rails";
+import { recordDecision } from "./decisions";
 import * as W from "./workouts";
 import type { BuildCtx } from "./workouts";
 import { customSlotFor, parseCustomSplit } from "./workouts";
@@ -231,7 +232,10 @@ export function repaceSession(
     prescribed,
     pacedAt: { kind, value, zone },
   };
-  const nextPlan: Plan = { ...plan, workouts: { ...plan.workouts, [workoutId]: next } };
+  // Ledgered like every other athlete choice — the intensity you set for a session
+  // is not the engine's to reconsider on the next rebuild.
+  const withLedger = recordDecision(plan, w, { kind: "repace", pacedAt: { kind, value, zone } });
+  const nextPlan: Plan = { ...withLedger, workouts: { ...plan.workouts, [workoutId]: next } };
   if (railsRegressed(plan, nextPlan).length) return null;
 
   const harder = zone > w.primaryZone;

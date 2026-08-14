@@ -2,6 +2,8 @@
 // Trifecta domain model
 // ---------------------------------------------------------------------------
 
+import type { Decision } from "./decisions";
+
 // "fitness" = no target race; the athlete just wants to get fitter. The engine
 // builds a rolling base→build block instead of periodising toward a date.
 export type RaceType = "olympic" | "half" | "full" | "custom" | "fitness";
@@ -530,6 +532,15 @@ export interface Plan {
   upgradeDeclinedVersion?: number;
   /** why each eased week was softened — the applied suggestion's trigger + numbers (survives rebuilds) */
   adaptations?: { weekIndex: number; cause: "missed" | "strain" | "form"; reason: string; missed: number; scheduled: number }[];
+  /** Every decision the athlete has made about their own plan (lib/decisions.ts).
+   *
+   *  THE reason a skip or a swap now survives. Decisions used to live only on the
+   *  workout object, and `rebuildFromToday` regenerates every future workout — so
+   *  each of the automatic rebuilds (three missed sessions, any settings save, an
+   *  engine upgrade) quietly reverted them. Held on the plan instead and replayed
+   *  over each fresh generation, they cannot be lost by regeneration, because
+   *  regeneration is no longer what holds them. */
+  decisions?: Decision[];
 }
 
 // what we persist per user

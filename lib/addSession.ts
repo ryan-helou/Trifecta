@@ -21,7 +21,7 @@
 // Everything here is pure. The caller supplies today.
 // ---------------------------------------------------------------------------
 
-import { addDays } from "./dates";
+import { addDays, dayIndexOf } from "./dates";
 import { injuryMods, isHardLoading } from "./planEngine";
 import { impactHeadroomMinutes, IMPACT_BONUS_MAX, IMPACT_PER_MIN } from "./mechanical";
 import type { Discipline, Plan, Profile, Workout } from "./types";
@@ -222,13 +222,27 @@ function evaluateSport(plan: Plan, profile: Profile, dateISO: string, choice: Ad
  * has a better neighbour, and a bare refusal would be the app being unhelpful in the exact
  * moment someone wanted to train.
  */
+/** The athlete asked for THIS day off. Adding here is still their call — but a
+ *  preference they set and then forgot is worth one sentence before they spend it.
+ *  Appended to the reason rather than blocking, because refusing an explicit request
+ *  to protect a preference is the app arguing with them. */
+function restDayNote(profile: Profile, dateISO: string): string {
+  const pref = profile.restDayPreference;
+  if (pref == null) return "";
+  return dayIndexOf(dateISO) === pref ? " Worth knowing: this is the rest day you asked for." : "";
+}
+
 export function suggestSession(
   plan: Plan,
   profile: Profile,
   dateISO: string,
   choice: AddChoice = "any",
 ): AddOutcome {
-  const first = evaluateSport(plan, profile, dateISO, choice);
+  const note = restDayNote(profile, dateISO);
+  const withNote = (o: AddOutcome): AddOutcome =>
+    o.kind === "ok" && note ? { ...o, reason: `${o.reason}${note}` } : o;
+
+  const first = withNote(evaluateSport(plan, profile, dateISO, choice));
   if (first.kind === "ok") return first;
 
   // Ordered cheapest-on-the-tissue LAST, so the alternative offered is the closest thing to
@@ -236,7 +250,7 @@ export function suggestSession(
   const asked = choice === "any" ? null : choice;
   for (const s of ["run", "bike", "swim"] as const) {
     if (s === asked) continue;
-    const alt = evaluateSport(plan, profile, dateISO, s);
+    const alt = withNote(evaluateSport(plan, profile, dateISO, s));
     if (alt.kind === "ok") return { ...first, alternative: alt };
   }
   return first;

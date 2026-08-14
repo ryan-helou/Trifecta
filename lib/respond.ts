@@ -24,7 +24,7 @@
 // Pure — no clock, no I/O. The caller supplies today.
 // ---------------------------------------------------------------------------
 
-import { absorbUnplanned } from "./absorb";
+import { deliveredCredit, isUnplanned, OVERSHOOT_MARGIN, prescribedCredit, settleOvershoot, settleUnplanned } from "./equilibrium";
 import { represcribe } from "./prescribe";
 import { respondToEdit } from "./replan";
 import type { Plan, Workout } from "./types";
@@ -94,6 +94,15 @@ export function hardDayConflicts(plan: Plan, fromISO?: string): { a: Workout; b:
  *  and deliberately so. A plan that visibly reshuffles on every tap reads as
  *  chaotic rather than responsive, and an app that announces a change it didn't
  *  make is the dead-button bug (#108) wearing a different hat. */
+/** Work that is over and above what the week asked for — either the plan never asked
+ *  for it at all, or the athlete took a session well past its prescription. */
+function anchorIsExtra(plan: Plan, id: string): boolean {
+  const w = plan.workouts[id];
+  if (!w || w.discipline === "rest") return false;
+  if (isUnplanned(w)) return true;
+  return (w.status === "done" || w.status === "swapped") && deliveredCredit(w) >= prescribedCredit(w) * OVERSHOOT_MARGIN;
+}
+
 export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): PlanResponse | null {
   const warnings: string[] = [];
 
@@ -114,8 +123,34 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   // the ledger because it changes which sessions are still standing, and the
   // ledger's job is to resize what remains — in that order they compose, in the
   // other they argue about a session one of them has already withdrawn.
-  const absorbed = absorbUnplanned(plan, todayISO, event.workoutId);
+  //
+  // …and a session taken far past its prescription is extra work too. Ryan's case: a
+  // 60 min long run done as 120. It is not unplanned — it was on the calendar — so the
+  // settlement above cannot see it, and the week went on asking for everything it had
+  // originally asked for. `settleOvershoot` spends only the SURPLUS, and only ever
+  // lightens: overshooting one session is not evidence that another one happened.
+  const absorbed = settleUnplanned(plan, todayISO, event.workoutId) ?? settleOvershoot(plan, todayISO, event.workoutId);
   const afterAbsorb = absorbed?.plan ?? plan;
+
+  // WHEN EXTRA WORK CANNOT BE SETTLED, SAY SO RATHER THAN GOING QUIET.
+  //
+  // The week can genuinely run out of room: the rails refuse another cut, everything
+  // left is a quality session the work was too easy to touch, or there is simply no
+  // session of that sport still standing. All three are correct outcomes and all three
+  // used to be indistinguishable from the app not noticing — which is the complaint
+  // this whole rebuild exists to answer. Extra work always gets an answer, even when
+  // the answer is "nothing more moves".
+  if (!absorbed && anchorIsExtra(plan, event.workoutId)) {
+    const w = plan.workouts[event.workoutId];
+    const inRaceWeek = plan.weeks.find((x) => x.index === w.weekIndex)?.isRaceWeek;
+    warnings.push(
+      inRaceWeek
+        ? `That ${w.discipline} is on top of what race week asked for. The taper stays exactly as it is — ` +
+          `that's the one week the plan won't rebalance around you.`
+        : `That ${w.discipline} is on top of what this week asked for, and there's nothing left ` +
+          `to trade it against — so the week runs heavy. Nothing else moves, and next week is untouched.`,
+    );
+  }
 
   // Every event refreshes the prescription from the ledger. The session the athlete just
   // acted on is excluded: they set it deliberately, and the responder's job is to adjust
@@ -135,8 +170,30 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   // around the athlete, and adding load because they missed something is the worst
   // reading of it available. Credit still accrues from work genuinely done; it just
   // cannot be claimed by work NOT done.
+  //
+  // …AND NEITHER MAY EXTRA WORK.
+  //
+  // The mirror of the rule above, and it produced a worse sentence. Logging an
+  // unplanned run — work the plan never asked for — let the ledger read the block as
+  // under-trained and hand back 12%, so a 55 min long run became 60 min under the
+  // headline "you've been running about 109% lighter than this block budgeted for, so
+  // the next 3 sessions get put back". The athlete did MORE and the plan answered with
+  // more, in the same breath as the settlement that had just trimmed that very session
+  // for the opposite reason. Two systems arguing over one session is exactly the
+  // collision lib/equilibrium.ts was written to end (#215/#219/#220), reappearing
+  // between the local answer and the block-level one.
+  //
+  // Extra work is answered locally, by the settlement, or not at all. Credit still
+  // accrues to the ledger and still shapes later weeks — it just cannot be spent, in
+  // the same action, on prescribing the athlete more.
+  //
+  // Gated on the SESSION being unplanned rather than on the event kind, because the
+  // same fact arrives under three different kinds ("logged" from a manual log,
+  // "logged-other" from did-something-else, and a device sync).
+  const anchor = plan.workouts[event.workoutId];
+  const extraWork = !!anchor && isUnplanned(anchor);
   const reRaw = represcribe(afterAbsorb, todayISO, undefined, event.workoutId);
-  const re = event.kind === "skipped" && reRaw && reRaw.factor > 1 ? null : reRaw;
+  const re = (event.kind === "skipped" || extraWork) && reRaw && reRaw.factor > 1 ? null : reRaw;
 
   // ...and separately, respond to the EDIT itself. The ledger above only sees
   // completed work, so a change to a session you haven't done yet is invisible
@@ -158,7 +215,14 @@ export function respondTo(plan: Plan, todayISO: string, event: AthleteEvent): Pl
   // ledger change: reporting "no good day left to move it" as the headline while
   // the plan separately lengthened an unrelated session reads as one incoherent
   // sentence about two different things. Notes become warnings; actions lead.
-  if (edit && !edit.changedIds.length) warnings.push(edit.headline);
+  //
+  // …unless a settlement already acted. The drift branches measure the week against
+  // its design, and a settlement deliberately makes the week lighter — so the note
+  // fires saying "this week is now 40 min lighter than planned, that's fine, nothing
+  // else moves" directly underneath the headline describing the session that just
+  // moved. Two sentences, same event, flatly contradicting each other. The settlement
+  // is the better explanation of its own consequence, so it speaks alone.
+  if (edit && !edit.changedIds.length && !absorbed) warnings.push(edit.headline);
   const editActed = !!edit && edit.changedIds.length > 0;
 
   if (!absorbed && !re && !editActed) {

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Unplanned work is folded into the week it lands in (lib/absorb.ts, #215).
+// Unplanned work is settled against the week it lands in (lib/equilibrium.ts).
 //
 // The property under test is the one Ryan asked for in the ticket: a session the
 // plan never asked for must come OFF the session it stands in for — outright when
@@ -12,12 +12,12 @@
 // sessions in it and an unplanned session reported itself as its own design. Extra
 // work measured as a deficit. Invariant 1 below is that number.
 //
-// Pure, no clock, no I/O. Run: npx tsx test/absorb.test.ts
+// Pure, no clock, no I/O. Run: npx tsx test/equilibrium.test.ts
 // ---------------------------------------------------------------------------
 
 import { generatePlan } from "../lib/planEngine";
 import { assessAdaptation, logCheckin, logWorkout } from "../lib/adapt";
-import { absorbUnplanned, ADEQUATE, isUnplanned } from "../lib/absorb";
+import { settleUnplanned, FULL_COVER, isUnplanned, deliveredCredit, prescribedCredit } from "../lib/equilibrium";
 import { weekDrift } from "../lib/replan";
 import { respondTo } from "../lib/respond";
 import type { Discipline, Plan, Profile, Workout } from "../lib/types";
@@ -119,9 +119,11 @@ section("an adequate equivalent takes the session off the week");
   ok(!!now.absorbedBy, `${longRide.title} records what covered it`);
   ok(now.status === "skipped", "and it leaves the week rather than sitting there asking to be done twice");
   ok(!!headline && /covers/.test(headline), `the change explains itself: "${headline}"`);
+  // The bar is a CREDIT ratio, not a duration ratio — duration × intensity — so
+  // this asserts the number the code actually consults rather than a proxy for it.
   ok(
-    ADEQUATE <= mins * 60 / longRide.estDurationSec,
-    "the adequacy bar is what let it through, not a coincidence of rounding",
+    FULL_COVER <= deliveredCredit(after.workouts[Object.keys(after.workouts).find((id) => isUnplanned(after.workouts[id]))!]) / prescribedCredit(longRide),
+    "the full-cover bar is what let it through, not a coincidence of rounding",
   );
 }
 
@@ -199,7 +201,7 @@ section("race week is left alone");
   const res = logWorkout(plan, { dateISO: day, discipline: "bike", durationSec: 90 * 60, rpe: 3 });
   const bonusId = Object.keys(res.plan.workouts).find((id) => !plan.workouts[id]);
   if (bonusId) {
-    const out = absorbUnplanned(res.plan, day, bonusId);
+    const out = settleUnplanned(res.plan, day, bonusId);
     ok(out === null, "nothing in race week is absorbed — the taper is the point");
   } else {
     ok(true, "nothing was planned to absorb in race week (vacuously safe)");
@@ -272,7 +274,7 @@ section("running it twice does not compound");
 {
   const { plan, today, weekIndex } = bed();
   const { plan: once, bonusId } = didUnplanned(plan, today, "bike", 60, 3);
-  const twice = absorbUnplanned(once, today, bonusId);
+  const twice = settleUnplanned(once, today, bonusId);
   if (twice) {
     // A second pass may only ever find a DIFFERENT session; it must not shave the
     // same one again, which is how repeated syncs would ratchet a week to nothing.

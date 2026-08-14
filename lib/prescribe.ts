@@ -33,6 +33,7 @@
 
 import { FORM_DEBT_EASE_PCT, formDeviation } from "./load";
 import { railsRegressed } from "./rails";
+import { recordDecision } from "./decisions";
 import type { Plan, Segment, Workout } from "./types";
 
 /** Deviation inside ±this (percent of CTL) is noise, not signal. */
@@ -399,7 +400,13 @@ export function adjustSession(plan: Plan, workoutId: string, targetSec: number):
   const scaled = scaleWorkout(w, targetSec / base, { allowLonger: true });
   if (!scaled) return null;
 
-  const next: Plan = { ...plan, workouts: { ...plan.workouts, [workoutId]: scaled } };
+  // The length the athlete chose is a decision, so it goes in the ledger and
+  // survives every regeneration. `represcribe` and `easeUpcoming` deliberately do
+  // NOT come through here — they call `scaleWorkout` directly — because the plan
+  // softening a session is not the athlete asking for it, and replaying an ease
+  // forever would be the plan refusing to let them get their training back.
+  const withLedger = recordDecision(plan, w, { kind: "resize", sec: scaled.estDurationSec, distanceM: scaled.estDistanceM });
+  const next: Plan = { ...withLedger, workouts: { ...plan.workouts, [workoutId]: scaled } };
   if (railsRegressed(plan, next).length) return null;
 
   const wasSec = w.estDurationSec;
