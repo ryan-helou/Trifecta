@@ -27,6 +27,8 @@ import {
   canSetDistance,
   distanceChoices,
   distanceOptions,
+  isAtDistance,
+  isAtLength,
   lengthOptions,
   repaceSession,
   resizeByDistance,
@@ -534,6 +536,52 @@ section("a distance-only segment resizes without the text drifting from the metr
       }
     }
   }
+}
+
+// --- tapping the chip you are already on is never an error -------------------
+// Ryan, against 1.0.61: "its still saying that session cant be resized to that
+// distance". It was — for the chip the row highlights as your current value. Both
+// rows render that chip as a live button, so tapping it called the action, the action
+// truthfully answered "nothing would change", and the UI rendered that as a refusal.
+//
+// Measured across the profile matrix BEFORE the fix: 0 failures on chips offered as
+// selectable, 4,842 on the current one. So it fired on virtually every session for
+// anyone who tapped the highlighted chip — the natural thing to do when checking what
+// a control does.
+section("the current chip is a no-op, not a refusal");
+{
+  let atCurrent = 0;
+  let offeredButRefused = 0;
+  let total = 0;
+  for (const level of ["beginner", "intermediate", "advanced", "elite"] as const) {
+    for (const raceType of ["olympic", "half", "full"] as const) {
+      const p = generatePlan(profile({ level, raceType }), ANCHOR);
+      for (const w of Object.values(p.workouts)) {
+        if (!canSetDistance(w) || w.status !== "planned" || w.id === "w-race-day") continue;
+        total++;
+        for (const c of distanceOptions(p, w.id)) {
+          const refused = !resizeByDistance(p, w.id, c.value);
+          if (!refused) continue;
+          // Every refusal must be explainable as "you are already there" — which the
+          // UI now recognises and answers with silence instead of an error.
+          if (isAtDistance(w, c.value)) atCurrent++;
+          else offeredButRefused++;
+        }
+      }
+    }
+  }
+  ok(total > 500, `the matrix is broad enough to be meaningful (${total} distance-capable sessions)`);
+  ok(
+    offeredButRefused === 0,
+    `no chip the row offers as a real change is ever refused (${offeredButRefused})`,
+  );
+  ok(atCurrent > 0, `and the refusals that do exist are all "already there" (${atCurrent})`);
+  // …which `isAtDistance` classifies, so the UI can stay silent on exactly those.
+  const w = Object.values(generatePlan(profile(), ANCHOR).workouts).find((x) => canSetDistance(x))!;
+  ok(isAtDistance(w, w.estDistanceM ?? 0), "isAtDistance recognises the session's own distance");
+  ok(!isAtDistance(w, (w.estDistanceM ?? 0) * 2), "…and does not swallow a real change");
+  ok(isAtLength(w, w.estDurationSec), "isAtLength recognises the session's own length");
+  ok(!isAtLength(w, w.estDurationSec + 20 * 60), "…and does not swallow a real one");
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

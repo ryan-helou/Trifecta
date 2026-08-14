@@ -53,6 +53,17 @@ export function reindexWeeks(plan: Plan): void {
   }
 }
 
+/** How many detached activity ids a plan remembers. Comfortably more than the
+ *  sync's 21-day window can hold, so an id only ages out once re-matching it is
+ *  impossible anyway — and the plan blob stays inside its 512KB cap. */
+export const DETACHED_MAX = 500;
+
+/** Has the athlete told us this activity does not complete anything? */
+export function isDetached(plan: Plan, activityId: number | string | undefined | null): boolean {
+  if (activityId == null) return false;
+  return (plan.detachedActivityIds ?? []).includes(activityId);
+}
+
 export function setStatus(plan: Plan, id: string, status: Workout["status"], note?: string): Plan {
   const p = clonePlan(plan);
   const w = p.workouts[id];
@@ -77,9 +88,34 @@ export function setStatus(plan: Plan, id: string, status: Workout["status"], not
       ? forgetDecisions(p, w, ["skip"])
       : p;
   p.decisions = ledgered.decisions;
+
+  // PUTTING A SESSION BACK DETACHES THE ACTIVITY THAT COMPLETED IT.
+  //
+  // Without this, undo is decorative. The device-synced actuals stayed on the
+  // workout and the activity stayed eligible, so the next Strava pass (every two
+  // minutes) matched the same ride to the same session and re-ticked it. Recording
+  // the activity id is what lets the sync tell "I haven't seen this yet" apart from
+  // "the athlete told me this isn't it" — the one question it could not answer.
+  //
+  // The actuals go with it. A session reading "planned" while still carrying a heart
+  // rate and a distance is the same lie in a quieter font, and leaving the id on the
+  // workout would keep the server's carrier check claiming it.
+  const detaching = status === "planned" ? w.actuals?.activityId : undefined;
+  if (detaching != null) {
+    const seen = p.detachedActivityIds ?? [];
+    if (!seen.includes(detaching)) {
+      // newest last, oldest dropped — a list that grows forever is a leak, and an
+      // activity old enough to fall off is long past the sync's 21-day window.
+      p.detachedActivityIds = [...seen, detaching].slice(-DETACHED_MAX);
+    }
+  }
+
   p.workouts[id] = {
     ...w,
     status,
+    ...(status === "planned"
+      ? { actuals: undefined, actualDurationSec: undefined, actualDistanceM: undefined }
+      : {}),
     note: note ?? (status === "planned" ? undefined : w.note),
     // Putting a session back overrides the absorption that took it away (#215).
     // Leaving the mark on would keep the card reading "Covered" while the session

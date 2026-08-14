@@ -512,6 +512,21 @@ export interface Plan {
    *  syncs: otherwise the same Monday briefing greets you again on your iPad,
    *  which is exactly the repetition the one-a-day rule exists to prevent. */
   coachSent?: string[];
+  /** Strava activity ids the athlete has DELIBERATELY un-completed.
+   *
+   *  An undo has to outrank a sync, and nothing recorded that it happened. Strava's
+   *  auto-sync re-reads the last 21 days on every run, so un-ticking a session just
+   *  meant the next pass matched the same activity to the same session and ticked it
+   *  again — within two minutes, forever. From the athlete's side the button plainly
+   *  did not work (Ryan, 2026-08-14: "every time i undo completed and come back to the
+   *  app it shows completed").
+   *
+   *  Keyed by ACTIVITY, not by workout: the athlete's decision is "this ride is not
+   *  that session", and it has to survive the session being moved, resized or
+   *  re-generated. Same `number | string` shape as WorkoutActuals.activityId, so this
+   *  covers Apple Health (string ids) as well as Strava (numeric). Bounded — see
+   *  DETACHED_MAX. */
+  detachedActivityIds?: (number | string)[];
   /** the day the plan was last realigned around "today" (manual or automatic).
    *  Misses BEFORE this date have already been absorbed into `kept-` history, so
    *  counting them again would make an automatic realign re-fire forever — see
