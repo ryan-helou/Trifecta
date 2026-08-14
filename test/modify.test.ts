@@ -21,7 +21,7 @@
 import { generatePlan } from "../lib/planEngine";
 import { checkRails } from "../lib/rails";
 import { respondTo } from "../lib/respond";
-import { adjustSession } from "../lib/prescribe";
+import { adjustChoices, adjustSession } from "../lib/prescribe";
 import { sessionLoad } from "../lib/load";
 import {
   canSetDistance,
@@ -458,6 +458,82 @@ section("every chip the Modify panel shows is a chip that DOES something");
   const menu = distanceOptions(plan, w.id);
   const extras = menu.filter((c) => !raw.has(c.value));
   ok(extras.every((c) => c.current), "anything offered beyond the ladder is only ever the current value");
+}
+
+// --- every session the plan writes can actually be resized -------------------
+// Ryan, on 1.0.60: "why is it not letting me resize sessions?"
+//
+// A recovery swim is built as plain distance blocks — 200m / 500m / 200m, no rep
+// count and no minutes — and `scaleSegment` had a branch for rep-sets and a branch
+// for durations and none for those. Every rung of the ladder came back "can't be
+// expressed truthfully", so the Modify panel told him the session was already as
+// close as it could get, for every option, including obviously reachable ones.
+//
+// Asserted across the profile matrix rather than on one fixture, because the sessions
+// that hit it were confined to recovery weeks: on a single default plan the bug is
+// 0% of what you look at, and across the matrix it was 11% of every recovery week.
+section("every planned session offers at least one real length option");
+{
+  let blocked = 0;
+  let total = 0;
+  let firstBad = "";
+  for (const level of ["beginner", "intermediate", "advanced", "elite"] as const) {
+    for (const raceType of ["olympic", "half", "full"] as const) {
+      for (const per of [{ swim: 2, bike: 2, run: 2 }, { swim: 3, bike: 3, run: 3 }, { swim: 4, bike: 4, run: 4 }]) {
+        const p = generatePlan(
+          {
+            username: "t",
+            raceType,
+            raceDateISO: weeksFrom(20),
+            level,
+            workoutsPerWeek: per.swim + per.bike + per.run,
+            perSport: per,
+            createdAtISO: ANCHOR,
+          } as Profile,
+          ANCHOR,
+        );
+        for (const w of Object.values(p.workouts)) {
+          if (w.discipline === "rest" || w.status !== "planned" || w.id === "w-race-day") continue;
+          total++;
+          if (lengthOptions(p, w.id).filter((o) => !o.current).length === 0) {
+            blocked++;
+            if (!firstBad) firstBad = `${level}/${raceType} ${per.swim}/${per.bike}/${per.run} · ${w.title} ${Math.round(w.estDurationSec / 60)}min`;
+          }
+        }
+      }
+    }
+  }
+  ok(total > 3000, `the matrix is broad enough to catch a recovery-week-only bug (${total} sessions)`);
+  ok(blocked === 0, `every session can be resized (${blocked} blocked; first: ${firstBad})`);
+}
+
+// …and a plain distance block scales its metres AND its wording together.
+section("a distance-only segment resizes without the text drifting from the metres");
+{
+  const p = generatePlan(profile(), ANCHOR);
+  const swim = Object.values(p.workouts).find(
+    (w) => w.discipline === "swim" && w.status === "planned" && w.segments.some((s) => s.kind === "main" && s.distanceM && !s.durationSec),
+  );
+  ok(!!swim, "the fixture has a distance-built swim");
+  if (swim) {
+    const target = adjustChoices(swim).find((sec) => Math.abs(sec - swim.estDurationSec) > 60)!;
+    const res = adjustSession(p, swim.id, target);
+    ok(!!res, `it can be resized (asked ${Math.round(target / 60)}min)`);
+    if (res) {
+      for (const seg of res.workout.segments) {
+        if (seg.kind !== "main" || !seg.distanceM) continue;
+        const stated = /^(\d[\d,]*)\s*m\b/.exec(seg.description);
+        ok(!!stated, `the main set still states its distance ("${seg.description}")`);
+        if (stated) {
+          ok(
+            Number(stated[1].replace(/,/g, "")) === seg.distanceM,
+            `and the words match the metres (${stated[1]} vs ${seg.distanceM})`,
+          );
+        }
+        ok(seg.distanceM % 25 === 0, `and it lands on whole pool lengths (${seg.distanceM}m)`);
+      }
+    }
+  }
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

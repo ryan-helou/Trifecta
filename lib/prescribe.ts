@@ -142,6 +142,15 @@ export function retitleRepeat(description: string, reps: number): string | null 
 
 /** Rewrite the leading duration in a continuous description: "81 min @ Endurance"
  *  → "65 min @ Endurance". Same contract: null when it can't be done truthfully. */
+/** Rewrite the leading distance in a plain block: "500m easy, mixed strokes" →
+ *  "400m easy, mixed strokes". The distance-side mirror of `retitleMinutes`, and the
+ *  reason a pool swim can be resized at all — see `scaleSegment`. */
+export function retitleMeters(description: string, metres: number): string | null {
+  const m = /^(\d[\d,]*)\s*m\b/.exec(description);
+  if (!m) return null;
+  return `${metres}m${description.slice(m[0].length)}`;
+}
+
 export function retitleMinutes(description: string, sec: number): string | null {
   const m = /^(\d+)\s*min\b/.exec(description);
   if (!m) return null;
@@ -156,7 +165,7 @@ export function retitleMinutes(description: string, sec: number): string | null 
  *  description leads with its minutes. Warm-ups and cool-downs are deliberately
  *  left alone: they're small, fixed, and cutting them changes the session's
  *  safety rather than its dose. */
-function scaleSegment(s: Segment, factor: number): Segment {
+function scaleSegment(s: Segment, factor: number, discipline?: Segment["discipline"]): Segment {
   if (s.kind === "warmup" || s.kind === "cooldown" || s.kind === "rest") return s;
 
   const reps = s.repeat ?? 1;
@@ -174,6 +183,28 @@ function scaleSegment(s: Segment, factor: number): Segment {
     const description = retitleMinutes(s.description, nextSec);
     if (description == null) return s;
     return { ...s, durationSec: nextSec, description };
+  }
+
+  // A PLAIN DISTANCE BLOCK — the branch that was missing, and it made whole sessions
+  // unresizable.
+  //
+  // A recovery swim is built as 200m / 500m / 200m: no rep count, no minutes, just
+  // metres. Neither branch above matches it, so every rung of the length ladder came
+  // back "can't be expressed truthfully" and the athlete was told the session was
+  // "already as close to that as it can get" — for every option, including obviously
+  // reachable ones. Reported by Ryan as simply "why is it not letting me resize
+  // sessions?".
+  //
+  // Rounded to whole pool lengths (or 100 m blocks on land) so the number stays
+  // something a person can actually swim to, and retitled so the text and the metres
+  // never disagree — the same contract the two branches above keep.
+  if (s.distanceM && !s.children?.length) {
+    const step = (discipline ?? s.discipline) === "swim" ? 25 : 100;
+    const nextM = Math.max(step, Math.round((s.distanceM * factor) / step) * step);
+    if (nextM === s.distanceM) return s;
+    const description = retitleMeters(s.description, nextM);
+    if (description == null) return s;
+    return { ...s, distanceM: nextM, description };
   }
 
   return s;
@@ -214,7 +245,7 @@ export function scaleWorkout(w: Workout, factor: number, opts?: { allowLonger?: 
   // would leave the number and the session disagreeing, which is rule 4 again.
   if (!base.segments?.length) return null;
 
-  const segments = base.segments.map((s) => scaleSegment(s, f));
+  const segments = base.segments.map((s) => scaleSegment(s, f, w.discipline));
   // Header duration is DERIVED from the structure, never scaled beside it. This
   // is unconditional on purpose: the one branch that computed it independently
   // was the only way the two could ever disagree, and a header that contradicts
