@@ -3,12 +3,15 @@ import { Discipline, Feel, Plan, StrengthEntry, Week, Workout, Zone } from "./ty
 import { addDays, dayIndexOf, fromISO, mondayOf, weeksBetween } from "./dates";
 import { BuildCtx, Draft } from "./workouts";
 import * as W from "./workouts";
-import { ENGINE_VERSION, generatePlan, isFitnessGoal } from "./planEngine";
+import { ENGINE_VERSION, generatePlan, injuryMods, isFitnessGoal } from "./planEngine";
 import { ZONES } from "./zones";
 import { fmtDuration } from "./format";
 import { creditedDiscipline, creditedSeconds } from "./credit";
+import { forgetDecisions, ledgerOf, liveDecisions, recordDecision, replayDecisions, type ReplayOps } from "./decisions";
 import { formDeviation, FORM_DEBT_EASE_PCT } from "./load";
 import { swapAllowance } from "./mechanical";
+import { repaceSession } from "./modify";
+import { adjustSession } from "./prescribe";
 
 // re-exported so existing importers keep working; the definitions live in credit.ts
 export { creditedDiscipline, creditedSeconds };
@@ -54,6 +57,26 @@ export function setStatus(plan: Plan, id: string, status: Workout["status"], not
   const p = clonePlan(plan);
   const w = p.workouts[id];
   if (!w) return p;
+  // A SKIP IS A DECISION, AND DECISIONS LIVE IN THE LEDGER.
+  //
+  // Recorded here rather than at the call sites so every route to a skip — the
+  // swipe, the detail sheet, the coach, a conversational action — files it, and
+  // none of them has to remember to. Ryan: "if I skip my swim on August twelfth,
+  // there should never be a swim on August twelfth ever."
+  //
+  // Putting the session back forgets it, or the next automatic rebuild would
+  // replay the skip they just reversed and the undo would silently expire.
+  // …and DOING it clears the skip just as surely as putting it back does. Ryan:
+  // "you can restore it" — a session you actually completed is not one you skipped,
+  // and leaving the decision filed would let the next rebuild delete the very
+  // session you'd just proved you wanted.
+  const ledgered =
+    status === "skipped"
+      ? recordDecision(p, w, { kind: "skip" })
+      : status === "planned" || status === "done" || status === "swapped"
+      ? forgetDecisions(p, w, ["skip"])
+      : p;
+  p.decisions = ledgered.decisions;
   p.workouts[id] = {
     ...w,
     status,
@@ -487,6 +510,9 @@ export function moveWorkout(plan: Plan, id: string, newDateISO: string): Plan {
   const end = fromISO(addDays(p.weeks[p.weeks.length - 1].startDate, 6)).getTime();
   const t = fromISO(newDateISO).getTime();
   if (t < start || t > end) return p; // out of range → ignore
+  // Filed BEFORE the date changes: the anchor has to name the day the engine will
+  // put this session on, which is the one it is moving off.
+  p.decisions = recordDecision(p, w, { kind: "move", toISO: newDateISO }).decisions;
   p.workouts[id] = { ...w, date: newDateISO, movedFrom: w.movedFrom ?? w.date, status: "moved" };
   reindexWeeks(p);
   // moved workouts should present as still-to-do
@@ -539,6 +565,11 @@ export function swapDiscipline(plan: Plan, id: string, discipline: Discipline): 
   const p = clonePlan(plan);
   const w = p.workouts[id];
   if (!w) return p;
+  // The swap is filed before it is performed, so the anchor is computed against
+  // the slot as it stands. Replaying it is what keeps Ryan's swapped Saturday a
+  // long run through every rebuild instead of reverting to the ride the engine
+  // would otherwise re-lay there.
+  p.decisions = recordDecision(p, w, { kind: "swap", to: discipline }).decisions;
   const ctx: BuildCtx = { paces: p.paces, level: p.profile.level };
   const requestedSec = w.estDurationSec || 2400;
   const allowance = swapAllowance(p, w, discipline, requestedSec);
@@ -621,6 +652,9 @@ export function unswapDiscipline(plan: Plan, id: string): Plan {
   const p = clonePlan(plan);
   const w = p.workouts[id];
   if (!w || !w.swappedFrom) return p;
+  // Undo reaches the ledger too — otherwise the swap is replayed on the next
+  // rebuild and comes straight back.
+  p.decisions = forgetDecisions(p, w, ["swap"]).decisions;
   const o = w.swappedFrom;
   p.workouts[id] = {
     ...w,
@@ -697,16 +731,54 @@ export function weeksBanked(plan: Plan, todayISO: string): number {
   return Math.round(elapsed * Math.min(1, adherence));
 }
 
-/** Did the ATHLETE shorten this session? `prescribed` holds what the engine asked
- *  for, so a current length below it that no ease explains is their own edit. */
-function isAthleteResized(w: Workout): boolean {
-  const base = w.prescribed?.estDurationSec;
-  return !!base && base > 0 && Math.abs(w.estDurationSec - base) > 60;
-}
+/**
+ * How a replayed decision is actually performed.
+ *
+ * Injected into `replayDecisions` rather than imported by it, so the ledger stays
+ * a pure data structure with no opinion about how a swap works — and so adapt.ts
+ * → decisions.ts stays a one-way dependency instead of the cycle that credit.ts
+ * was carved out to escape.
+ */
+const REPLAY_OPS: ReplayOps = {
+  // A SWAP INTO A SPORT THE ATHLETE IS NOW INJURED OUT OF IS NOT REPLAYED.
+  //
+  // The decision was made when they were healthy and it stays in the ledger — this
+  // refuses to APPLY it, it does not forget it, so recovering from the injury brings
+  // the choice back. Without this, marking a severe run injury left every run an
+  // earlier swap had created sitting on the calendar: the plan would stop ADDING
+  // running and go on asking them to run on a stress fracture, which is the one
+  // outcome this file must never produce.
+  swap: (p, id, to) => {
+    const mods = injuryMods(p.profile);
+    if ((to === "swim" || to === "bike" || to === "run") && mods[to].avoid) return p;
+    return swapDiscipline(p, id, to);
+  },
+  // Every one of these returns null when it would change nothing, which during a
+  // replay is the common case and is not a failure — the freshly generated
+  // session may already be the length or intensity the athlete asked for.
+  resize: (p, id, sec) => adjustSession(p, id, sec)?.plan ?? p,
+  repace: (p, id, pacedAt) => repaceSession(p, id, pacedAt.value)?.plan ?? p,
+  move: (p, id, toISO) => moveWorkout(p, id, toISO),
+  skip: (p, id) => setStatus(p, id, "skipped"),
+};
 
 export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
-  const fresh = generatePlan(plan.profile, undefined, { weeksBanked: weeksBanked(plan, todayISO) });
+  const generated = generatePlan(plan.profile, undefined, { weeksBanked: weeksBanked(plan, todayISO) });
   const cutoff = fromISO(todayISO).getTime();
+
+  // THE ATHLETE'S DECISIONS ARE RE-APPLIED BEFORE ANYTHING ELSE LOOKS AT THE PLAN.
+  //
+  // This is the whole shape of the fix. Generation is stateless and knows nothing
+  // about what the athlete has decided; the ledger is replayed over its output, so
+  // a skipped swim is skipped again and a swapped Saturday is swapped again — every
+  // rebuild, forever, without anyone having to remember to carry them. What used to
+  // sit below this function as a hand-maintained list of "decisions we carry" was
+  // missing two of the five, and rebuilds fire automatically (three missed sessions,
+  // any settings save, an engine upgrade), so it dropped them on a schedule the
+  // athlete never asked for. Ryan: "the worst thing is for one of the users to do
+  // something and have it redo all the work it's done."
+  const ledger = ledgerOf(plan, todayISO);
+  const fresh = replayDecisions(generated, ledger, todayISO, REPLAY_OPS).plan;
 
   // keep old workouts strictly before today (with their statuses). Their ids
   // (w-<week>-<day>-<disc>) reuse the same week indices the fresh plan will emit,
@@ -729,70 +801,34 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
       if (isTodayDone) keptTodayDone.add(`${w.date}·${w.discipline}`);
     }
   }
-  // A SKIP ON A FUTURE DAY IS A DECISION, AND A REBUILD MUST NOT FORGET IT.
-  //
-  // Everything from today onward is regenerated, so a session the athlete had
-  // already skipped came back as "planned" — and with the automatic realign firing
-  // at 3 missed sessions, it came back over and over. Ryan: "It's not remembering
-  // that I'm skipping sessions."
-  //
-  // Matched on date+discipline rather than id: a rebuild re-anchors the week
-  // indices, so `w-3-1-bike` becomes `w-0-1-bike` and ids cannot be compared
-  // across it (that re-anchoring is exactly why kept history is namespaced). A
-  // multiset, not a Set — skipping one of Saturday's two rides must not silently
-  // skip both.
-  const futureSkips = new Map<string, number>();
-  for (const w of Object.values(plan.workouts)) {
-    if (w.status !== "skipped" || fromISO(w.date).getTime() < cutoff) continue;
-    const k = `${w.date}·${w.discipline}`;
-    futureSkips.set(k, (futureSkips.get(k) ?? 0) + 1);
-  }
-
-  // add fresh workouts from today onward, minus any today slot already completed
+  // Add the replayed future from today onward, minus any slot already completed
+  // today. Skips, swaps, resizes, re-paces and moves are already applied — the
+  // replay above did it — so there is nothing to reconstruct here any more.
   for (const w of Object.values(fresh.workouts)) {
     const t = fromISO(w.date).getTime();
     if (t < cutoff) continue;
     if (t === cutoff && keptTodayDone.has(`${w.date}·${w.discipline}`)) continue;
-    const k = `${w.date}·${w.discipline}`;
-    const owed = futureSkips.get(k) ?? 0;
-    if (owed > 0) {
-      futureSkips.set(k, owed - 1);
-      kept[w.id] = { ...w, status: "skipped" };
-      continue;
-    }
     kept[w.id] = w;
   }
-  // ---- carry the athlete's other decisions about the future ----------------
-  //
-  // Everything from today onward is regenerated, so ANY decision an athlete made
-  // about a future session was silently reverted. Measured (scripts audit,
-  // 2026-08-12): of six decisions, only a skip survived — moved, swapped, added,
-  // resized and eased were all lost, and rebuilds fire automatically at three
-  // missed sessions.
-  //
-  // Two are fixed here because they have one honest answer:
+
+  // ---- the two things that are NOT athlete decisions ------------------------
   //
   //  • A SESSION YOU ADDED (#209) is not the engine's to delete. It never appears
-  //    in `fresh` (the engine didn't write it), so it is carried verbatim.
+  //    in a generated plan, so it is carried verbatim rather than replayed.
   //  • AN EASED SESSION STAYS EASED. `easeUpcoming` softens the next days after a
-  //    rough check-in or a session that cost far more than it should have. Letting
-  //    a realign re-harden them is the one direction that is a safety regression,
-  //    not just an annoyance — doc 02 §4 #11.
-  //  • A SESSION YOU RESIZED keeps the length you chose, for the same reason a
-  //    skip keeps its status: you said so.
-  //
-  // Moved and swapped are deliberately NOT carried — a rebuild re-lays the whole
-  // calendar, so "this session belongs on Thursday instead" may have no equivalent
-  // in the new week, and guessing one silently is worse than re-planning it.
+  //    rough check-in or a session that cost far more than it should have. That is
+  //    the PLAN protecting the athlete, not the athlete choosing, so it is not a
+  //    decision — but letting a realign re-harden it is the one direction that is a
+  //    safety regression rather than an annoyance (doc 02 §4 #11).
   for (const w of Object.values(plan.workouts)) {
     if (fromISO(w.date).getTime() < cutoff) continue;
     if (w.addedByAthlete && !kept[w.id]) {
       kept[w.id] = w; // yours, not the engine's — see above
       continue;
     }
-    if (!w.easedCause && !isAthleteResized(w)) continue;
-    // Same matching rule as the skip carry: date+discipline, because a rebuild
-    // re-anchors week indices and ids cannot be compared across it.
+    if (!w.easedCause) continue;
+    // date+discipline, because a rebuild re-anchors week indices and ids cannot be
+    // compared across it.
     const target = Object.values(kept).find(
       (f) => !f.id.startsWith("kept-") && f.date === w.date && f.discipline === w.discipline && f.status === "planned",
     );
@@ -803,7 +839,7 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
       ...(w.estDistanceM != null ? { estDistanceM: w.estDistanceM } : {}),
       segments: w.segments,
       ...(w.primaryZone != null ? { primaryZone: w.primaryZone } : {}),
-      ...(w.easedCause ? { easedCause: w.easedCause } : {}),
+      easedCause: w.easedCause,
       ...(w.prescribed ? { prescribed: w.prescribed } : {}),
     };
   }
@@ -816,6 +852,15 @@ export function rebuildFromToday(plan: Plan, todayISO: string): Plan {
     // (weeks/easedWeeks regenerate, so the why-line gates on both)
     readiness: plan.readiness,
     adaptations: plan.adaptations,
+    // The ledger outlives every plan it is replayed onto — that is the point of it.
+    // Persisting the BACKFILLED one when the plan had none also completes the
+    // migration in a single rebuild: from here on the array is authoritative and
+    // nothing has to be reconstructed from workout state again.
+    // Pruned to the decisions that can still apply. A decision about a day that has
+    // already passed has nothing left to replay — that session is preserved verbatim
+    // as `kept-` history and is never regenerated — so keeping it would grow the
+    // stored plan without bound across a 16-week block.
+    decisions: liveDecisions(ledger, todayISO),
     // Everything still "planned" before today is now absorbed history. Stamping the
     // date is what lets `missedSince` stop counting it — without this an automatic
     // realign would see the same misses forever and never converge.

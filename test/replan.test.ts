@@ -37,6 +37,7 @@ import {
   sportDrift,
   weekDrift,
 } from "../lib/replan";
+import { RESTORE_GROWTH_TOLERANCE_SEC } from "../lib/equilibrium";
 import type { Discipline, Plan, Profile, Week } from "../lib/types";
 
 let checks = 0;
@@ -199,8 +200,18 @@ section("relocated quality keeps the week's shape, across every archetype");
             `${wpw}/wk ${id}: the title names the sport it actually is ("${now.title}" on a ${now.discipline})`,
           );
           if (now.discipline !== was.discipline) {
-            // sport restoration — volume may shrink under the impact cap, never grow
-            ok(now.estDurationSec <= was.estDurationSec, `${wpw}/wk ${id}: a restored sport never adds time`);
+            // Sport restoration — volume may shrink under the impact cap, and may
+            // round UP by a few minutes because every session builder has its own
+            // granularity (the swim rounds its main set to whole 100 m blocks; the
+            // bike will not build below its 40-minute floor). This used to assert
+            // exact non-growth, which no builder can honour — so the restoration was
+            // simply refused in those cases and the week stayed a sport short, which
+            // is the bug Ryan reported. The contract is that it never grows
+            // MATERIALLY, and the bound is a named constant rather than a hope.
+            ok(
+              now.estDurationSec <= was.estDurationSec + RESTORE_GROWTH_TOLERANCE_SEC,
+              `${wpw}/wk ${id}: a restored sport never materially adds time (${Math.round(was.estDurationSec / 60)} → ${Math.round(now.estDurationSec / 60)} min)`,
+            );
           } else {
             // quality relocation — volume-neutral, strictly harder
             ok(now.estDurationSec === was.estDurationSec, `${wpw}/wk ${id}: relocation is volume-neutral`);

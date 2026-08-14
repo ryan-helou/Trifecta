@@ -207,7 +207,12 @@ section("a pace edit gets no privilege the other paths don't have");
   let p = plan;
   let applied = 0;
   let refused = 0;
-  const targets = find(plan, (w) => w.discipline === "run" && w.status === "planned").slice(0, 25);
+  // EVERY planned run, not a fixed slice. This used to take the first 25, which
+  // silently encoded "25 is more than the block can absorb" — true when a recovery
+  // week deleted sessions, and no longer true now that recovery weeks keep their
+  // frequency and cut volume instead. The invariant was never about 25: it is that
+  // the block-intensity ceiling stops you turning a whole plan into threshold work.
+  const targets = find(plan, (w) => w.discipline === "run" && w.status === "planned");
   for (const w of targets) {
     const before = JSON.stringify(p);
     const res = repaceSession(p, w.id, targetForZone(p.paces, "run-pace", 5));

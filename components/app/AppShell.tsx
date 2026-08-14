@@ -43,6 +43,7 @@ import { respondTo, type AthleteEvent } from "@/lib/respond";
 import { ENGINE_VERSION } from "@/lib/planEngine";
 import { adjustSession } from "@/lib/prescribe";
 import { addSession as buildAddedSession, suggestSession, type AddChoice } from "@/lib/addSession";
+import { settleUnplanned } from "@/lib/equilibrium";
 import { apiMarkNotificationsRead, apiNotifications } from "@/lib/api";
 import { repaceSession, reslotStrength, resizeByDistance, targetKindFor, zoneForTarget } from "@/lib/modify";
 import type { Plan } from "@/lib/types";
@@ -457,11 +458,40 @@ function AppShellInner() {
       const res = buildAddedSession(plan, profile, dateISO, choice);
       if (!res) return null;
       track("session_added", { discipline: res.workout.discipline, minutes: Math.round(res.workout.estDurationSec / 60) });
-      // Straight through applyPlan, NOT `respond`: the athlete has just added work, and
-      // `respondTo` would read the fresh load and consider trimming the next few sessions —
-      // arguing with a decision they made one second ago.
-      applyPlan(res.plan);
-      toast({ text: res.summary, tone: "success", duration: 8000 });
+      // SETTLED AGAINST THE WEEK, BUT NOT PUT THROUGH THE FULL RESPONDER.
+      //
+      // Ryan: "if I add a session and I add a bike today, one of my bikes in the
+      // future for that week should be removed." So the sport contract has to see
+      // this — a fourth ride in a three-ride week is exactly the imbalance the
+      // contract exists to settle, and going straight to applyPlan let the whole
+      // ADD path out of it.
+      //
+      // It deliberately does NOT go through `respondTo`, which would also run the
+      // load ledger and consider trimming the next few sessions on the strength of
+      // work the athlete has not done yet — arguing with a decision they made one
+      // second ago. `settleUnplanned` answers the narrower question, which is the
+      // one that was actually asked: you now have this ride, so what does the week
+      // still need?
+      const settled = settleUnplanned(res.plan, today, res.workout.id);
+      applyPlan(settled?.plan ?? res.plan);
+      // WHEN IT CANNOT BE SETTLED, SAY SO.
+      //
+      // Rebalancing never crosses a week boundary (Ryan's call: extra work today must
+      // not quietly cost you a session next week). So adding a ride on a Sunday, with
+      // every other ride that week already behind you, has nowhere to settle — and the
+      // week genuinely ends one ride heavy. Silence there is the dead-button feeling
+      // this whole rebuild is about: the athlete is owed the sentence, not left to
+      // work out from the calendar that nothing moved.
+      const heavier = !settled
+        ? ` Nothing left in this week to trade it against, so the week runs one ${res.workout.discipline} heavy — that's fine, next week is untouched.`
+        : "";
+      toast({
+        text: settled ? `${res.summary} ${settled.headline}` : `${res.summary}${heavier}`,
+        tone: "success",
+        actionLabel: settled ? "Undo" : undefined,
+        onAction: settled ? () => applyPlan(plan) : undefined,
+        duration: settled ? 10000 : 9000,
+      });
       return res.workout.id;
     },
     logWorkout: (input) => {

@@ -50,12 +50,11 @@
 // Pure — no clock, no I/O.
 // ---------------------------------------------------------------------------
 
-import { isUnplanned } from "./absorb";
+import { isUnplanned, restoreSportContract, sportBalance, type Sport } from "./equilibrium";
 import { railsRegressed } from "./rails";
 import { scaleWorkout } from "./prescribe";
 import { hardDayConflicts } from "./respond";
 import { DISCIPLINE_META, ZONES } from "./zones";
-import { injuryMods } from "./planEngine";
 import { swapDiscipline } from "./adapt";
 import type { Discipline, Plan, Week, Workout, Zone } from "./types";
 
@@ -77,14 +76,6 @@ export const EDIT_HARD_DEADBAND = 15;
  *  Matches the spirit of MAX_CUT in prescribe — a session that shrinks past this
  *  has stopped being the session it was. */
 const MAX_EASE = 0.75;
-
-/** How much of a session an automatic sport-restoration must preserve.
- *
- *  Sized to the thing it guards rather than picked: the failure was a 60-minute ride
- *  coming back as a 20-minute run (33%), and the mechanical cap moves in 5-minute steps,
- *  so anything at or above ~70% is a session that has been trimmed to fit rather than
- *  gutted. Below it, `restoreSport` declines and the ride stays a ride. */
-const MIN_RESTORE_KEEP = 0.7;
 
 export interface WeekDrift {
   designedSec: number;
@@ -206,26 +197,12 @@ export interface EditResponse {
  * conversion triggered by an unrelated edit days later.
  */
 export function sportDrift(plan: Plan, week: Week): Record<string, { designed: number; current: number }> {
+  const balance = sportBalance(plan, week);
   const out: Record<string, { designed: number; current: number }> = {};
-  const bump = (d: string, key: "designed" | "current") => {
-    out[d] = out[d] ?? { designed: 0, current: 0 };
-    out[d][key]++;
-  };
-  for (const id of week.workoutIds) {
-    const w = plan.workouts[id];
-    if (!w || w.discipline === "rest" || w.discipline === "strength") continue;
-    // Unplanned work sits outside the design on BOTH sides (#215). Counting it only
-    // as current would read an extra ride as a bike surplus and convert a planned
-    // ride into a run — the athlete rode more, which is not a reason to owe a run.
-    // Absorption is what answers an extra session; sport balance stays a question
-    // about the sessions the engine actually wrote.
-    if (isUnplanned(w)) continue;
-    // A genuine skip leaves the comparison entirely, both sides — see the note above.
-    // (An ABSORBED session also carries `skipped`, and that one is supplied, not lost:
-    // the athlete did that ride, it just wasn't the one on the calendar.)
-    if (w.status === "skipped" && !w.absorbedBy) continue;
-    bump(w.swappedFrom?.discipline ?? w.discipline, "designed");
-    bump(w.discipline, "current");
+  for (const sport of Object.keys(balance) as Sport[]) {
+    const b = balance[sport];
+    if (b.contracted === 0 && b.current === 0) continue;
+    out[sport] = { designed: b.contracted, current: b.current };
   }
   return out;
 }
@@ -256,80 +233,7 @@ function restoreSport(
   todayISO: string,
   exceptId: string,
 ): { plan: Plan; id: string; from: Discipline; to: Discipline; wasSec: number; nowSec: number } | null {
-  const drift = sportDrift(plan, week);
-  const mods = injuryMods(plan.profile);
-
-  const short = Object.entries(drift)
-    .filter(([d, c]) => c.current < c.designed && !(mods as Record<string, { avoid: boolean }>)[d]?.avoid)
-    .sort((a, b) => b[1].designed - b[1].current - (a[1].designed - a[1].current))
-    .map(([d]) => d as Discipline);
-  if (!short.length) return null;
-
-  // A SWAP leaves a surplus behind — you rode instead of running, so bike is over
-  // its design and converting one back is free. A SKIP leaves no surplus: the
-  // session is simply gone. Ryan asked for both to be counteracted, so when there
-  // is no surplus we take the session from whichever sport still has the most,
-  // provided it keeps at least one.
-  //
-  // That trade is deliberate and it is not free: skipping a run and converting a
-  // ride means you end the week a ride short instead of a run short. For a
-  // triathlon it is the right way round — running is the discipline that punishes
-  // lost specificity hardest and can't be bought back late.
-  //
-  // It cannot ping-pong, because a restored sport lands EXACTLY at its design and
-  // never above it, so it is never itself a surplus on the next pass.
-  const strictOver = Object.entries(drift)
-    .filter(([, c]) => c.current > c.designed)
-    .map(([d]) => d);
-  const donors = strictOver.length
-    ? new Set(strictOver)
-    : new Set(
-        Object.entries(drift)
-          .filter(([d, c]) => c.current >= 2 && !short.includes(d as Discipline))
-          .sort((a, b) => b[1].current - a[1].current)
-          .slice(0, 1)
-          .map(([d]) => d),
-      );
-  const over = donors;
-  if (!over.size) return null;
-
-  for (const want of short) {
-    // Prefer converting an EASY session of the surplus sport. Turning a threshold
-    // ride into an easy run would fix the sport count by destroying the week's
-    // quality — trading one hole for another.
-    const pool = candidates(plan, week, todayISO, exceptId)
-      .filter((w) => over.has(w.discipline) && w.discipline !== "brick")
-      .sort((a, b) => a.primaryZone - b.primaryZone);
-    for (const w of pool) {
-      const next = swapDiscipline(plan, w.id, want);
-      const made = next.workouts[w.id];
-      if (!made || made.discipline !== want) continue;
-      // Restoring a sport must never ADD time. swapDiscipline sizes the
-      // replacement from the athlete's pace and rounds to whole blocks, so it can
-      // land a few percent long; this is a relocation, not an excuse to grow the
-      // week, so anything longer than the session it replaces is refused.
-      if (made.estDurationSec > w.estDurationSec) continue;
-      // ...and it must not DELETE time either (#219 — "Why did my 1h bike turn into a
-      // 20 min run").
-      //
-      // `swapDiscipline` never refuses: it fits the replacement to the week's remaining
-      // mechanical-impact headroom and, when there is none left, falls back to a
-      // 20-minute floor. That is the right answer for a swap the ATHLETE asked for —
-      // "sure, but keep it to twenty minutes" is what a coach says, and the capped
-      // reason is shown to them at the point they tapped it. It is the wrong answer for
-      // a conversion nobody requested. Measured: with the week's run headroom already
-      // spent, a 60-minute ride came back as a 20-minute run, and the sport count was
-      // "fixed" by quietly deleting forty minutes of training.
-      //
-      // So an automatic restoration has to be a RELOCATION or nothing. If the receiving
-      // sport cannot carry most of the session, the honest move is to leave the ride
-      // alone — the week is a run short either way, and `respondToEdit` says so.
-      if (made.estDurationSec < w.estDurationSec * MIN_RESTORE_KEEP) continue;
-      if (railsRegressed(plan, next).length) continue;
-      return { plan: next, id: w.id, from: w.discipline, to: want, wasSec: w.estDurationSec, nowSec: made.estDurationSec };
-    }
-  }
-  return null;
+  return restoreSportContract(plan, week, todayISO, exceptId, swapDiscipline);
 }
 
 /** Sessions in this week the responder may touch: still planned, not today's
@@ -412,14 +316,30 @@ export function respondToEdit(
         : ".");
   }
 
-  const drift = weekDrift(working, week);
+  // MEASURED ON THE ATHLETE'S EDIT, NOT ON OUR OWN ANSWER TO IT.
+  //
+  // `restoreSport` has just run, and what it does is deliberately volume-RESTORING:
+  // it converts a session back and may lengthen it to give the sport its time again.
+  // Reading drift off the restored plan counts that correction as the athlete making
+  // the week harder, and branch 1 then eases every session in the week to "absorb" it.
+  // Measured: swapping a 75 min long ride to a swim restored a 35 min swim to a 45 min
+  // ride, and the responder immediately announced "that adds 16 min to the week, so the
+  // 6 sessions around it come down" — dropping the week's riding to 129 min, BELOW where
+  // it stood before the fix. The responder was undoing its own work and charging the
+  // athlete for it.
+  //
+  // Drift answers "what did the athlete's edit do to this week", so it is measured on
+  // the plan as their edit left it. The restoration is the response, not another input.
+  const drift = weekDrift(plan, week);
 
   // 1) The athlete made the week HARDER than designed — longer, or more
   //    intense. Ease the sessions around it so the week lands where it was
   //    meant to. This is the safety direction, so it acts rather than reports.
   if (drift.volPct > EDIT_VOL_DEADBAND || drift.hardPct > EDIT_HARD_DEADBAND) {
     const excessSec = Math.max(0, drift.currentSec - drift.designedSec);
-    const pool = candidates(working, week, todayISO, exceptId);
+    // The restored session is off-limits too: easing it is the same self-undoing as
+    // measuring it, one step later.
+    const pool = candidates(working, week, todayISO, exceptId).filter((w) => !sportIds.includes(w.id));
     const poolSec = pool.reduce((a, w) => a + w.estDurationSec, 0);
     if (!pool.length || poolSec <= 0) return null;
     // Shrink proportionally, so no single session carries the whole correction.

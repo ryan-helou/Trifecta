@@ -426,6 +426,42 @@ hold for all of them, shrink counterexamples." `[ZetCode-PBT, arXiv-PBT]`
 16. **Hours honored.** Σ session durations in a week ≤ `weeklyHoursCap` (when set). **Currently
     violable** — see §3.4.
 
+**The athlete's own decisions (added 2026-08-13 — `test/decisions.test.ts`):**
+20. **The per-sport frequency contract holds in EVERY week** except the taper and the week
+    carrying the day before race day. `perSport: {3,3,3}` means three of each, every week.
+    Recovery weeks deload by cutting **volume** (`targetHours × 0.62`), never by deleting
+    sessions — the old `× 0.7` on the counts handed a 3/3/3 athlete a 2/2/2 deload *and*
+    double-applied the deload. A **brick occupies a bike slot** (`countsAs` in
+    [`lib/equilibrium.ts`](../../lib/equilibrium.ts)), so a build week reading
+    `bike 2, run 3, brick 1` satisfies a 3/3/3 contract.
+21. **Athlete decisions survive every regeneration, indefinitely.** A skip, swap, resize,
+    re-pace or move is recorded in an append-only, **date-anchored** ledger on the plan
+    (`Plan.decisions`, [`lib/decisions.ts`](../../lib/decisions.ts)) and REPLAYED over each
+    fresh generation:
+
+    ```
+    generate(profile) → replay(decisions) → rebalance → validate
+    ```
+
+    This replaced a hand-maintained carry-over inside `rebuildFromToday` that matched on
+    `date + discipline` and therefore *structurally could not* carry a swap (a swap changes
+    the discipline) — the code said so itself: *"Moved and swapped are deliberately NOT
+    carried."* Since rebuilds fire **automatically** (3 missed sessions, any settings save,
+    an engine upgrade), decisions were being erased on a schedule the athlete never asked
+    for. Reported as: *"the worst thing is for one of the users to do something and have it
+    redo all the work it's done."*
+    - Anchors are `date · designed-discipline · ordinal`, never ids — a rebuild re-anchors
+      week indices (`w-3-1-bike` → `w-0-1-bike`), and the *designed* discipline (recovered
+      through `swappedFrom`) is stable exactly where the current one is not.
+    - Replay is **chronological**, not by kind: a skip made after a swap must see the
+      swapped session.
+    - Undo (`unswapDiscipline`, un-skip) must reach the ledger, or the next rebuild replays
+      the decision the athlete just reversed.
+    - `backfillDecisions` reconstructs a ledger from workout state for plans that predate
+      it, so the migration costs no one their existing decisions.
+    - **Regression-test by rebuilding REPEATEDLY.** One rebuild was never the bug; the fifth
+      was.
+
 **Determinism (systems invariants):**
 17. **`generatePlan(profile)` is a pure function of `(profile, today)`** — identical inputs ⇒
     byte-identical `weeks`/`workouts` (ignoring the `id`/`generatedAtISO` metadata fields). No RNG is
@@ -622,11 +658,40 @@ deliberately does *both*, at different scopes ([`lib/adapt.ts`](../../lib/adapt.
   best-practice critique of Runna (don't cram makeups; don't let one bad day cascade).
 - **Regenerate (global, structural).** `rebuildFromToday` — when the athlete has fallen behind, throw
   away the future and re-periodize from today so the plan still lands on race day, **while preserving
-  the past.** The hard part is history preservation, and the code handles the two traps its comments
+  the past and replaying the athlete's decisions** (invariant 21 above; the replay runs before
+  anything else reads the plan, so a skipped session cannot reappear and a swapped day cannot
+  revert). The hard part is history preservation, and the code handles the two traps its comments
   call out: (a) fresh future sessions reuse the same `w-<week>-<day>-<disc>` ids as kept past ones, so
   past sessions are namespaced `kept-` to avoid silent overwrite of banked hours/streaks; (b) a
   session *already completed today* is retained (not reset to "planned") and de-duplicated against the
   fresh plan. Readiness history carries across the rebuild; weeks/easedWeeks regenerate.
+
+**Settling work against the week — the two contracts.** Adaptivity also has to answer "you did
+something the plan didn't ask for" and "you changed which sport a session is", and those are
+*different questions* that were previously answered by two systems that overwrote each other
+(`absorb.ts` and `replan.ts`; bug reports #215, #219 and #220 were all versions of that collision).
+They are now one ordered pass in [`lib/equilibrium.ts`](../../lib/equilibrium.ts):
+
+- **CREDIT** (settles first, because it decides which sessions are still standing). Unplanned or
+  athlete-added work is priced as `duration × intensity` in the load model's own sRPE units and
+  compared with the target session **as first prescribed**:
+  `e = credit(did) / credit(prescribed)`. Then `e ≥ 0.85` covers the session outright,
+  `0.25–0.85` lightens it to `(1 − e)` of its design, `< 0.25` changes nothing. A 2 km jog scores
+  ~0.17 against a 12 km long run and therefore does *not* discharge it — head-counting sessions
+  ("he did three runs, done") is precisely the failure this replaces. Both sides are priced in
+  **zones**, not raw RPE: landing inside the band you were prescribed *is* hitting the
+  prescription, and pricing the delivered side at literal RPE punished accurate reporting.
+  Settlement is idempotent — the `absorbedBy` stamp doubles as the receipt, so committing an added
+  session and later completing it settles once, not twice.
+- **COUNT** (runs second, on what remains). A swap leaves the sport mix wrong, so one session of
+  the surplus sport is converted back, **role-matched** (`long ↔ long`, `quality ↔ quality`) rather
+  than cheapest-first — sorting by "easiest available" is how a 75-minute long ride came back as a
+  20-minute jog. A restoration must be a *relocation*: it may not grow the week beyond
+  `RESTORE_GROWTH_TOLERANCE_SEC` (10 min, which covers builder granularity — the swim rounds to
+  whole 100 m blocks, the bike will not build under 40 min) and may not shrink the session below
+  70% of what it replaced. A **skip does not** count as a lost session: it is a decision about one
+  session, answered by leaving the week lighter and saying so, not by silently rewriting a session
+  the athlete never touched.
 
 **Folding in completed/missed sessions and readiness without destabilizing.** `assessAdaptation` looks
 at a *trailing two-week* window and decides one of three things: **ease** (missed ≥40%, or ≥3 sessions
@@ -731,4 +796,4 @@ than trading it away for a model.
 - Humango: [HumanGO site](https://humango.ai/); [Triathlete — hands-on review of 8 AI triathlon apps](https://www.triathlete.com/gear/tech-wearables/ai-triathlon-training-apps/).
 - Training-science invariants: [PMC — Training intensity distribution in elite endurance athletes (80/20)](https://pmc.ncbi.nlm.nih.gov/articles/PMC4621419/); [Outside — Acute:Chronic Workload Ratio & the 10% rule](https://www.outsideonline.com/health/training-performance/injury-prevention-acute-chronic-workload-ratio-research/).
 - LLM pricing: [Anthropic/Claude pricing docs](https://platform.claude.com/docs/en/about-claude/pricing); [CloudZero — Claude API pricing](https://www.cloudzero.com/blog/claude-api-pricing/); [Google Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing); [DevTK — Gemini 2.5 Flash-Lite pricing](https://devtk.ai/en/models/gemini-2-5-flash-lite/).
-- Internal: [`lib/planEngine.ts`](../../lib/planEngine.ts), [`lib/workouts.ts`](../../lib/workouts.ts), [`lib/paces.ts`](../../lib/paces.ts), [`lib/zones.ts`](../../lib/zones.ts), [`lib/adapt.ts`](../../lib/adapt.ts), [`lib/calibrate.ts`](../../lib/calibrate.ts), [`lib/predict.ts`](../../lib/predict.ts), [`lib/ai.ts`](../../lib/ai.ts), [`lib/types.ts`](../../lib/types.ts), `app/api/{coach,plan-summary,intake}/route.ts`, [`docs/research/runna-competitive-analysis.md`](../research/runna-competitive-analysis.md).
+- Internal: [`lib/planEngine.ts`](../../lib/planEngine.ts), [`lib/decisions.ts`](../../lib/decisions.ts), [`lib/equilibrium.ts`](../../lib/equilibrium.ts), [`lib/workouts.ts`](../../lib/workouts.ts), [`lib/paces.ts`](../../lib/paces.ts), [`lib/zones.ts`](../../lib/zones.ts), [`lib/adapt.ts`](../../lib/adapt.ts), [`lib/calibrate.ts`](../../lib/calibrate.ts), [`lib/predict.ts`](../../lib/predict.ts), [`lib/ai.ts`](../../lib/ai.ts), [`lib/types.ts`](../../lib/types.ts), `app/api/{coach,plan-summary,intake}/route.ts`, [`docs/research/runna-competitive-analysis.md`](../research/runna-competitive-analysis.md).
