@@ -168,6 +168,10 @@ export function trackedDurationSec(s: LiveSession, nowISO: string): number | nul
 export function completeSet(s: LiveSession, ei: number, si: number, done: boolean, nowISO: string): LiveSession {
   const next = setDone(s, ei, si, done);
   if (!done) return clearRest(next);
+  // The tick was refused (a set with no reps — see `setDone`), so there is no
+  // completed set for a rest to follow. Starting one anyway would put a clock on
+  // screen for work the app has just declined to record.
+  if (next === s) return s;
   const set = next.exercises[ei]?.sets[si];
   return startRest(next, nowISO, set ? restSecondsFor(set) : REST_WORKING_SEC);
 }
@@ -202,7 +206,23 @@ const mapExercise = (s: LiveSession, ei: number, f: (e: LiveExercise) => LiveExe
   exercises: s.exercises.map((e, i) => (i === ei ? f(e) : e)),
 });
 
+/**
+ * A SET WITH NO REPS CANNOT BE TICKED OFF.
+ *
+ * `finishSession` writes only sets that are both ticked and numbered, so a ticked
+ * blank is a set the athlete watched themselves complete and that the app then threw
+ * away. That used to be an edge case — routines always carried numbers. Now that a
+ * routine can be built empty and filled in on the first session, it is the DEFAULT
+ * first session: open Push day to a skeleton, tick five blank sets off as you go,
+ * finish, and record nothing. The baseline the whole feature exists to capture would
+ * be lost at exactly the moment it was being made.
+ *
+ * Refused here rather than only in the UI so no other caller can reintroduce it, and
+ * so `sessionProgress` is honest by construction: the bar can only count sets that
+ * will survive the save. Un-ticking is always allowed — that is how you correct one.
+ */
 export function setDone(s: LiveSession, ei: number, si: number, done: boolean): LiveSession {
+  if (done && !((s.exercises[ei]?.sets[si]?.reps ?? 0) > 0)) return s;
   return mapExercise(s, ei, (e) => ({ ...e, sets: e.sets.map((x, j) => (j === si ? { ...x, done } : x)) }));
 }
 

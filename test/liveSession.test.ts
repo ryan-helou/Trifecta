@@ -419,6 +419,60 @@ section("progression is earned, and only ever suggested");
   ok(!isLowerBody("Ryan's Special Thing"), "a lift the catalog never heard of gets the conservative step");
 }
 
+section("a first session opens as a skeleton and gets filled in");
+{
+  // Ryan: "when I begin workout, if there are no reps or weights inputted, it'll show
+  // me the skeleton of that workout — so I just have to fill it in on my first
+  // workout." A routine built before it was ever trained carries no numbers, so the
+  // live session has to (a) show every set anyway, and (b) refuse to tick one off
+  // until it has a number — `finishSession` writes only sets that are ticked AND
+  // numbered, so a ticked blank is a set the athlete watched themselves complete and
+  // the app silently threw away. On a first session that is EVERY set.
+  const skeleton: StrengthEntry[] = [
+    { name: "Back Squat", sets: [{}, {}, {}] },
+    { name: "Bench Press", sets: [{}, {}] },
+  ];
+  const s0 = startSession({ workoutId: "w1", startedISO: "2026-08-14T09:00:00.000Z", slot: "full", name: "Full body", from: skeleton });
+
+  // (a) the skeleton survives the trip
+  ok(s0.exercises.length === 2, "both exercises are on screen");
+  ok(s0.exercises[0].sets.length === 3, "three empty sets are still three sets to do");
+  ok(s0.exercises.every((e) => e.sets.every((x) => x.reps === 0 && !x.done)), "every set arrives empty and unticked");
+  ok(sessionProgress(s0).total === 5, "the progress bar counts all five as work to do");
+  ok(sessionProgress(s0).done === 0, "and none of it as done");
+
+  // (b) a blank set cannot be ticked
+  const refused = completeSet(s0, 0, 0, true, "2026-08-14T09:05:00.000Z");
+  ok(refused === s0, "ticking a set with no reps is refused outright");
+  ok(sessionProgress(refused).done === 0, "so the progress bar can't claim work that won't be saved");
+  ok(restRemainingSec(refused, "2026-08-14T09:05:01.000Z") === null, "and no rest clock starts for a set that didn't happen");
+  ok(setDone(s0, 0, 0, true) === s0, "the clockless toggle refuses it too — the rule lives in one place");
+
+  // (c) fill it in, and it ticks
+  const typed = patchSet(s0, 0, 0, { reps: 8, weightKg: 60 });
+  const ticked = completeSet(typed, 0, 0, true, "2026-08-14T09:05:00.000Z");
+  ok(sessionProgress(ticked).done === 1, "once the reps are in, the set ticks off");
+  ok(restRemainingSec(ticked, "2026-08-14T09:05:01.000Z") !== null, "and the rest clock starts, as it does for any completed set");
+
+  // (d) what reaches the log is exactly what was filled in and ticked
+  const logged = finishSession(ticked);
+  ok(logged.length === 1 && logged[0].name === "Back Squat", "only the exercise with a completed set is written");
+  ok(logged[0].sets.length === 1 && logged[0].sets[0].reps === 8 && logged[0].sets[0].weightKg === 60, "at the numbers the athlete entered");
+
+  // (e) nothing ticked can ever be dropped — the invariant behind the refusal
+  let all = s0;
+  all.exercises.forEach((e, ei) => e.sets.forEach((_, si) => { all = patchSet(all, ei, si, { reps: 5 }); }));
+  all.exercises.forEach((e, ei) => e.sets.forEach((_, si) => { all = completeSet(all, ei, si, true, "2026-08-14T09:30:00.000Z"); }));
+  const p = sessionProgress(all);
+  const written = finishSession(all).reduce((n, e) => n + e.sets.length, 0);
+  ok(p.done === written, `every ticked set survives the save (${p.done} ticked, ${written} written)`);
+  ok(p.complete, "and the session reads as complete");
+
+  // Un-ticking stays free — that is how a mistake gets corrected.
+  const unticked = completeSet(ticked, 0, 0, false, "2026-08-14T09:06:00.000Z");
+  ok(sessionProgress(unticked).done === 0, "un-ticking a set is always allowed");
+}
+
 console.log(`\n${checks - failures}/${checks} live-session invariants passed`);
 if (failures > 0) {
   console.error(`\n❌ ${failures} live-session invariant(s) FAILED`);

@@ -165,7 +165,20 @@ export function LiveStrengthSession({
   };
 
   const toggle = (ei: number, si: number) => {
-    const was = session.exercises[ei].sets[si].done;
+    const set = session.exercises[ei].sets[si];
+    // A set with no reps can't be ticked — `setDone` refuses it, because only ticked
+    // AND numbered sets survive `finishSession`. Rather than let the tap do nothing,
+    // open the set and put the cursor in the reps box (the field autoFocuses).
+    //
+    // On a first session every set is blank by design — the routine was built before
+    // the athlete knew their numbers — so this is not an error path, it IS the path:
+    // tap the set you just did, type what you did, tick it.
+    if (!set.done && !(set.reps > 0)) {
+      haptic("light");
+      setEditing({ ei, si });
+      return;
+    }
+    const was = set.done;
     haptic(was ? "light" : "success");
     // Ticking a set starts the rest that follows it — no second tap. Standing at
     // the rack, "I finished that" and "I'm now resting" are the same event.
@@ -441,7 +454,7 @@ export function LiveStrengthSession({
                       <button
                         onClick={() => toggle(ei, si)}
                         aria-pressed={s.done}
-                        aria-label={`Set ${si + 1}, ${s.reps} reps${s.weightKg ? ` at ${kgToDisplay(s.weightKg, unit)} ${wLabel}` : ""}${s.done ? ", done" : ""}`}
+                        aria-label={`Set ${si + 1}, ${s.reps > 0 ? `${s.reps} reps` : "not filled in yet"}${s.weightKg ? ` at ${kgToDisplay(s.weightKg, unit)} ${wLabel}` : ""}${s.done ? ", done" : ""}`}
                         className={`flex flex-1 items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.99] ${
                           s.done
                             ? "border-success/40 bg-success/10"
