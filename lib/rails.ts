@@ -121,6 +121,17 @@ export function weekHardShare(plan: Plan, week: Week): number | null {
  *  except the taper and race week, which are deliberately intensity-dense while
  *  volume collapses (doc 01 §4 #6) and would misrepresent the block. */
 export function blockHardShare(plan: Plan): number | null {
+  const { hard, total } = blockMinutes(plan);
+  return total > 0 ? hard / total : null;
+}
+
+/** The block's Z4+ time in ABSOLUTE terms, and the total it is a share of.
+ *
+ *  `blockHardShare` is a ratio, and a ratio moves for two completely different
+ *  reasons: hard work was removed, or easy work was added. Only the first is a
+ *  loss. This exposes the numerator so the regression check can tell them apart —
+ *  see `railsRegressed`. */
+export function blockMinutes(plan: Plan): { hard: number; total: number } {
   let hard = 0;
   let total = 0;
   for (const week of plan.weeks) {
@@ -129,7 +140,7 @@ export function blockHardShare(plan: Plan): number | null {
     hard += m.hard;
     total += m.total;
   }
-  return total > 0 ? hard / total : null;
+  return { hard, total };
 }
 
 /** Total prescribed endurance+strength hours in a week — the volume the ramp is
@@ -257,6 +268,33 @@ export function railsRegressed(before: Plan, after: Plan): RailViolation[] {
   // adaptation to ease FORWARD rather than for the gate to withhold relief.)
   if (!increasesAnyWeek(before, after)) return [];
 
+  // ADDING EASY VOLUME IS NOT LOSING INTENSITY.
+  //
+  // `block-too-easy` is a share, and a share falls for two unrelated reasons: hard
+  // work was taken out, or easy work was put in. Only the first is a loss — the
+  // second leaves every hard second exactly where it was. Comparing the ratio alone
+  // could not tell them apart, so an athlete asking for a longer easy run was told
+  // no, and the refusal surfaced as "that session can't be resized to that distance".
+  //
+  // Ryan hit this on every session at once: his block sits at ~8% Z4+, already under
+  // the 10% floor, so ANY added aerobic minute made the ratio fractionally worse and
+  // was vetoed. He could shorten a session but never lengthen one — the Modify row
+  // had become one-way, with no way to discover why.
+  //
+  // Two docs say this rail should not be doing that. Doc 01 §4 #4: the intensity
+  // measurement is "the measurement as a regression guard, not an enforcement
+  // mechanism" — it exists to catch the ENGINE drifting, not to overrule the athlete.
+  // And doc 03 §4 C, quoted twenty lines above as the reason easing is never gated,
+  // is "protect fast and add slow": adding easy aerobic volume IS adding slow, which
+  // makes this the one rail that was blocking the very behaviour its own principle
+  // endorses.
+  //
+  // So the floor is judged on ABSOLUTE Z4+ time. Take hard work away and it still
+  // fires; add easy volume around untouched hard work and it does not.
+  const hardBefore = blockMinutes(before).hard;
+  const hardAfter = blockMinutes(after).hard;
+  const lostHardTime = hardAfter < hardBefore - 1e-9;
+
   const a = checkRails(before);
   const b = checkRails(after);
   // `block-too-easy` is a FLOOR, so "worse" means SMALLER — every other rail is a ceiling.
@@ -269,6 +307,8 @@ export function railsRegressed(before: Plan, after: Plan): RailViolation[] {
     worst.set(key, had == null ? v.value : isFloor(v.kind) ? Math.min(had, v.value) : Math.max(had, v.value));
   }
   return b.violations.filter((v) => {
+    // The floor only regressed if hard work actually left the block.
+    if (isFloor(v.kind) && !lostHardTime) return false;
     const key = `${v.kind}:${v.weekIndex ?? "-"}`;
     const had = worst.get(key);
     if (had == null) return true;

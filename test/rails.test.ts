@@ -25,6 +25,7 @@ import {
   railsRegressed,
   weekHardShare,
   weekHours,
+  blockMinutes,
 } from "../lib/rails";
 import type { Plan, Profile, Zone } from "../lib/types";
 
@@ -356,6 +357,86 @@ section("Same-sport sessions in a week are visibly different lengths (#202)");
     movableIdentical <= identical,
     `collisions between two genuinely movable sessions are the minority (${movableIdentical}/${identical})`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// A longer EASY session is not a loss of intensity (Ryan, 2026-08-14).
+//
+// `block-too-easy` is a SHARE, and a share falls either because hard work left or
+// because easy work arrived. Only the first is a loss. Judging the ratio alone made
+// the rail veto every attempt to lengthen an easy session — and for an athlete whose
+// block already sits under the floor, that meant EVERY session, permanently: he could
+// shorten anything and lengthen nothing, with the refusal surfacing as "that session
+// can't be resized to that distance".
+//
+// Doc 01 §4 #4 calls this measurement "a regression guard, not an enforcement
+// mechanism"; doc 03 §4 C is "protect fast and add slow". Adding easy aerobic volume
+// is adding slow.
+{
+  section("adding easy volume vs the intensity floor");
+  const base = generatePlan(profile({ raceType: "half", level: "beginner", raceDateISO: weeksFrom(20) }), ANCHOR);
+
+  // Ryan's actual condition, and the one the ratio-only check could not survive: a
+  // block ALREADY under the 10% floor. Flatten the hard work until it is, so the
+  // rail is live before we touch anything — otherwise this test passes vacuously.
+  const p: Plan = { ...base, workouts: { ...base.workouts } };
+  // Demote hard sessions one at a time until the block dips under the floor —
+  // deterministic, and it stops just below rather than at zero, which is the shape
+  // of a real under-trained block rather than an empty one.
+  for (const w of Object.values(p.workouts)) {
+    const share = blockHardShare(p);
+    if (share != null && share < 0.08) break;
+    if (w.primaryZone >= 4) p.workouts[w.id] = { ...w, primaryZone: 3 as Zone };
+  }
+  const share = blockHardShare(p);
+  ok(share != null && share < 0.1, `the fixture is under the intensity floor, like Ryan's plan (${((share ?? 0) * 100).toFixed(1)}%)`);
+  ok(checkRails(p).violations.some((v) => v.kind === "block-too-easy"), "so block-too-easy is ALREADY firing before any edit");
+
+  // Find a planned easy (Z1-2) endurance session in a load week, and make it longer.
+  const easy = Object.values(p.workouts).find(
+    (w) => w.status === "planned" && w.primaryZone <= 2 && w.discipline !== "rest" && w.discipline !== "strength" && w.estDurationSec > 0,
+  );
+  ok(!!easy, "there is an easy session to lengthen");
+  if (easy) {
+    const longer: Plan = {
+      ...p,
+      workouts: { ...p.workouts, [easy.id]: { ...easy, estDurationSec: Math.round(easy.estDurationSec * 1.5) } },
+    };
+    ok(increasesAnyWeek(p, longer), "lengthening it does increase a week (so the ease shortcut is not what saves it)");
+    const hardBefore = blockMinutes(p).hard;
+    const hardAfter = blockMinutes(longer).hard;
+    ok(hardAfter >= hardBefore - 1e-9, "and it removes no hard work at all");
+    ok(blockHardShare(longer)! < blockHardShare(p)!, "the SHARE does drop — which is exactly what used to veto it");
+    const regressions = railsRegressed(p, longer);
+    ok(
+      !regressions.some((v) => v.kind === "block-too-easy"),
+      `THE BUG: a longer easy session is not a block-too-easy regression (got ${JSON.stringify(regressions.map((v) => v.kind))})`,
+    );
+  }
+
+  // The rail must still do its real job: taking hard work OUT is a regression.
+  const hard = Object.values(p.workouts).find((w) => w.status === "planned" && w.primaryZone >= 4 && w.estDurationSec > 0);
+  ok(!!hard, "there is a hard session to gut");
+  if (hard) {
+    // Gut the hard session AND add easy time, so the change still "increases a week"
+    // and cannot pass through the ease shortcut.
+    const easyOther = Object.values(p.workouts).find(
+      (w) => w.id !== hard.id && w.status === "planned" && w.primaryZone <= 2 && w.discipline !== "rest" && w.estDurationSec > 0,
+    )!;
+    const gutted: Plan = {
+      ...p,
+      workouts: {
+        ...p.workouts,
+        [hard.id]: { ...hard, primaryZone: 1 as Zone, segments: hard.segments.map((sg) => ({ ...sg, zone: 1 as Zone })) },
+        [easyOther.id]: { ...easyOther, estDurationSec: Math.round(easyOther.estDurationSec * 2) },
+      },
+    };
+    ok(blockMinutes(gutted).hard < blockMinutes(p).hard, "gutting a hard session really does remove Z4+ time");
+    ok(
+      checkRails(gutted).violations.some((v) => v.kind === "block-too-easy") === (blockHardShare(gutted)! < 0.1),
+      "the floor still reports honestly on the gutted plan",
+    );
+  }
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

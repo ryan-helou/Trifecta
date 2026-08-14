@@ -27,6 +27,7 @@ import {
   canSetDistance,
   distanceChoices,
   distanceOptions,
+  LENGTH_TOLERANCE_SEC,
   isAtDistance,
   isAtLength,
   lengthOptions,
@@ -582,6 +583,57 @@ section("the current chip is a no-op, not a refusal");
   ok(!isAtDistance(w, (w.estDistanceM ?? 0) * 2), "…and does not swallow a real change");
   ok(isAtLength(w, w.estDurationSec), "isAtLength recognises the session's own length");
   ok(!isAtLength(w, w.estDurationSec + 20 * 60), "…and does not swallow a real one");
+
+  // THE BOUNDARY IS SHARED, AND THAT IS THE POINT.
+  //
+  // `options()` calls a rung current when the gap is <= tolerance; the guard has to
+  // agree EXACTLY, or a session sitting on the boundary renders its chip as selected
+  // and still lets the tap through to be refused. That is precisely what happened at
+  // 150s: nine elite `Aerobic Endurance Swim` sessions, each exactly 2:30 off its rung.
+  ok(
+    isAtLength({ ...w, estDurationSec: 2850 }, 2850 + LENGTH_TOLERANCE_SEC),
+    `a session exactly ${LENGTH_TOLERANCE_SEC}s from a rung counts as standing on it`,
+  );
+  ok(
+    !isAtLength({ ...w, estDurationSec: 2850 }, 2850 + LENGTH_TOLERANCE_SEC + 1),
+    "…and one second past it does not",
+  );
+}
+
+// --- no chip tap anywhere can produce a refusal -------------------------------
+// The action layer, replayed exactly as the buttons run it, over the profile matrix.
+// This is the assertion that actually answers "did you fix it": not "the function
+// behaves", but "no tap a person can make raises that message".
+section("no tap on any chip, on any session, can raise a refusal");
+{
+  let taps = 0;
+  let errors = 0;
+  let first = "";
+  for (const level of ["beginner", "intermediate", "advanced", "elite"] as const) {
+    for (const raceType of ["olympic", "half", "full"] as const) {
+      const p = generatePlan(profile({ level, raceType }), ANCHOR);
+      for (const w of Object.values(p.workouts)) {
+        if (w.discipline === "rest" || w.status !== "planned" || w.id === "w-race-day") continue;
+        // exactly AppShell's `adjust`
+        for (const c of lengthOptions(p, w.id)) {
+          taps++;
+          if (isAtLength(w, c.value)) continue; // silent no-op
+          if (!adjustSession(p, w.id, c.value) && !first) first = `LENGTH ${w.title} ${Math.round(c.value / 60)}min`;
+          if (!adjustSession(p, w.id, c.value)) errors++;
+        }
+        if (!canSetDistance(w)) continue;
+        // exactly AppShell's `setDistance`
+        for (const c of distanceOptions(p, w.id)) {
+          taps++;
+          if (isAtDistance(w, c.value)) continue; // silent no-op
+          if (!resizeByDistance(p, w.id, c.value) && !first) first = `DISTANCE ${w.title} ${c.value}m`;
+          if (!resizeByDistance(p, w.id, c.value)) errors++;
+        }
+      }
+    }
+  }
+  ok(taps > 10000, `every chip on every session was tapped (${taps} taps)`);
+  ok(errors === 0, `not one of them raises "can't be resized" (${errors}; first: ${first})`);
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

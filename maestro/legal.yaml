@@ -73,9 +73,16 @@ appId: app.trifecta.mobile
     timeout: 3000
 - tapOn: "Privacy"
 # The policy itself must render — not a blank WebView, not the app's own 404.
+#
+# 40s, not 20s. This is a NAVIGATION inside the WKWebView to a separately-bundled
+# page, which is the slowest thing this flow does, and 20s was tuned on an idle
+# machine. Running as part of the full suite — behind three other flows, on a box
+# that has just built the app — it timed out three times in one afternoon while
+# passing every time the flow was run alone. A gate that fails on load rather than
+# on truth teaches everyone to re-run it, which is worse than not having it.
 - extendedWaitUntil:
     visible: "Privacy Policy"
-    timeout: 20000
+    timeout: 40000
 - assertVisible: ".*What we collect.*"
 # 5.1.3(i) — the specific health data must be named, not hand-waved as "health data".
 - assertVisible: ".*workouts.*"
