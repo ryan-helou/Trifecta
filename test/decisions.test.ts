@@ -24,6 +24,8 @@
 import { generatePlan } from "../lib/planEngine";
 import { rebuildFromToday, setStatus, swapDiscipline, unswapDiscipline, logWorkout, logCheckin } from "../lib/adapt";
 import { addSession } from "../lib/addSession";
+import { reslotStrength } from "../lib/modify";
+import { slotOf } from "../lib/routines";
 import { respondTo } from "../lib/respond";
 import {
   contractedCounts,
@@ -646,6 +648,42 @@ section("a plan made before the ledger existed keeps its decisions too");
   ok(live(rebuilt, swim.date, "swim").length === 0, "the skipped swim stays skipped through the migration");
   ok(live(rebuilt, ride.date, "run").length >= 1, "and the swapped ride is still a run");
   ok(!!rebuilt.decisions?.length, "and the plan now carries a real ledger, so it never has to be inferred again");
+}
+
+// --- 8b. the gym day you chose is a decision too -----------------------------
+section("changing which day of your split a gym session is survives rebuilds");
+{
+  const prof = profile({
+    perSport: { swim: 2, bike: 2, run: 2 },
+    strength: { enabled: true, daysPerWeek: 3, split: "push-pull-legs" },
+  } as Partial<Profile>);
+  const plan = generatePlan(prof, ANCHOR);
+  const today = addDays(ANCHOR, 7);
+  const gym = Object.values(plan.workouts)
+    .filter((w) => w.discipline === "strength" && w.date >= addDays(ANCHOR, 63) && w.status === "planned")
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  ok(!!gym, "the fixture has a future gym session");
+
+  if (gym) {
+    const was = slotOf(gym);
+    const want = was === "legs" ? "push" : "legs";
+    const res = reslotStrength(plan, gym.id, want);
+    ok(!!res, `it can be set to ${want} (was ${was})`);
+    if (res) {
+      let p: Plan = res.plan;
+      ok((p.decisions ?? []).some((d) => d.kind === "reslot"), "reslotting files a decision");
+      // This is the one that was silently reverting: measured before the fix, a
+      // Tuesday set to Legs was back to Push after a single rebuild. `reslot` was
+      // simply never made a decision kind, so the ledger could not carry it.
+      for (let i = 1; i <= 3; i++) {
+        p = rebuildFromToday(p, today);
+        const now = Object.values(p.workouts).find(
+          (w) => w.date === gym.date && w.discipline === "strength" && !w.id.startsWith("kept-"),
+        );
+        ok(!!now && slotOf(now) === want, `still ${want} after rebuild ${i} (got ${now ? slotOf(now) : "gone"})`);
+      }
+    }
+  }
 }
 
 // --- 9. anchors are stable --------------------------------------------------

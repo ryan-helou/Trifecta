@@ -53,7 +53,7 @@
 // Pure — no clock, no I/O. The caller supplies today and the sequence number.
 // ---------------------------------------------------------------------------
 
-import type { Discipline, Plan, Workout } from "./types";
+import type { Discipline, Plan, StrengthSlot, Workout } from "./types";
 
 /** What the ENGINE asked this slot to be, seen through any number of swaps.
  *
@@ -86,7 +86,7 @@ export function findByAnchor(plan: Plan, anchor: string): Workout | undefined {
   return Object.values(plan.workouts).find((w) => anchorOf(plan, w) === anchor);
 }
 
-export type DecisionKind = "skip" | "swap" | "resize" | "repace" | "move";
+export type DecisionKind = "skip" | "swap" | "resize" | "repace" | "move" | "reslot";
 
 interface DecisionBase {
   /** Monotonic, so replay runs in the order the athlete actually decided things.
@@ -104,7 +104,12 @@ export type Decision =
   | (DecisionBase & { kind: "swap"; to: Discipline })
   | (DecisionBase & { kind: "resize"; sec: number; distanceM?: number })
   | (DecisionBase & { kind: "repace"; pacedAt: NonNullable<Workout["pacedAt"]> })
-  | (DecisionBase & { kind: "move"; toISO: string });
+  | (DecisionBase & { kind: "move"; toISO: string })
+  /** Which day of the athlete's own gym split this session is. Its own kind rather
+   *  than a `swap`, because the sport does not change — a Push day becoming a Legs
+   *  day is a different question from a ride becoming a run, and `swapDiscipline`
+   *  would throw away the strength structure to answer it. */
+  | (DecisionBase & { kind: "reslot"; slot: StrengthSlot });
 
 /** A decision as a caller states it — the bookkeeping (seq, anchor, dates) is
  *  filled in by `recordDecision` so no call site can get it wrong. */
@@ -113,7 +118,8 @@ export type DecisionInput =
   | { kind: "swap"; to: Discipline }
   | { kind: "resize"; sec: number; distanceM?: number }
   | { kind: "repace"; pacedAt: NonNullable<Workout["pacedAt"]> }
-  | { kind: "move"; toISO: string };
+  | { kind: "move"; toISO: string }
+  | { kind: "reslot"; slot: StrengthSlot };
 
 /** The next sequence number for a plan's ledger. */
 export function nextSeq(plan: Plan): number {
@@ -285,6 +291,7 @@ export interface ReplayOps {
   resize(plan: Plan, id: string, sec: number): Plan;
   repace(plan: Plan, id: string, pacedAt: NonNullable<Workout["pacedAt"]>): Plan;
   move(plan: Plan, id: string, toISO: string): Plan;
+  reslot(plan: Plan, id: string, slot: StrengthSlot): Plan;
   skip(plan: Plan, id: string): Plan;
 }
 
@@ -344,6 +351,9 @@ export function replayDecisions(
         break;
       case "move":
         working = ops.move(working, target.id, d.toISO);
+        break;
+      case "reslot":
+        working = ops.reslot(working, target.id, d.slot);
         break;
     }
     applied++;
