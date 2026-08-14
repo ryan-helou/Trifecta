@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.61",
+  "latest": "1.0.62",
   "bundles": [
-    {
-      "version": "1.0.59",
-      "sha256": "01dcca6f41ba036cc80eb0e9a4aac248fe6e947b8845de25d987825e779be7e1",
-      "size": 808564,
-      "createdAtISO": "2026-08-14T14:16:24.714Z"
-    },
     {
       "version": "1.0.60",
       "sha256": "3d261f0c60d5e170cb632d08ce2688c212d1ab7a22c140ec6a0701d113828507",
@@ -20,6 +14,13 @@
       "size": 809971,
       "createdAtISO": "2026-08-14T15:57:05.475Z",
       "comment": "sessions built from plain distance blocks can be resized again"
+    },
+    {
+      "version": "1.0.62",
+      "sha256": "fb134de150fdee574d573682f6e27c9d79775c7bb56dfda67178bdc966e81bc1",
+      "size": 810222,
+      "createdAtISO": "2026-08-14T16:29:02.598Z",
+      "comment": "the plan keeps itself current with Strava, every two minutes"
     }
   ]
 }
