@@ -235,9 +235,14 @@ export async function apiStravaStatus(): Promise<StravaStatus> {
 }
 
 export async function apiStravaSync() {
-  const { ok, data } = await jsonFetch("/api/strava/sync", { method: "POST" });
+  const { ok, status, data } = await jsonFetch("/api/strava/sync", { method: "POST" });
   return {
     ok,
+    /** Surfaced so a caller can tell "you never connected Strava" (400) from "the
+     *  network blipped" (0/5xx). The auto-sync poll stops for good on the former and
+     *  retries on the latter — without it, every athlete who has never connected
+     *  Strava is polled on a timer forever on behalf of a feature they don't use. */
+    status,
     ...(data as {
       scanned?: number;
       matched?: number;

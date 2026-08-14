@@ -20,6 +20,7 @@ import { LogWorkoutSheet } from "./LogWorkoutSheet";
 import { AddSessionSheet } from "./AddSessionSheet";
 import { PlanUpdating } from "./PlanUpdating";
 import { useAppleHealthAutoSync } from "./useAppleHealthAutoSync";
+import { useStravaAutoSync } from "./useStravaAutoSync";
 import { todayISO } from "@/lib/dates";
 import {
   assessAdaptation,
@@ -241,6 +242,30 @@ function AppShellInner() {
     [today, applyPlan, toast],
   );
 
+  // A sync landed — from a tap, from Apple Health, or from the two-minute Strava poll.
+  // One path for all three, so a completion found by a device answers exactly as a
+  // completion you tapped does (#189): anchored on the newest session it completed, then
+  // through `respond` so the plan settles the week around it.
+  const applySyncedPlan = useCallback(
+    (next: Plan, anchorId?: string) => {
+      if (!plan) return;
+      const newlyDone = Object.values(next.workouts)
+        .filter((w) => w.status === "done" && plan.workouts[w.id]?.status !== "done")
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const id = anchorId ?? newlyDone[newlyDone.length - 1]?.id;
+      if (!id) {
+        applyPlan(next);
+        return;
+      }
+      respond(next, { kind: "logged", workoutId: id });
+    },
+    [plan, applyPlan, respond],
+  );
+
+  // Ryan, 2026-08-14: "make strava sync every 2 minutes." Foreground-only, so a phone in
+  // a pocket never spends the app-wide Strava quota — see the hook for why that matters.
+  useStravaAutoSync(plan, applySyncedPlan);
+
   // #109 — the plan realigns ITSELF. This used to need the athlete to notice a banner
   // and press a button, which is backwards: the people who fall behind are exactly the
   // ones who stopped opening the app, and they came back to a plan full of dead days.
@@ -356,19 +381,7 @@ function AppShellInner() {
     // completions used to go straight to applyPlan, so a Strava sync silently
     // ticked sessions and left the rest of the plan untouched: the one path where
     // real training landed and nothing re-planned.
-    applySynced: (next, anchorId) => {
-      // Anchor on the newest session this sync completed, so the responder excludes
-      // it the way it excludes any session the athlete just acted on.
-      const newlyDone = Object.values(next.workouts)
-        .filter((w) => w.status === "done" && plan.workouts[w.id]?.status !== "done")
-        .sort((a, b) => a.date.localeCompare(b.date));
-      const id = anchorId ?? newlyDone[newlyDone.length - 1]?.id;
-      if (!id) {
-        applyPlan(next);
-        return;
-      }
-      respond(next, { kind: "logged", workoutId: id });
-    },
+    applySynced: (next, anchorId) => applySyncedPlan(next, anchorId),
     skip: (id) => {
       const w = plan.workouts[id];
       if (w) track("session_skipped", { weekIndex: w.weekIndex });
