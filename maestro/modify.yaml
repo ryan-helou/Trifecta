@@ -1,0 +1,86 @@
+# Trifecta iOS — can you actually resize a session, on a device, with a finger?
+#
+# Ryan reported "why is it not letting me resize sessions?" against 1.0.60 and then
+# "its still saying that session cant be resized to that distance" against 1.0.61.
+# Three separate bugs wore that one sentence, and every one of them was proved fixed
+# at the action layer while nobody had pressed the button. There was no Maestro flow
+# for Modify, so the panel most likely to be wrong was the panel least covered.
+#
+# The trap this exists for is specific and it bit twice: the row always renders a chip
+# for where the session currently STANDS, and that chip is a live button. Tapping the
+# one you are already on called the action, the action truthfully answered "nothing
+# would change", and the UI rendered that as a refusal. So the assertion below is not
+# "a resize works" — it is "the refusal toast never appears", which is the thing that
+# was actually broken.
+#
+# Demo account: trifectademo / demopass123.
+appId: app.trifecta.mobile
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Create your plan"
+    timeout: 40000
+- extendedWaitUntil:
+    visible: ".*Sign in.*"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn: ".*Sign in.*"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 15000
+- tapOn: "ironmike"
+- inputText: "trifectademo"
+- tapOn: "Password"
+- tapOn: "••••••••"
+- inputText: "demopass123"
+# Submit from the focused password field — the keyboard accessory bar covers the
+# button on iOS 26 / iPhone 17. See maestro/login.yaml.
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 40000
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Open today's session, then the one door every property lives behind (#185).
+- tapOn: ".*Open today's session.*"
+- scrollUntilVisible:
+    element: ".*Modify workout.*"
+    direction: DOWN
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn: ".*Modify workout.*"
+- extendedWaitUntil:
+    visible: "Length"
+    timeout: 20000
+- takeScreenshot: 40-modify-open
+
+# THE BUG, PRESSED WITH A FINGER.
+#
+# "Current length" is the chip the row highlights as where the session already is —
+# exactly the one that used to answer with a refusal. Tapping it must do nothing
+# visible and, above all, must not accuse the session of being un-resizable.
+- tapOn: ".*Current length.*"
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: ".*can't be resized.*"
+- assertNotVisible: ".*as close to that as it can get.*"
+- takeScreenshot: 41-current-chip-tapped
+
+# …and a chip that IS a real change still resizes, so the guard has not simply
+# deadened the control.
+- tapOn: ".*Set length to.*"
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: ".*can't be resized.*"
+- assertNotVisible: ".*as close to that as it can get.*"
+- takeScreenshot: 42-real-resize

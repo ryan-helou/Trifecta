@@ -308,6 +308,10 @@ function ModifyPanel({
                 key={sec}
                 onClick={() => { haptic("select"); actions.adjust(workout.id, sec); }}
                 aria-pressed={current}
+                // "45 min" alone tells a screen reader nothing about what it is or
+                // whether you are on it. It is also the handle maestro/modify.yaml
+                // uses to press the exact chip that used to answer with a refusal.
+                aria-label={current ? `Current length, ${fmtDuration(sec)}` : `Set length to ${fmtDuration(sec)}`}
                 className={`chip ${current ? "is-selected" : ""}`}
               >
                 {fmtDuration(sec)}{isPlanned && !current ? " · planned" : ""}
