@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.59",
+  "latest": "1.0.60",
   "bundles": [
-    {
-      "version": "1.0.57",
-      "sha256": "797b898df653ad35aa03fea34ca0b4b4e3f4bbc21ed6a749d31f7875bcdcfa01",
-      "size": 806896,
-      "createdAtISO": "2026-08-13T14:30:23.697Z",
-      "comment": "the page stops scrolling by itself, and opening a session keeps your place in the list"
-    },
     {
       "version": "1.0.58",
       "sha256": "30634e296b9c9ea2cf1a548fc183577b6d70af93fc84ee66ea95961cbdd795db",
@@ -20,6 +13,13 @@
       "sha256": "01dcca6f41ba036cc80eb0e9a4aac248fe6e947b8845de25d987825e779be7e1",
       "size": 808564,
       "createdAtISO": "2026-08-14T14:16:24.714Z"
+    },
+    {
+      "version": "1.0.60",
+      "sha256": "3d261f0c60d5e170cb632d08ce2688c212d1ab7a22c140ec6a0701d113828507",
+      "size": 809788,
+      "createdAtISO": "2026-08-14T14:54:52.318Z",
+      "comment": "the changes you make to your plan stick, and the plan answers what you actually do"
     }
   ]
 }
