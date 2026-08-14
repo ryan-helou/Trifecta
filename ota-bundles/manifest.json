@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.65",
+  "latest": "1.0.66",
   "bundles": [
-    {
-      "version": "1.0.63",
-      "sha256": "0ee49e0011139ddc70dc1cecb846f547f03915b0b9ea11e31efb3736d181920c",
-      "size": 810518,
-      "createdAtISO": "2026-08-14T17:59:19.174Z",
-      "comment": "tapping the size you're already on no longer reads as a refusal"
-    },
     {
       "version": "1.0.64",
       "sha256": "22d7f3a4d6f37626f590212ce3e0ebe04e7be8c03cd97f3c0c3c92e7c3ad4a8c",
@@ -19,6 +12,13 @@
       "sha256": "3480cd2ee2149557d97bb384edd619e8cd72a4b275666805db9cb8c634bc510b",
       "size": 810531,
       "createdAtISO": "2026-08-14T18:54:20.262Z"
+    },
+    {
+      "version": "1.0.66",
+      "sha256": "fcaeed6a8eb4d398550bde7a282a4b98525ce2a5f2d4ce3720d039da923ab472",
+      "size": 810722,
+      "createdAtISO": "2026-08-14T19:32:51.023Z",
+      "comment": "you can make a session as long as you mean to"
     }
   ]
 }
