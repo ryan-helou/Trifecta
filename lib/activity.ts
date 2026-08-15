@@ -54,6 +54,52 @@ export function matchActivity(plan: Plan, a: Activity): Match | null {
  *  genuine morning and evening session. */
 export const SAME_ACTIVITY_WINDOW_MS = 15 * 60 * 1000;
 
+/**
+ * Has the athlete told us this activity completes nothing — WHATEVER feed it arrives on?
+ *
+ * `isDetached` answers that by id, which only covers the feed that reported it. Strava
+ * and Apple Health describe one run under two different ids, so un-completing a
+ * Strava-synced session left the Health copy free to walk back in and re-complete it:
+ * the undo worked, and then quietly didn't. Ryan: "every time i undo completed and come
+ * back to the app it shows completed."
+ *
+ * So the id is checked first, then the fingerprint recorded alongside it — same day,
+ * same sport, started within the window `duplicateActivity` already uses for "these two
+ * reports are one session". One definition of sameness, used twice.
+ */
+export function isDetachedActivity(
+  plan: Plan,
+  x: {
+    id?: number | string;
+    source: WorkoutActuals["source"];
+    discipline: Discipline;
+    localDay: string;
+    startISO?: string;
+    durationSec?: number;
+  },
+): boolean {
+  if (x.id != null && (plan.detachedActivityIds ?? []).includes(x.id)) return true;
+  const startX = x.startISO ? Date.parse(x.startISO) : NaN;
+  return (plan.detachedActivities ?? []).some((d) => {
+    if (d.id === x.id) return true;
+    if (d.localDay !== x.localDay) return false;
+    const discOk =
+      d.discipline === x.discipline ||
+      (d.discipline === "brick" && (x.discipline === "run" || x.discipline === "bike"));
+    if (!discOk) return false;
+
+    // Deliberately the SAME test `duplicateActivity` uses below, so "these two reports
+    // are one physical session" has one definition rather than two that drift apart.
+    const startD = d.startISO ? Date.parse(d.startISO) : NaN;
+    const haveBothStarts = !Number.isNaN(startX) && !Number.isNaN(startD);
+    if (d.source === x.source) return haveBothStarts && Math.abs(startX - startD) <= SAME_ACTIVITY_WINDOW_MS;
+    if (haveBothStarts) return Math.abs(startX - startD) <= SAME_ACTIVITY_WINDOW_MS;
+    const dd = d.durationSec ?? 0;
+    const dx = x.durationSec ?? 0;
+    return dd > 0 && dx > 0 && Math.abs(dd - dx) / Math.max(dd, dx) <= 0.2;
+  });
+}
+
 /** True when a completed session already in the plan IS this same physical activity,
  *  whatever id it arrives under and whichever feed it came from.
  *
@@ -167,6 +213,13 @@ export function applyActivityToPlan(plan: Plan, a: Activity): { plan: Plan; work
   // already applied anywhere in the plan → no-op
   const carrier = Object.values(plan.workouts).find((w) => w.actuals?.activityId === a.id);
   if (carrier) return null;
+
+  // THE UNDO WINS, on this path too. The Strava sync has checked this since the undo
+  // was made to stick; Apple Health never did, so the feed the athlete hadn't thought
+  // about was quietly putting back the completion they had just removed.
+  if (isDetachedActivity(plan, { id: a.id, source: a.source, discipline: a.discipline, localDay: a.localDay, startISO: a.startISO, durationSec: a.durationSec })) {
+    return null;
+  }
 
   const match = matchActivity(plan, a);
   const existing = match ? plan.workouts[match.workoutId] : undefined;

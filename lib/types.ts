@@ -549,6 +549,25 @@ export interface Plan {
    *  covers Apple Health (string ids) as well as Strava (numeric). Bounded — see
    *  DETACHED_MAX. */
   detachedActivityIds?: (number | string)[];
+  /** The same decision, with enough of the activity to recognise it FROM ANOTHER FEED.
+   *
+   *  Ids alone only protect against the feed that reported it. Apple Health and Strava
+   *  describe one physical run under two different ids, so un-completing a
+   *  Strava-synced session detached the Strava id and left the Health copy free to
+   *  walk straight back in and re-complete it — the undo appeared to work and then
+   *  quietly didn't, which is the same bug in a second costume.
+   *
+   *  Kept as a fingerprint (day + sport + start), matched the way `duplicateActivity`
+   *  already matches one activity arriving twice, so there is one definition of "these
+   *  are the same session" rather than two that can drift. Bounded by DETACHED_MAX. */
+  detachedActivities?: Array<{
+    id: number | string;
+    source: WorkoutActuals["source"];
+    discipline: Discipline;
+    localDay: string;
+    startISO?: string;
+    durationSec?: number;
+  }>;
   /** the day the plan was last realigned around "today" (manual or automatic).
    *  Misses BEFORE this date have already been absorbed into `kept-` history, so
    *  counting them again would make an automatic realign re-fire forever — see

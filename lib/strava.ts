@@ -2,7 +2,7 @@ import type { Store } from "./db";
 import type { StravaConn } from "./db";
 import type { Discipline, Plan, Workout, WorkoutActuals, Zone } from "./types";
 import { isDetached, setStatus, reindexWeeks } from "./adapt";
-import { duplicateActivity } from "./activity";
+import { duplicateActivity, isDetachedActivity } from "./activity";
 import { dayIndexOf } from "./dates";
 
 // ---------------------------------------------------------------------------
@@ -309,7 +309,17 @@ export async function applyActivityToUser(store: Store, userId: string, a: Strav
     // Checked here rather than inside the match so it also blocks the bonus-session
     // branch below — otherwise un-ticking a session would spawn a synced- copy of the
     // very activity that was just rejected, which is worse than the bug.
-    if (isDetached(plan, a.id)) return { matched: false, detached: true };
+    // By id AND by fingerprint. The id covers Strava re-delivering this activity;
+    // the fingerprint covers the athlete having detached the SAME run as it arrived
+    // from Apple Health, under an id this feed has never seen.
+    const day0 = activityLocalDay(a);
+    const disc0 = disciplineOf(a);
+    if (
+      isDetached(plan, a.id) ||
+      (disc0 && day0 && isDetachedActivity(plan, { id: a.id, source: "strava", discipline: disc0, localDay: day0, startISO: a.start_date, durationSec: a.moving_time ?? a.elapsed_time }))
+    ) {
+      return { matched: false, detached: true };
+    }
 
     // One activity, one session: whatever its status now, a workout that already
     // carries this activity id owns it — update in place, never match a second.

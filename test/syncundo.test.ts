@@ -20,6 +20,7 @@
 */
 import assert from "node:assert";
 import { DETACHED_MAX, isDetached, setStatus } from "../lib/adapt";
+import { applyActivityToPlan, isDetachedActivity } from "../lib/activity";
 import { mergeCompletions } from "../lib/planMerge";
 import { weekSessionsOn } from "../components/app/widgets";
 import { applyActivityToUser } from "../lib/strava";
@@ -52,7 +53,7 @@ function planOf(workouts: Record<string, Workout>): Plan {
 function completed(id: string, date: string, disc: Workout["discipline"], activityId: number, name = "Tempoish Run"): Workout {
   return {
     ...w(id, date, disc, 1200, "done"),
-    actuals: { source: "strava", activityId, name, durationSec: 1472, distanceM: 4002 },
+    actuals: { source: "strava", activityId, name, durationSec: 1472, distanceM: 4002, startedAtISO: `${date}T10:45:00Z` },
     actualDurationSec: 1472,
     actualDistanceM: 4002,
   };
@@ -87,6 +88,29 @@ async function main() {
   ok("the device actuals go with it", undone.workouts.r1.actuals === undefined);
   ok("…including the duration", undone.workouts.r1.actualDurationSec === undefined);
   ok("…and the distance", undone.workouts.r1.actualDistanceM === undefined);
+
+  // ---- and the OTHER feed can't put it back ------------------------------------
+  //
+  // The id only protects against the feed that reported it. Apple Health describes the
+  // same physical run under its own id, so the undo held against Strava and was quietly
+  // reversed by Health minutes later — the same bug wearing a second costume.
+  const HEALTH = { source: "healthkit" as const, id: "HK-9F2A-0001", discipline: "run" as const,
+    localDay: "2026-07-21", startISO: "2026-07-21T10:47:00Z", durationSec: 1472, distanceM: 4002 };
+
+  ok("Health's id for the same run is NOT in the id list", !isDetached(undone, HEALTH.id));
+  ok("THE FIX: it is recognised by fingerprint anyway", isDetachedActivity(undone, HEALTH));
+  ok("and the client sync declines it", applyActivityToPlan(undone, HEALTH) === null);
+  ok("so the session the athlete un-completed stays un-completed", undone.workouts.r1.status === "planned");
+
+  // The fingerprint must not be a blanket ban on that day. A genuinely different run,
+  // hours later, is still the athlete's training and still gets recorded.
+  const EVENING = { ...HEALTH, id: "HK-9F2A-0002", startISO: "2026-07-21T19:30:00Z" };
+  ok("a different session the same day is NOT swallowed", !isDetachedActivity(undone, EVENING));
+  // …nor is the same time on another day, or another sport at the same time.
+  ok("another day is not swallowed", !isDetachedActivity(undone, { ...HEALTH, id: "x", localDay: "2026-07-22", startISO: "2026-07-22T10:47:00Z" }));
+  ok("another sport is not swallowed", !isDetachedActivity(undone, { ...HEALTH, id: "y", discipline: "bike" }));
+  // A plan that has never detached anything refuses nothing.
+  ok("a clean plan detaches nothing", !isDetachedActivity(done, HEALTH));
 
   // Only an undo detaches. Completing, skipping and swapping must not.
   ok("marking done detaches nothing", !(setStatus(done, "r1", "done").detachedActivityIds ?? []).length);
