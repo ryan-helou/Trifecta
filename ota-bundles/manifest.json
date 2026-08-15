@@ -1,12 +1,6 @@
 {
-  "latest": "1.0.70",
+  "latest": "1.0.71",
   "bundles": [
-    {
-      "version": "1.0.68",
-      "sha256": "acc5e6932e5b414aa8125ca65bc14698ecc7a77cda7a591946e1c4d593335bc6",
-      "size": 810968,
-      "createdAtISO": "2026-08-14T20:10:57.930Z"
-    },
     {
       "version": "1.0.69",
       "sha256": "4eddd2d88df5a1a5a660dca1c9cd60bf0ce0e1a3d55eac359bcb6020b06bee59",
@@ -20,6 +14,13 @@
       "size": 811192,
       "createdAtISO": "2026-08-15T17:46:59.029Z",
       "comment": "a blank set can't be ticked off, so your first gym session can't save nothing"
+    },
+    {
+      "version": "1.0.71",
+      "sha256": "5c7eef4178d1b3ee5220f58ba985743d570d278b3f3b8d3a0f3057ff332a6e42",
+      "size": 811454,
+      "createdAtISO": "2026-08-15T18:44:39.449Z",
+      "comment": "undoing a completed session now sticks, whichever app reported it"
     }
   ]
 }
