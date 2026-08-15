@@ -108,6 +108,24 @@ export function setStatus(plan: Plan, id: string, status: Workout["status"], not
       // activity old enough to fall off is long past the sync's 21-day window.
       p.detachedActivityIds = [...seen, detaching].slice(-DETACHED_MAX);
     }
+    // …and the same decision as a FINGERPRINT, because the other feed calls this run
+    // by a different name. See `detachedActivities` in lib/types.ts: the id protects
+    // against Strava re-delivering it, this protects against Apple Health reporting
+    // the same physical session under an id we have never seen.
+    const prints = p.detachedActivities ?? [];
+    if (!prints.some((d) => d.id === detaching)) {
+      p.detachedActivities = [
+        ...prints,
+        {
+          id: detaching,
+          source: w.actuals!.source,
+          discipline: w.discipline,
+          localDay: w.date,
+          ...(w.actuals!.startedAtISO ? { startISO: w.actuals!.startedAtISO } : {}),
+          ...(w.actuals!.durationSec != null ? { durationSec: w.actuals!.durationSec } : {}),
+        },
+      ].slice(-DETACHED_MAX);
+    }
   }
 
   p.workouts[id] = {
