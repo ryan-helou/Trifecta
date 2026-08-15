@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.69",
+  "latest": "1.0.70",
   "bundles": [
-    {
-      "version": "1.0.67",
-      "sha256": "f2be51184aa055ab9270d312a4848c47873d7de2b205654df992a1f4a5f3565e",
-      "size": 810729,
-      "createdAtISO": "2026-08-14T19:46:05.340Z",
-      "comment": "the gym day you choose stays the gym day you chose"
-    },
     {
       "version": "1.0.68",
       "sha256": "acc5e6932e5b414aa8125ca65bc14698ecc7a77cda7a591946e1c4d593335bc6",
@@ -20,6 +13,13 @@
       "size": 811105,
       "createdAtISO": "2026-08-14T20:32:42.258Z",
       "comment": "build a gym routine before you know your reps and weights"
+    },
+    {
+      "version": "1.0.70",
+      "sha256": "2134fd529ed4f536b325655e4db835c4f02ac09ff29c5673952416ef9e2f0cbd",
+      "size": 811192,
+      "createdAtISO": "2026-08-15T17:46:59.029Z",
+      "comment": "a blank set can't be ticked off, so your first gym session can't save nothing"
     }
   ]
 }
