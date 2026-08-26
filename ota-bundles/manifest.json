@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.71",
+  "latest": "1.0.72",
   "bundles": [
-    {
-      "version": "1.0.69",
-      "sha256": "4eddd2d88df5a1a5a660dca1c9cd60bf0ce0e1a3d55eac359bcb6020b06bee59",
-      "size": 811105,
-      "createdAtISO": "2026-08-14T20:32:42.258Z",
-      "comment": "build a gym routine before you know your reps and weights"
-    },
     {
       "version": "1.0.70",
       "sha256": "2134fd529ed4f536b325655e4db835c4f02ac09ff29c5673952416ef9e2f0cbd",
@@ -21,6 +14,13 @@
       "size": 811454,
       "createdAtISO": "2026-08-15T18:44:39.449Z",
       "comment": "undoing a completed session now sticks, whichever app reported it"
+    },
+    {
+      "version": "1.0.72",
+      "sha256": "052854d5e7ad5b4c5d825a2c5a608cbc8950126e5b662c9d97137e6a40c6c4fb",
+      "size": 811783,
+      "createdAtISO": "2026-08-26T00:38:46.286Z",
+      "comment": "anterior / posterior chain, as a training split you can pick"
     }
   ]
 }
