@@ -30,6 +30,11 @@ import { customSlotFor, parseCustomSplit } from "./workouts";
  *  can't be caught by a bare "core" test. */
 const TITLE_HINTS: [RegExp, StrengthSlot][] = [
   [/home/i, "home"],
+  // Before push/pull: the chain days are titled "…Chain Strength" and contain
+  // neither word, but keeping them adjacent to the pair they cut across is the
+  // clearest place to read this list.
+  [/anterior/i, "anterior"],
+  [/posterior/i, "posterior"],
   [/push/i, "push"],
   [/pull/i, "pull"],
   [/\bleg/i, "legs"],
@@ -108,6 +113,8 @@ export const SLOT_LABEL: Record<StrengthSlotBase, string> = {
   push: "Push",
   pull: "Pull",
   legs: "Legs",
+  anterior: "Anterior chain",
+  posterior: "Posterior chain",
   home: "Home",
   custom: "Your session",
 };
@@ -121,6 +128,8 @@ const SLOT_TITLE: Record<StrengthSlotBase, string> = {
   push: "Push",
   pull: "Pull",
   legs: "Leg",
+  anterior: "Anterior Chain",
+  posterior: "Posterior Chain",
   home: "Home",
   custom: "Gym",
 };
@@ -184,6 +193,8 @@ export function slotsForProfile(profile: Profile | null | undefined): StrengthSl
       return ["lower", "upper"]; // the rotation starts on lower — strengthFor, index 0
     case "push-pull-legs":
       return ["push", "pull", "legs"];
+    case "anterior-posterior":
+      return ["posterior", "anterior"]; // posterior first — see strengthFor
     default:
       return ["full"];
   }

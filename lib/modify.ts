@@ -465,7 +465,7 @@ export function resizeByDistance(plan: Plan, workoutId: string, targetM: number)
  *  common reason to change a strength day, and it is the one option the engine can
  *  already build without equipment. */
 export function slotChoices(profile: Profile | null | undefined): StrengthSlot[] {
-  const base: StrengthSlot[] = ["push", "pull", "legs", "upper", "lower", "full", "home"];
+  const base: StrengthSlot[] = ["push", "pull", "legs", "anterior", "posterior", "upper", "lower", "full", "home"];
   const own = parseCustomSplit(profile?.strength?.customSplit).map(customSlotFor);
   // The athlete's own names go FIRST — if they've told us their week is "Chest /
   // Back / Legs", those are the words they think in, and push/pull/legs is our
