@@ -34,41 +34,52 @@ export interface CatalogExercise {
   aliases?: string[];
 }
 
-const PUSH: StrengthSlot[] = ["push", "upper", "full"];
-const PULL: StrengthSlot[] = ["pull", "upper", "full"];
+// The CHAIN split cuts across push/pull rather than matching it, so it needs its
+// own tags: pressing is anterior, pulling is posterior, and LEGS splits in two —
+// a squat is knee-dominant (anterior), a hinge is hip-dominant (posterior). That
+// division is the whole reason the split exists, so it is made per-exercise below
+// rather than blanket-applied.
+const PUSH: StrengthSlot[] = ["push", "upper", "full", "anterior"];
+const PULL: StrengthSlot[] = ["pull", "upper", "full", "posterior"];
 const LEGS: StrengthSlot[] = ["legs", "lower", "full"];
-const CORE: StrengthSlot[] = ["full", "upper", "lower", "push", "pull", "legs", "home"];
+/** Knee-dominant: quads drive it. */
+const LEGS_ANT: StrengthSlot[] = [...LEGS, "anterior"];
+/** Hip-dominant: glutes, hamstrings and erectors drive it. */
+const LEGS_POST: StrengthSlot[] = [...LEGS, "posterior"];
+// Trunk work belongs to every day, chain days included — it is the one category
+// that genuinely does.
+const CORE: StrengthSlot[] = ["full", "upper", "lower", "push", "pull", "legs", "anterior", "posterior", "home"];
 
 export const EXERCISE_CATALOG: CatalogExercise[] = [
   // ---- squat pattern ----
-  { name: "Back Squat", slots: LEGS, aliases: ["barbell squat", "squat"] },
-  { name: "Front Squat", slots: LEGS },
-  { name: "Goblet Squat", slots: [...LEGS, "home"] },
-  { name: "Box Squat", slots: LEGS },
-  { name: "Hack Squat", slots: LEGS },
-  { name: "Leg Press", slots: LEGS },
+  { name: "Back Squat", slots: LEGS_ANT, aliases: ["barbell squat", "squat"] },
+  { name: "Front Squat", slots: LEGS_ANT },
+  { name: "Goblet Squat", slots: [...LEGS_ANT, "home"] },
+  { name: "Box Squat", slots: LEGS_ANT },
+  { name: "Hack Squat", slots: LEGS_ANT },
+  { name: "Leg Press", slots: LEGS_ANT },
 
   // ---- hinge pattern (the posterior chain doc 01 keeps pointing at) ----
-  { name: "Deadlift", slots: [...LEGS, "pull"], aliases: ["conventional deadlift"] },
-  { name: "Romanian Deadlift", slots: [...LEGS, "pull"], aliases: ["rdl", "romanian"] },
-  { name: "Trap Bar Deadlift", slots: [...LEGS, "pull"], aliases: ["hex bar"] },
-  { name: "Single-Leg Deadlift", slots: [...LEGS, "home"], aliases: ["sldl", "single leg rdl"] },
-  { name: "Good Morning", slots: LEGS },
-  { name: "Hip Thrust", slots: LEGS },
-  { name: "Glute Bridge", slots: [...LEGS, "home"] },
-  { name: "Back Extension", slots: [...LEGS, "pull"], aliases: ["hyperextension"] },
-  { name: "Nordic Curl", slots: LEGS, aliases: ["nordic hamstring"] },
-  { name: "Hamstring Curl", slots: LEGS, aliases: ["leg curl"] },
+  { name: "Deadlift", slots: [...LEGS_POST, "pull"], aliases: ["conventional deadlift"] },
+  { name: "Romanian Deadlift", slots: [...LEGS_POST, "pull"], aliases: ["rdl", "romanian"] },
+  { name: "Trap Bar Deadlift", slots: [...LEGS_POST, "pull"], aliases: ["hex bar"] },
+  { name: "Single-Leg Deadlift", slots: [...LEGS_POST, "home"], aliases: ["sldl", "single leg rdl"] },
+  { name: "Good Morning", slots: LEGS_POST },
+  { name: "Hip Thrust", slots: LEGS_POST },
+  { name: "Glute Bridge", slots: [...LEGS_POST, "home"] },
+  { name: "Back Extension", slots: [...LEGS_POST, "pull"], aliases: ["hyperextension"] },
+  { name: "Nordic Curl", slots: LEGS_POST, aliases: ["nordic hamstring"] },
+  { name: "Hamstring Curl", slots: LEGS_POST, aliases: ["leg curl"] },
 
   // ---- single-leg: run durability and the late-race fade ----
-  { name: "Bulgarian Split Squat", slots: [...LEGS, "home"], aliases: ["rear foot elevated", "bss"] },
-  { name: "Split Squat", slots: [...LEGS, "home"] },
-  { name: "Walking Lunge", slots: [...LEGS, "home"], aliases: ["lunge"] },
-  { name: "Reverse Lunge", slots: [...LEGS, "home"] },
-  { name: "Step-Up", slots: [...LEGS, "home"], aliases: ["step up"] },
-  { name: "Pistol Squat", slots: [...LEGS, "home"] },
-  { name: "Calf Raise", slots: [...LEGS, "home"], aliases: ["standing calf"] },
-  { name: "Single-Leg Calf Raise", slots: [...LEGS, "home"] },
+  { name: "Bulgarian Split Squat", slots: [...LEGS_ANT, "home"], aliases: ["rear foot elevated", "bss"] },
+  { name: "Split Squat", slots: [...LEGS_ANT, "home"] },
+  { name: "Walking Lunge", slots: [...LEGS_ANT, "home"], aliases: ["lunge"] },
+  { name: "Reverse Lunge", slots: [...LEGS_ANT, "home"] },
+  { name: "Step-Up", slots: [...LEGS_ANT, "home"], aliases: ["step up"] },
+  { name: "Pistol Squat", slots: [...LEGS_ANT, "home"] },
+  { name: "Calf Raise", slots: [...LEGS_POST, "home"], aliases: ["standing calf"] },
+  { name: "Single-Leg Calf Raise", slots: [...LEGS_POST, "home"] },
 
   // ---- horizontal press ----
   { name: "Barbell Bench Press", slots: PUSH, aliases: ["bench", "bench press", "flat bench"] },
@@ -126,18 +137,18 @@ export const EXERCISE_CATALOG: CatalogExercise[] = [
   { name: "Superman", slots: [...CORE] },
 
   // ---- power / plyometric: doc 01 §4.4 prefers these over hypertrophy ----
-  { name: "Box Jump", slots: LEGS },
-  { name: "Broad Jump", slots: LEGS },
-  { name: "Pogo Hop", slots: LEGS, aliases: ["pogo"] },
-  { name: "Kettlebell Swing", slots: [...LEGS, "full"], aliases: ["kb swing", "swing"] },
-  { name: "Power Clean", slots: [...LEGS, "pull"], aliases: ["clean"] },
+  { name: "Box Jump", slots: LEGS_ANT },
+  { name: "Broad Jump", slots: LEGS_ANT },
+  { name: "Pogo Hop", slots: LEGS_POST, aliases: ["pogo"] },
+  { name: "Kettlebell Swing", slots: [...LEGS_POST, "full"], aliases: ["kb swing", "swing"] },
+  { name: "Power Clean", slots: [...LEGS_POST, "pull"], aliases: ["clean"] },
   { name: "Medicine Ball Slam", slots: [...CORE], aliases: ["med ball slam", "ball slam"] },
-  { name: "Jump Squat", slots: [...LEGS, "home"] },
+  { name: "Jump Squat", slots: [...LEGS_ANT, "home"] },
 
   // ---- hips: the bit runners skip and then get hurt ----
-  { name: "Hip Abduction", slots: [...LEGS, "home"], aliases: ["abduction", "clamshell"] },
-  { name: "Monster Walk", slots: [...LEGS, "home"], aliases: ["band walk", "lateral band walk"] },
-  { name: "Tibialis Raise", slots: [...LEGS, "home"], aliases: ["tib raise"] },
+  { name: "Hip Abduction", slots: [...LEGS_POST, "home"], aliases: ["abduction", "clamshell"] },
+  { name: "Monster Walk", slots: [...LEGS_POST, "home"], aliases: ["band walk", "lateral band walk"] },
+  { name: "Tibialis Raise", slots: [...LEGS_ANT, "home"], aliases: ["tib raise"] },
 ];
 
 const norm = (s: string) => s.trim().toLowerCase();

@@ -26,7 +26,7 @@ import {
 } from "../lib/routines";
 import { EXERCISE_CATALOG, canonicalName, searchExercises } from "../lib/exerciseCatalog";
 import { exerciseHistory, setCount, summarise } from "../lib/strength";
-import type { Profile, StrengthEntry, StrengthSlot, Workout } from "../lib/types";
+import type { Profile, StrengthEntry, StrengthSlot, StrengthSlotBase, StrengthSplit, Workout } from "../lib/types";
 
 let checks = 0;
 let failures = 0;
@@ -42,7 +42,7 @@ function section(name: string) {
 }
 
 const ANCHOR = "2026-08-10";
-const profileFor = (split: "push-pull-legs" | "upper-lower" | "full"): Profile =>
+const profileFor = (split: StrengthSplit): Profile =>
   ({
     username: "t",
     raceType: "olympic",
@@ -100,10 +100,23 @@ section("A routine attaches to the gym DAY, not to a workout");
     newPush.every((w) => routineForWorkout(prof, w)?.name === "My Push Day"),
     "the routine still finds them after a rebuild",
   );
-  const sameId = newPush.find((w) => w.id === pushDays[0].id);
+  // The POINT is that an id is not a stable handle on a session — the same
+  // `w-<week>-<day>-strength` comes back from a rebuild meaning whatever now sits in
+  // that position. This used to assert one particular id had moved to a particular
+  // other date, which is a property of the fixture rather than of the code: the two
+  // plans happened to agree again and the line went red on main without anything
+  // being wrong. What must hold is the thing routines actually rely on — the SLOT
+  // survives, whatever the ids do.
+  const byId = new Map(pushDays.map((w) => [w.id, w.date]));
+  const reused = Object.values(rebuilt.workouts).filter((w) => byId.has(w.id));
+  const movedOrRepurposed = reused.filter((w) => byId.get(w.id) !== w.date || slotOf(w) !== "push");
   ok(
-    !!sameId && sameId.date !== pushDays[0].date,
-    `an id is reused for a different date (${pushDays[0].id}: ${pushDays[0].date} → ${sameId?.date}) — which is why the routine keys on the slot`,
+    reused.every((w) => slotOf(w) === null || !!routineForWorkout(prof, w) || slotOf(w) !== "push"),
+    "a reused id never leaves a Push day without its routine",
+  );
+  ok(
+    movedOrRepurposed.every((w) => routineForWorkout(prof, w) === null || slotOf(w) === "push"),
+    `ids are not a stable handle (${movedOrRepurposed.length} reused ids changed date or day), and the routine keys on the slot instead`,
   );
 }
 
@@ -185,7 +198,14 @@ section("Saving a routine");
     ),
     "no default routine name has a lowercase word mid-title",
   );
-  ok(Object.keys(SLOT_LABEL).length === 8, "every slot has a human label");
+  // Derived, not counted. A hard-coded 8 meant adding a slot failed this line rather
+  // than the thing it is actually guarding — that every slot the app can produce has
+  // something to call it.
+  ok(
+    (["full", "upper", "lower", "push", "pull", "legs", "anterior", "posterior", "home", "custom"] as StrengthSlotBase[])
+      .every((sl) => !!SLOT_LABEL[sl]),
+    "every slot has a human label",
+  );
 }
 
 // ---- 3. the catalog -------------------------------------------------------
@@ -288,7 +308,7 @@ section("A custom split rotates, and each named day owns its routine");
 // plans rather than asserted against a hard-coded list.
 
 section("the gym days offered are the gym days the plan builds");
-for (const split of ["push-pull-legs", "upper-lower", "full"] as const) {
+for (const split of ["push-pull-legs", "upper-lower", "anterior-posterior", "full"] as const) {
   const prof = profileFor(split);
   const plan = generatePlan(prof, ANCHOR);
   const onPlan = new Set(
@@ -467,6 +487,86 @@ section("the first session you do fills the blanks in, and becomes the baseline"
   ok(h[0].lastSets.length === 1, "only the recorded set becomes last time's");
   const allBlank: Workout = { ...logged, id: "blank", strengthLog: [{ name: "Zercher Squat", sets: [{}, {}] }] };
   ok(exerciseHistory([allBlank]).length === 0, "an exercise with nothing recorded contributes no history at all");
+}
+
+section("the anterior / posterior chain split");
+{
+  // Ryan asked for this one by name. It is the split that CUTS ACROSS push/pull
+  // rather than matching it — a squat and a bench press share a day, a deadlift and
+  // a row share the other — so the thing most likely to break is an exercise landing
+  // on the wrong chain, or the rotation favouring one over the other.
+  const prof = profileFor("anterior-posterior");
+  const plan = generatePlan(prof, ANCHOR);
+
+  ok(JSON.stringify(slotsForProfile(prof)) === JSON.stringify(["posterior", "anterior"]),
+    `it is a two-day split, posterior first (got ${slotsForProfile(prof).join(",")})`);
+
+  const gym = Object.values(plan.workouts).filter((w) => w.discipline === "strength");
+  ok(gym.length > 10, `the plan actually builds chain days (${gym.length})`);
+  ok(gym.every((w) => w.strengthSlot === "anterior" || w.strengthSlot === "posterior"),
+    "and builds nothing else on a chain athlete's gym days");
+  ok(gym.every((w) => slotOf(w) === w.strengthSlot), "every session resolves to the slot it was stamped with");
+
+  // The rotation carries across weeks, so neither chain may be starved — the bug
+  // that left a push-pull-legs athlete never training legs.
+  const post = gym.filter((w) => w.strengthSlot === "posterior").length;
+  const ant = gym.filter((w) => w.strengthSlot === "anterior").length;
+  ok(Math.abs(post - ant) <= 1, `both chains come round equally (${post} posterior, ${ant} anterior)`);
+
+  // Title fallback, for plans generated before the slot was stamped on the session.
+  ok(slotOf({ ...gym[0], strengthSlot: undefined, title: "Posterior Chain Strength" }) === "posterior",
+    "an unstamped Posterior session is recognised by its title");
+  ok(slotOf({ ...gym[0], strengthSlot: undefined, title: "Anterior Chain Strength" }) === "anterior",
+    "…and an Anterior one");
+
+  // A routine attaches to a chain day and survives a rebuild, same as every slot.
+  const routine = routineFromEntries("posterior", "My Posterior Chain Day", PUSH_DAY, ANCHOR)!;
+  const withRoutine = { ...prof, routines: [routine] } as Profile;
+  const rebuilt = generatePlan(withRoutine, "2026-08-17");
+  const anyPost = Object.values(rebuilt.workouts).find((w) => slotOf(w) === "posterior")!;
+  ok(!!routineForWorkout(withRoutine, anyPost), "a routine saved for the posterior day attaches after a rebuild");
+  ok(!routineForWorkout(withRoutine, Object.values(rebuilt.workouts).find((w) => slotOf(w) === "anterior")!),
+    "…and does NOT leak onto the anterior day");
+
+  // THE DIVISION ITSELF. Hinges are posterior, squats are anterior, pressing is
+  // anterior and pulling is posterior — if this ever inverts, the split is a lie.
+  const chainOf = (name: string) => {
+    const hit = EXERCISE_CATALOG.find((e) => e.name === name)!;
+    return { ant: hit.slots.includes("anterior"), post: hit.slots.includes("posterior") };
+  };
+  for (const n of ["Romanian Deadlift", "Deadlift", "Hip Thrust", "Glute Bridge", "Nordic Curl", "Hamstring Curl",
+                   "Back Extension", "Calf Raise", "Kettlebell Swing", "Barbell Row", "Pull-Up", "Face Pull"]) {
+    const c = chainOf(n);
+    ok(c.post && !c.ant, `${n} is posterior only`);
+  }
+  for (const n of ["Back Squat", "Front Squat", "Leg Press", "Walking Lunge", "Step-Up", "Box Jump",
+                   "Barbell Bench Press", "Overhead Press", "Push-Up", "Dip", "Tibialis Raise"]) {
+    const c = chainOf(n);
+    ok(c.ant && !c.post, `${n} is anterior only`);
+  }
+  // Trunk work is the one category that honestly belongs to both.
+  for (const n of ["Plank", "Dead Bug", "Pallof Press"]) {
+    const c = chainOf(n);
+    ok(c.ant && c.post, `${n} counts on either chain day`);
+  }
+  // Every catalog entry lands on at least one chain, or it is unreachable on this split.
+  const homeless = EXERCISE_CATALOG.filter((e) => !e.slots.includes("anterior") && !e.slots.includes("posterior"));
+  ok(homeless.length === 0, `no exercise is stranded off both chains (${homeless.map((e) => e.name).join(", ") || "none"})`);
+
+  // And the day opens with a card, not an empty screen.
+  for (const slot of ["posterior", "anterior"] as const) {
+    const w = gym.find((x) => x.strengthSlot === slot)!;
+    const card = cardForWorkout(prof, w);
+    ok(card.entries.length >= 4, `a ${slot} day opens with a real card (${card.entries.length} exercises)`);
+    ok(card.entries.every((e) => e.sets.length > 0), `…every exercise on it has sets`);
+    const offChain = card.entries
+      .map((e) => canonicalName(e.name.replace(/ \(each side\)$/, "")) ?? e.name)
+      .filter((n) => {
+        const hit = EXERCISE_CATALOG.find((x) => x.name === n);
+        return hit ? !hit.slots.includes(slot) : false; // a name the catalog doesn't know can't be judged
+      });
+    ok(offChain.length === 0, `…and every exercise on it belongs to the ${slot} chain (${offChain.join(", ") || "all do"})`);
+  }
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

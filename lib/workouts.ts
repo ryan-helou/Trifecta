@@ -949,6 +949,43 @@ export function strengthLegs(ctx: BuildCtx, min = 35): Draft {
   );
 }
 
+// ---------------------------------------------------------------------------
+// The CHAIN split: the front of the body against the back of it.
+//
+// It cuts ACROSS push/pull rather than matching it. A squat and a bench press are
+// both anterior; a deadlift and a row are both posterior. That is the point — the
+// body is loaded the way it is used, hinging and pulling on one day, squatting and
+// pressing on the other, instead of splitting by which way the arms move.
+//
+// Worth offering a triathlete specifically because of what doc 01 §4 asks strength
+// to do here: not hypertrophy, but durability and injury resistance. The posterior
+// chain is the half that does that job — glutes, hamstrings and erectors are what
+// hold running form when it fatigues, and mid-back and rear delts are what keep a
+// swimmer's shoulder healthy against all that internal rotation. Giving it a whole
+// day of its own, rather than a corner of leg day, is the argument for this split.
+// ---------------------------------------------------------------------------
+
+export function strengthPosterior(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Posterior Chain Strength",
+    "Glutes, hamstrings and back are what hold your form together when the run gets long — the chain that keeps you upright and off the physio table.",
+    "Romanian deadlift ×10 · hip thrust ×12 · single-arm row ×12/side · face pull ×15 · single-leg calf raise ×15",
+    min,
+    "posterior",
+  );
+}
+
+export function strengthAnterior(ctx: BuildCtx, min = 35): Draft {
+  return gym(
+    ctx,
+    "Anterior Chain Strength",
+    "Quads, chest and shoulders — the front half that drives you up hills, off the bike and through the last kilometre.",
+    "squat ×10 · overhead press ×10 · walking lunge ×10/side · push-up ×12 · dead bug ×10/side",
+    min,
+    "anterior",
+  );
+}
 
 // No-gym fallback: full-body strength you can do at home with just bodyweight + a band.
 export function strengthHome(ctx: BuildCtx, min = 35): Draft {
@@ -1059,6 +1096,13 @@ export function strengthFor(
       const m = index % 3;
       return m === 0 ? strengthPush(ctx, min) : m === 1 ? strengthPull(ctx, min) : strengthLegs(ctx, min);
     }
+    // Posterior FIRST. The rotation carries across weeks but an athlete who only
+    // makes the gym once a week still lands on index 0 most often, so whichever day
+    // sits there is the one they actually train — and for a triathlete that should
+    // be the chain that protects the run (doc 01 §4). Same reasoning as upper-lower
+    // starting on lower.
+    case "anterior-posterior":
+      return index % 2 === 0 ? strengthPosterior(ctx, min) : strengthAnterior(ctx, min);
     case "full":
     default:
       return strength(ctx, min);

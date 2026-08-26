@@ -53,6 +53,7 @@ const SPLITS: { key: StrengthSplit; name: string }[] = [
   { key: "full", name: "Full body" },
   { key: "upper-lower", name: "Upper / Lower" },
   { key: "push-pull-legs", name: "Push / Pull / Legs" },
+  { key: "anterior-posterior", name: "Anterior / Posterior" },
   { key: "custom", name: "My own split" },
 ];
 const SEV_LABEL: Record<Injury["severity"], string> = { niggle: "mild", moderate: "moderate", severe: "severe" };

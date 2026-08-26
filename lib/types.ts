@@ -315,7 +315,25 @@ export interface StrengthEntry {
 /** Which gym day this is, in the athlete's split. Written onto the session by the
  *  builders in lib/workouts.ts so a saved routine can attach to "every Push day"
  *  rather than to one dated workout — the plan regenerates, the routine shouldn't. */
-export type StrengthSlotBase = "full" | "upper" | "lower" | "push" | "pull" | "legs" | "home" | "custom";
+/** `anterior` / `posterior` are the CHAIN split: the front of the body (quads,
+ *  chest, shoulders, anterior core) against the back of it (glutes, hamstrings,
+ *  erectors, lats, rear delts, calves). It cuts across push/pull rather than
+ *  matching it — a squat and a bench press share a day, a deadlift and a row share
+ *  the other — which is why it needs its own slots rather than aliasing existing
+ *  ones. Doc 01 §4 is the reason to offer it at all: a triathlete's strength work
+ *  is durability and injury resistance, and the posterior chain is the half that
+ *  protects the run. */
+export type StrengthSlotBase =
+  | "full"
+  | "upper"
+  | "lower"
+  | "push"
+  | "pull"
+  | "legs"
+  | "anterior"
+  | "posterior"
+  | "home"
+  | "custom";
 /** A gym day. `custom:<slug>` is one named day of an athlete's OWN split, so a
  *  routine can attach to "Chest Day" and not to every custom session (#206). */
 export type StrengthSlot = StrengthSlotBase | `custom:${string}`;
@@ -332,7 +350,7 @@ export interface StrengthRoutine {
   updatedISO?: string;
 }
 
-export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "custom";
+export type StrengthSplit = "full" | "upper-lower" | "push-pull-legs" | "anterior-posterior" | "custom";
 
 export interface StrengthPref {
   enabled: boolean;
