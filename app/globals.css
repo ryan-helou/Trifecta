@@ -128,6 +128,148 @@
   color-scheme: dark;
 }
 
+/* ---- "Italia" — the tricolore edition ---------------------------------------
+   An opt-in skin, not a language. The Italian flag, used as an actual palette
+   rather than a decal: the paper becomes the flag's warm white, every primary
+   action turns tricolore green, and red carries the hot/alert end of the scale.
+   A three-band rule sits under the status bar on every screen (see
+   .status-scrim::after) so the flag is present the whole time you're in the app,
+   not just on the button you happen to be looking at.
+
+   Specificity note: an attribute selector (0,2,0) outranks the bare `:root`
+   (0,1,0) inside the dark media query, so this wins in both schemes. The night
+   variant below is a second, equal-specificity block placed later in source, so
+   it takes over when the OS is dark. */
+:root[data-theme="italia"] {
+  color-scheme: light;
+
+  --background: #f4f5f0; /* the flag's white, warmed so it reads as paper */
+  --surface: #ffffff;
+  --surface-2: #e8ebe2;
+  --surface-3: #dde1d4;
+  --line: #d2d7c7;
+  --line-soft: #e2e6d9;
+
+  --text: #101510;
+  --text-muted: #5a6356;
+  --text-faint: #8d9689;
+
+  --accent: #008c45;   /* tricolore green */
+  --accent-2: #00753a;
+  --accent-soft: #00a352;
+  --on-accent: #ffffff;
+
+  --sun: #5a6356;
+  --tide: #5a6356;
+
+  /* Run already WAS the red one — here it becomes the flag's red exactly, which
+     is why the palette lands without renaming anything the athlete has learned. */
+  --swim: #0e6e86;
+  --bike: #b06f10;
+  --run: #cd212a;
+  --strength: #6b4fbe;
+  --rest: #9aa294;
+
+  --z1: #3f88b5;
+  --z2: #008c45;
+  --z3: #c08a12;
+  --z4: #d2691e;
+  --z5: #cd212a;
+
+  --success: #008c45;
+  --warning: #c08a12;
+  --danger: #cd212a;
+
+  /* The masthead rule. Hard stops, not a blend — a gradient that fades between
+     the bands reads as a smear rather than a flag. */
+  --chrome-rule: linear-gradient(
+    90deg,
+    #008c45 0 33.333%,
+    #ffffff 33.333% 66.666%,
+    #cd212a 66.666% 100%
+  );
+  --chrome-rule-h: 10px;
+
+  /* Every card wears the flag down its left edge, and the page itself is printed
+     on tricolore stock — the bands show through in the gutters between cards. */
+  --card-edge: linear-gradient(
+    180deg,
+    #008c45 0 33.333%,
+    #ffffff 33.333% 66.666%,
+    #cd212a 66.666% 100%
+  );
+  --page-wash: linear-gradient(
+    90deg,
+    rgba(0, 140, 69, 0.18) 0 33.333%,
+    rgba(255, 255, 255, 0) 33.333% 66.666%,
+    rgba(205, 33, 42, 0.18) 66.666% 100%
+  );
+}
+
+/* Night edition — same flag, lifted off near-black so the green and red stay
+   themselves instead of going muddy. Athletes open this app before dawn. */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="italia"] {
+    color-scheme: dark;
+
+    --background: #0c0f0c;
+    --surface: #141814;
+    --surface-2: #1c211c;
+    --surface-3: #262c26;
+    --line: #2d342d;
+    --line-soft: #232923;
+
+    --text: #f2f4ef;
+    --text-muted: #9fa89b;
+    --text-faint: #6b736a;
+
+    --accent: #14b85e;
+    --accent-2: #2fd177;
+    --accent-soft: #0f9c4e;
+    --on-accent: #0c0f0c;
+
+    --sun: #9fa89b;
+    --tide: #9fa89b;
+
+    --swim: #4bb5e0;
+    --bike: #e0a437;
+    --run: #f4424d;
+    --strength: #a68cf0;
+    --rest: #6b736a;
+
+    --z1: #6fb6e4;
+    --z2: #14b85e;
+    --z3: #e8c04a;
+    --z4: #ef8f43;
+    --z5: #f4424d;
+
+    --success: #14b85e;
+    --warning: #e8c04a;
+    --danger: #f4424d;
+
+    --chrome-rule: linear-gradient(
+      90deg,
+      #14b85e 0 33.333%,
+      #f2f4ef 33.333% 66.666%,
+      #f4424d 66.666% 100%
+    );
+    --chrome-rule-h: 10px;
+
+    --card-edge: linear-gradient(
+      180deg,
+      #14b85e 0 33.333%,
+      #f2f4ef 33.333% 66.666%,
+      #f4424d 66.666% 100%
+    );
+    --page-wash: linear-gradient(
+      90deg,
+      rgba(20, 184, 94, 0.16) 0 33.333%,
+      rgba(0, 0, 0, 0) 33.333% 66.666%,
+      rgba(244, 66, 77, 0.16) 66.666% 100%
+    );
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
@@ -208,6 +350,7 @@ body {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  background-image: var(--page-wash, none);
 }
 
 /* Anything the athlete types into stays selectable — otherwise you can't place a cursor,
@@ -244,7 +387,12 @@ textarea,
 }
 
 .card {
-  background: var(--surface);
+  background-color: var(--surface);
+  /* Themed flag edge. `none` by default, so every other theme is untouched. */
+  background-image: var(--card-edge, none);
+  background-repeat: no-repeat;
+  background-size: 6px 100%;
+  background-position: left center;
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
 }
@@ -252,7 +400,12 @@ textarea,
 /* an elevated surface — solid, hairline-bordered, with a faint machined top
    edge for craft. No blur, no colored glow. */
 .card-glass {
-  background: var(--surface);
+  background-color: var(--surface);
+  /* Themed flag edge. `none` by default, so every other theme is untouched. */
+  background-image: var(--card-edge, none);
+  background-repeat: no-repeat;
+  background-size: 6px 100%;
+  background-position: left center;
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px -8px rgba(0, 0, 0, 0.06);
@@ -364,6 +517,37 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
   background: var(--background);
   z-index: 40;
   pointer-events: none;
+}
+
+/* The tricolore masthead rule, welded to the bottom edge of the scrim so it
+   inherits the scrim's visualViewport drift correction for free — a separately
+   positioned fixed bar would slide out from under the status bar the moment the
+   keyboard opens (see StatusScrim.tsx for the full story).
+   Collapses to nothing unless a theme defines --chrome-rule-h, so every other
+   theme is untouched. */
+.nav-chrome::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--chrome-rule-h, 0px);
+  background: var(--chrome-rule, transparent);
+  box-shadow: inset 0 1px 0 var(--line);
+}
+
+.status-scrim::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--chrome-rule-h, 0px);
+  background: var(--chrome-rule, transparent);
+  /* The middle band is white on white paper, so without a boundary the flag read
+     as two disconnected coloured stubs with a gap between them. The inset hairline
+     closes the band; it only paints when a theme has given the rule a height. */
+  box-shadow: inset 0 -1px 0 var(--line);
 }
 
 /* ---------- interaction layer: sheets, toasts, tabs, gestures ---------- */
