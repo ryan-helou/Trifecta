@@ -42,7 +42,7 @@ export function BottomNav({
     // PullToRefresh both set transforms — and neither is an ancestor of the nav; it is
     // their sibling, and its chain to <html> is transform-free. The scroll region pays for
     // this with bottom padding (see AppShell) so nothing hides behind the bar.
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-background safe-b">
+    <nav className="nav-chrome fixed inset-x-0 bottom-0 z-30 border-t border-line bg-background safe-b">
       <div className="relative mx-auto flex max-w-md">
         {/* the champagne underline that slides to sit under the active tab */}
         <div

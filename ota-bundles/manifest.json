@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.73",
+  "latest": "1.0.74",
   "bundles": [
-    {
-      "version": "1.0.71",
-      "sha256": "5c7eef4178d1b3ee5220f58ba985743d570d278b3f3b8d3a0f3057ff332a6e42",
-      "size": 811454,
-      "createdAtISO": "2026-08-15T18:44:39.449Z",
-      "comment": "undoing a completed session now sticks, whichever app reported it"
-    },
     {
       "version": "1.0.72",
       "sha256": "052854d5e7ad5b4c5d825a2c5a608cbc8950126e5b662c9d97137e6a40c6c4fb",
@@ -21,6 +14,13 @@
       "size": 811829,
       "createdAtISO": "2026-09-10T13:46:20.172Z",
       "comment": "IRONMAN 70.3 Muskoka is now a pickable race"
+    },
+    {
+      "version": "1.0.74",
+      "sha256": "fb4af32444427650ec636f45729eac493189eb28cd14eacad2d125a3f4ee3aa1",
+      "size": 815701,
+      "createdAtISO": "2026-09-12T13:05:00.816Z",
+      "comment": "Edizione italiana — an Italian tricolore theme, toggle it in Profile"
     }
   ]
 }

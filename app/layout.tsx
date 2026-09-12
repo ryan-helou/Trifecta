@@ -3,6 +3,7 @@ import { Fraunces, Geist } from "next/font/google";
 import "./globals.css";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { StatusScrim } from "@/components/StatusScrim";
+import { BOOT_SCRIPT } from "@/lib/theme";
 
 // Fraunces — an editorial high-contrast serif with optical sizing. It carries the
 // "chronograph" identity: dial numerals, headlines, the wordmark. Used with
@@ -87,7 +88,13 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${display.variable} ${body.variable} h-full antialiased`}
+      suppressHydrationWarning /* BOOT_SCRIPT stamps data-theme before React sees the DOM */
     >
+      <head>
+        {/* Runs before first paint so the chosen paper is already on screen.
+            Without it every launch renders white, hydrates, then flips to rosa. */}
+        <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">
         {/* masks the notch inset so scrolling content never collides with the clock.
             A component, not a bare div: it has to track the visual viewport, which iOS

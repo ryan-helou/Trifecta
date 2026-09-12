@@ -18,6 +18,8 @@ import { legalHref } from "@/lib/runtime";
 import { resolveProfile } from "@/lib/session";
 import { slotLabel, deleteRoutine, slotsForProfile, upsertRoutine } from "@/lib/routines";
 import { RoutineEditor } from "./RoutineEditor";
+import { loadTheme, saveTheme, type Theme } from "@/lib/theme";
+import { haptic } from "@/lib/haptics";
 import type { StrengthRoutine, StrengthSlot } from "@/lib/types";
 import { strengthUnitOf, summarise } from "@/lib/strength";
 
@@ -184,6 +186,8 @@ export function ProfileTab() {
             flattened every hard session for seven days knowing nothing. */}
         <ActionRow onClick={() => actions.rebuild()} label="Rebuild plan around today" />
       </Section>
+
+      <Appearance />
 
       <Notifications />
 
@@ -395,5 +399,76 @@ function ActionRow({ label, onClick, first }: { label: string; onClick: () => vo
       <span>{label}</span>
       <span className="text-accent-soft">›</span>
     </button>
+  );
+}
+
+/** The Italian flag, drawn rather than emoji'd — the rest of the app's iconography
+ *  is line art, and a system emoji would render as a different picture on every
+ *  platform. Fixed hex, not theme tokens: a flag doesn't recolour with the theme. */
+function Tricolore() {
+  return (
+    <svg width="30" height="21" viewBox="0 0 30 21" aria-hidden className="shrink-0 rounded-[3px]">
+      <rect x="0" y="0" width="10" height="21" fill="#008C45" />
+      <rect x="10" y="0" width="10" height="21" fill="#F4F5F0" />
+      <rect x="20" y="0" width="10" height="21" fill="#CD212A" />
+      <rect
+        x="0.5"
+        y="0.5"
+        width="29"
+        height="20"
+        rx="2.5"
+        fill="none"
+        stroke="var(--line)"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Appearance — the tricolore toggle.
+ *
+ * Read on mount rather than during render: localStorage doesn't exist while the
+ * static export is prerendered, and reading it in the initial useState would
+ * make the server and client disagree. The paper itself is already correct by
+ * this point — BOOT_SCRIPT stamped it before first paint — so this state only
+ * drives the switch's own position.
+ */
+function Appearance() {
+  const [theme, setTheme] = useState<Theme>("auto");
+  useEffect(() => setTheme(loadTheme()), []);
+
+  const on = theme === "italia";
+  const set = (next: boolean) => {
+    const t: Theme = next ? "italia" : "auto";
+    setTheme(t);
+    saveTheme(t); // stamps the root attribute too — the swap is instant
+    haptic("select");
+  };
+
+  return (
+    <div>
+      <div className="eyebrow mb-2 text-[0.72rem]">Appearance</div>
+      <div className="card overflow-hidden">
+        {/* No label and no blurb by design: the flag is the label. The switch
+            still carries an aria-label, because a screen reader gets nothing
+            from an aria-hidden swatch. */}
+        <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+          <Tricolore />
+          <button
+            role="switch"
+            aria-checked={on}
+            aria-label="Italian theme"
+            onClick={() => set(!on)}
+            className="h-7 w-12 flex-shrink-0 rounded-full border border-line transition"
+            style={{ background: on ? "var(--accent)" : "var(--surface-3)" }}
+          >
+            <span
+              className="block h-5 w-5 rounded-full bg-white shadow transition-transform"
+              style={{ transform: on ? "translateX(22px)" : "translateX(3px)" }}
+            />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
