@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.74",
+  "latest": "1.0.75",
   "bundles": [
-    {
-      "version": "1.0.72",
-      "sha256": "052854d5e7ad5b4c5d825a2c5a608cbc8950126e5b662c9d97137e6a40c6c4fb",
-      "size": 811783,
-      "createdAtISO": "2026-08-26T00:38:46.286Z",
-      "comment": "anterior / posterior chain, as a training split you can pick"
-    },
     {
       "version": "1.0.73",
       "sha256": "44d8c398404ec0579f2c514901eb6b6d34d2a07b1297e32847b80a4f1ff2e77b",
@@ -21,6 +14,13 @@
       "size": 815701,
       "createdAtISO": "2026-09-12T13:05:00.816Z",
       "comment": "Edizione italiana — an Italian tricolore theme, toggle it in Profile"
+    },
+    {
+      "version": "1.0.75",
+      "sha256": "b023db22d9d9e1985b67ba4dd2334db08e2be70ec93e7e3c403201c589417a9a",
+      "size": 816517,
+      "createdAtISO": "2026-09-17T01:52:08.598Z",
+      "comment": "Hold a session on the Plan screen to move it to another day"
     }
   ]
 }

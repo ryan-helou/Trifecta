@@ -299,6 +299,25 @@ function ModifyPanel({
         <button onClick={onClose} className="text-xs text-muted">Done</button>
       </div>
 
+
+      {/* First, deliberately. Moving a session to another day is the edit people
+          ask for most, and it used to be the LAST row of a panel you already had to
+          scroll to reach — five interactions deep. The hold-to-move gesture on the
+          Plan screen is the fast path; this is the one you can find by looking. */}
+      <ModifyRow label="Day">
+        <div className="no-scrollbar -mx-0.5 flex w-full gap-1.5 overflow-x-auto px-0.5">
+          {days.map((iso) => (
+            <button
+              key={iso}
+              onClick={() => { haptic("select"); actions.move(workout.id, iso); onDone(); }}
+              aria-pressed={iso === workout.date}
+              className={`chip shrink-0 ${iso === workout.date ? "is-selected" : ""}`}
+            >
+              {weekdayShort(dayIndexOf(iso))} {fmtDayMonth(iso)}
+            </button>
+          ))}
+        </div>
+      </ModifyRow>
       {lengths.length > 0 && (
         <ModifyRow label="Length" hint="Keeps its shape — whole intervals in or out, never a quiet rewrite.">
           {lengths.map(({ value: sec, current }) => {
@@ -459,20 +478,6 @@ function ModifyPanel({
         ))}
       </ModifyRow>
 
-      <ModifyRow label="Day">
-        <div className="no-scrollbar -mx-0.5 flex w-full gap-1.5 overflow-x-auto px-0.5">
-          {days.map((iso) => (
-            <button
-              key={iso}
-              onClick={() => { haptic("select"); actions.move(workout.id, iso); onDone(); }}
-              aria-pressed={iso === workout.date}
-              className={`chip shrink-0 ${iso === workout.date ? "is-selected" : ""}`}
-            >
-              {weekdayShort(dayIndexOf(iso))} {fmtDayMonth(iso)}
-            </button>
-          ))}
-        </div>
-      </ModifyRow>
 
       <div className="border-t border-line pt-3">
         {/* Skipping a session you already DID is not a thing you can do, so for

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppProvider";
 import { useUI } from "./ui";
+import { useToast } from "./Toast";
 import { SwipeableWorkout } from "./SwipeableWorkout";
 import { weekOfDate, weekSessionsOn } from "./widgets";
 import { weekProgress } from "@/lib/adapt";
@@ -13,9 +14,26 @@ import { Plan, Week } from "@/lib/types";
 import { ZONES } from "@/lib/zones";
 import { Icon } from "./icons";
 
+const MOVE_HINT_KEY = "amatri:movehint";
+
 export function PlanTab() {
   const { plan } = useApp();
-  const { today } = useUI();
+  const { today, actions } = useUI();
+  const toast = useToast();
+  // The session currently picked up, if any. Its original date rides along so the
+  // Undo on the confirmation toast can put it back exactly.
+  const [moving, setMoving] = useState<{ id: string; title: string; date: string } | null>(null);
+  // A gesture nobody can see is not a feature. One muted line teaches it, then
+  // retires itself for good the first time a session is actually moved — read
+  // after mount because localStorage doesn't exist during the static prerender.
+  const [taught, setTaught] = useState(true);
+  useEffect(() => {
+    try {
+      setTaught(localStorage.getItem(MOVE_HINT_KEY) === "1");
+    } catch {
+      setTaught(false);
+    }
+  }, []);
   const cur = plan ? weekOfDate(plan, today).index : 0;
   const [sel, setSel] = useState(cur);
   const pillRow = useRef<HTMLDivElement>(null);
@@ -121,8 +139,53 @@ export function PlanTab() {
       </div>
 
       <div className="mt-3.5">
-        <DayStrip week={week} today={today} plan={plan} />
+        <DayStrip
+          week={week}
+          today={today}
+          plan={plan}
+          moving={moving}
+          onPick={(iso) => {
+            if (!moving) return;
+            haptic("success");
+            actions.move(moving.id, iso);
+            const back = moving.date;
+            const id = moving.id;
+            setMoving(null);
+            setTaught(true);
+            try {
+              localStorage.setItem(MOVE_HINT_KEY, "1");
+            } catch {
+              /* a hint that can't persist is not worth failing a move over */
+            }
+            toast({
+              text: `Moved to ${fmtDayMonth(iso)}`,
+              tone: "success",
+              actionLabel: "Undo",
+              onAction: () => actions.move(id, back),
+            });
+          }}
+        />
       </div>
+
+      {!moving && !taught && (
+        <p className="mt-2 text-center text-[0.7rem] text-muted">
+          Hold a session to move it to another day.
+        </p>
+      )}
+
+      {/* Only while something is held. Says what is being moved and how to get out —
+          a picked-up card with no way back is a trap on a screen you can also scroll. */}
+      {moving && (
+        <div className="animate-fade-up mt-2.5 flex items-center gap-2 rounded-xl border px-3.5 py-2.5"
+             style={{ borderColor: "color-mix(in oklab, var(--accent) 45%, transparent)", background: "color-mix(in oklab, var(--accent) 8%, transparent)" }}>
+          <span className="min-w-0 flex-1 truncate text-sm">
+            Moving <span className="font-semibold">{moving.title}</span> — tap a day above
+          </span>
+          <button onClick={() => { haptic("light"); setMoving(null); }} className="shrink-0 text-xs font-semibold text-accent">
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* The focus strings are written in the coach's imperative — "Add race-specific
           intensity", "Build the aerobic engine", "Taper — cut volume". Behind a bare ◆
@@ -159,7 +222,14 @@ export function PlanTab() {
               ) : (
                 <div className="space-y-2">
                   {items.map((w) => (
-                    <SwipeableWorkout key={w.id} workout={w} />
+                    <HoldToMove
+                      key={w.id}
+                      disabled={w.status === "done" || w.discipline === "rest"}
+                      picked={moving?.id === w.id}
+                      onHold={() => setMoving({ id: w.id, title: w.title, date: w.date })}
+                    >
+                      <SwipeableWorkout workout={w} />
+                    </HoldToMove>
                   ))}
                 </div>
               )}
@@ -171,7 +241,19 @@ export function PlanTab() {
   );
 }
 
-function DayStrip({ week, today, plan }: { week: Week; today: string; plan: Plan }) {
+function DayStrip({
+  week,
+  today,
+  plan,
+  moving,
+  onPick,
+}: {
+  week: Week;
+  today: string;
+  plan: Plan;
+  moving: { id: string; title: string; date: string } | null;
+  onPick: (iso: string) => void;
+}) {
   return (
     <div className="flex gap-1.5">
       {Array.from({ length: 7 }).map((_, day) => {
@@ -188,13 +270,30 @@ function DayStrip({ week, today, plan }: { week: Week; today: string; plan: Plan
               .map((w) => `${w.title} (${ZONES[w.primaryZone].name}${w.status === "skipped" ? ", skipped" : ""})`)
               .join(", ")
           : "Rest day";
+        // While a session is held every future cell is a drop target. The past is
+        // not one: moving training you haven't done into days that have already
+        // gone is never what someone means, and the engine would just carry it.
+        const isTarget = !!moving && iso >= today;
+        const isSource = moving?.date === iso;
+        const Cell = isTarget ? "button" : "div";
         return (
-          <div
+          <Cell
             key={day}
             title={summary}
-            aria-label={`${fmtDayMonth(iso)}${isToday ? ", today" : ""} — ${summary}`}
-            className={`flex flex-1 flex-col items-center gap-0.5 rounded-[14px] border py-2 ${
-              isToday ? "border-accent/60 bg-accent/10" : "border-line bg-surface-2"
+            onClick={isTarget ? () => onPick(iso) : undefined}
+            aria-label={
+              isTarget
+                ? `Move ${moving!.title} to ${fmtDayMonth(iso)}`
+                : `${fmtDayMonth(iso)}${isToday ? ", today" : ""} — ${summary}`
+            }
+            className={`flex flex-1 flex-col items-center gap-0.5 rounded-[14px] border py-2 transition ${
+              isTarget
+                ? isSource
+                  ? "border-dashed border-accent/70 bg-accent/5 opacity-60"
+                  : "border-accent bg-accent/15 active:scale-95"
+                : isToday
+                  ? "border-accent/60 bg-accent/10"
+                  : "border-line bg-surface-2"
             }`}
           >
             <span className="eyebrow text-[0.6rem]">{weekdayShort(day)[0]}</span>
@@ -212,9 +311,104 @@ function DayStrip({ week, today, plan }: { week: Week; today: string; plan: Plan
                 ))
               )}
             </span>
-          </div>
+          </Cell>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Press and hold a session to pick it up for moving.
+ *
+ * A timer armed on touchstart and killed by ANY movement, so it can't fire while
+ * you're scrolling the agenda or swiping the row to Done/Skip — Swipeable listens
+ * on the child and sees the same events, and whichever gesture the finger actually
+ * makes is the one that wins.
+ *
+ * The release is swallowed in the capture phase after a hold fires, otherwise
+ * letting go would also open the session sheet on top of the move you just started.
+ */
+function HoldToMove({
+  onHold,
+  disabled,
+  picked,
+  children,
+}: {
+  onHold: () => void;
+  disabled?: boolean;
+  picked?: boolean;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // Held in a ref so the listeners attach once; onHold is a fresh closure every
+  // render and re-binding touch handlers mid-press would drop the gesture.
+  const hold = useRef(onHold);
+  const off = useRef(!!disabled);
+  // Synced in an effect, not during render: writing a ref while rendering is a
+  // React violation, and these only need to be current by the time a touch lands.
+  useEffect(() => {
+    hold.current = onHold;
+    off.current = !!disabled;
+  });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let timer = 0;
+    let sx = 0;
+    let sy = 0;
+    let fired = false;
+
+    const clear = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = 0;
+    };
+    const onStart = (e: TouchEvent) => {
+      if (off.current || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      sx = t.clientX;
+      sy = t.clientY;
+      fired = false;
+      clear();
+      timer = window.setTimeout(() => {
+        fired = true;
+        haptic("success");
+        hold.current();
+      }, 400);
+    };
+    const onMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      // 8px of travel means a scroll or a row swipe, not a hold.
+      if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) clear();
+    };
+    const onEnd = () => clear();
+    const onClick = (e: MouseEvent) => {
+      if (!fired) return;
+      e.preventDefault();
+      e.stopPropagation();
+      fired = false;
+    };
+
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: true });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    el.addEventListener("click", onClick, true);
+    return () => {
+      clear();
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+      el.removeEventListener("click", onClick, true);
+    };
+  }, []);
+
+  return (
+    <div ref={ref} className={picked ? "opacity-45 transition" : "transition"}>
+      {children}
     </div>
   );
 }
