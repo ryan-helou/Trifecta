@@ -9,7 +9,7 @@
  * phases in order, and keep intensity polarized (mostly easy). Thresholds are calibrated
  * to the engine's real output with margin, so a correct plan never false-fails.
  */
-import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts, injuryMods, restDayFor, isHardLoading } from "../lib/planEngine";
+import { generatePlan, MAX_WORKOUTS, MIN_WORKOUTS, clampWorkouts, injuryMods, restDayFor, isHardLoading, longRunDayFor } from "../lib/planEngine";
 import type { Profile, Plan, Injury, Workout, Segment } from "../lib/types";
 import { ZONES } from "../lib/zones";
 import { targetView } from "../lib/targets";
@@ -708,6 +708,55 @@ section("injury caps hold across every sport, severity and distance");
   }
   ok(swept > 1000, `the sweep actually covered the space (${swept} sessions)`);
   ok(breaches === 0, `no session anywhere exceeds its sport's injury cap (${breaches})${worst.length ? " — e.g. " + worst.join(" | ") : ""}`);
+}
+
+// ---------------------------------------------------------------------------
+// The long run must not be aimed at the rest day
+//
+// Reported by an athlete of Ryan's: picked 3 runs a week, got two of them every
+// Monday. `longRunDay` was hard-coded to the day AFTER the long ride, with no
+// idea whether that day was the athlete's rest day. For "long session Saturday,
+// rest Sunday" — an entirely ordinary week — the long run was aimed at Sunday,
+// hard-blocked by the rest day in assignDays, and evicted onto a neighbouring day
+// that already held a run. On his real stored plan: 41 of 44 weeks put two runs
+// on Monday.
+// ---------------------------------------------------------------------------
+{
+  for (let longDay = 0; longDay < 7; longDay++) {
+    for (let rest = 0; rest < 7; rest++) {
+      const d = longRunDayFor(longDay, rest);
+      ok(d >= 0 && d < 7, `longRunDayFor(${longDay},${rest}) is a weekday (${d})`);
+      // The one case it cannot satisfy is a rest day ON the long day, which is a
+      // contradiction the profile layer doesn't allow; everywhere else it must dodge both.
+      if (rest !== longDay) {
+        ok(d !== rest, `long run avoids the rest day (long=${longDay} rest=${rest} -> ${d})`);
+        ok(d !== longDay, `long run isn't stacked on the long ride (long=${longDay} rest=${rest} -> ${d})`);
+      }
+    }
+  }
+
+  // End to end, on the exact shape that was reported.
+  const reported = {
+    username: "regression", raceType: "half", level: "beginner", raceDateISO: "2027-07-18",
+    workoutsPerWeek: 11, focusDiscipline: "bike",
+    longSessionDay: 5, restDayPreference: 6, // long Saturday, rest Sunday
+    perSport: { run: 3, bike: 3, swim: 2 },
+    strength: { split: "push-pull-legs", enabled: true, daysPerWeek: 3 },
+  } as unknown as Profile;
+  const rp = generatePlan(reported);
+  const rws = Object.values(rp.workouts);
+  let stacked = 0;
+  let runWeeks = 0;
+  for (const wk of rp.weeks) {
+    const inWeek = rws.filter((w) => wk.workoutIds.includes(w.id) && w.discipline !== "rest");
+    const runDays = inWeek.filter((w) => w.discipline === "run").map((w) => w.dayIndex);
+    if (runDays.length >= 2) {
+      runWeeks++;
+      if (new Set(runDays).size < runDays.length) stacked++;
+    }
+  }
+  ok(runWeeks > 20, `the reported profile really does produce multi-run weeks (${runWeeks})`);
+  ok(stacked === 0, `3 runs a week land on 3 different days (${stacked}/${runWeeks} weeks stacked two runs)`);
 }
 
 console.log(`\n${checks - failures}/${checks} invariants passed`);

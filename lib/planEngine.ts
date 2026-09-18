@@ -67,8 +67,15 @@ const MAX_PLAN_WEEKS = 104; // ~2 years — a guardrail for bad dates, not real 
  *     fourth week for the rest of their block, which is the frequency contract broken on
  *     a schedule. The rebuild that carries them over replays their decision ledger
  *     (lib/decisions.ts), so it costs them nothing they had chosen.
+ * 5 — the sessions the athlete asked for land on DIFFERENT days. The long run was aimed
+ *     at the day after the long ride without checking whether that was the athlete's rest
+ *     day; for "long Saturday, rest Sunday" it was hard-blocked there and evicted onto a
+ *     neighbouring day that already held a run. Reported by an athlete who picked 3 runs a
+ *     week and got two of them every Monday — measured on his stored plan, 41 of 44 weeks.
+ *     A stored plan built before this keeps that layout for its whole block, which is why
+ *     it earns a version rather than just landing for new athletes.
  */
-export const ENGINE_VERSION = 4;
+export const ENGINE_VERSION = 5;
 // The build/"specific-prep" phase is a *bounded* block (~6–12 wk in Friel/traditional
 // periodization; even shorter, rotated, under block periodization). It carries near-peak
 // load, so it must NOT grow with lead time — the aerobic base does that instead. These
@@ -577,9 +584,9 @@ function pickWeekSlots(
     phase === "base" || recover ? 1 : counts.run >= 4 || (strong && counts.run >= 3) ? 2 : 1;
 
   // The day the athlete has most time for long sessions (default Saturday). The
-  // long ride/brick anchors here; the long run lands the day after.
+  // long ride/brick anchors here; the long run lands beside it.
   const longDay = ((((p.longSessionDay ?? 5) % 7) + 7) % 7);
-  const longRunDay = (longDay + 1) % 7;
+  const longRunDay = longRunDayFor(longDay, restDayFor(p));
 
   // ---- BIKE ---------------------------------------------------------------
   // The long anchor becomes a brick in build/peak — unless a run injury makes
@@ -1021,6 +1028,35 @@ export function restDayFor(p: Profile): number {
 }
 
 /**
+ * Where the long run goes: beside the long ride, so the week's two biggest
+ * sessions aren't stacked on one day.
+ *
+ * It used to be hard-coded to the day AFTER the long ride, which quietly assumed
+ * that day was free. It often isn't — "long session Saturday, rest Sunday" is one
+ * of the most ordinary weeks an athlete can ask for, and the rest day is a hard
+ * block in `assignDays`. The long run was then evicted onto a neighbouring day
+ * that already held a run, so an athlete who asked for three runs a week got two
+ * of them on the same morning. Measured on a real plan (Sat long / Sun rest,
+ * 11 sessions): **41 of 44 weeks put two runs on Monday.**
+ *
+ * So walk outward from the day after the long ride and take the first day that is
+ * neither the rest day nor the long-ride day itself. `assignDays` still has the
+ * final say — this only decides where the role would LIKE to be, and aiming it at
+ * a day that cannot accept it is what caused the pile-up.
+ */
+export function longRunDayFor(longDay: number, restDay: number): number {
+  const wrap = (d: number) => ((d % 7) + 7) % 7;
+  const long = wrap(longDay);
+  const rest = wrap(restDay);
+  // +1 first (the long-standing default), then the day before, then further out.
+  for (const offset of [1, -1, 2, -2, 3, -3]) {
+    const d = wrap(long + offset);
+    if (d !== rest && d !== long) return d;
+  }
+  return wrap(long + 1); // unreachable with 7 days and 2 exclusions
+}
+
+/**
  * Second pass: fix hard-day adjacency the greedy placement couldn't.
  *
  * The scoring pass is single-shot with no backtracking, so it can paint itself into a
@@ -1165,7 +1201,13 @@ function assignDays(roles: Role[], restDayOfWeek: number): Slot[] {
       if (hardNeighbour(next)) s -= 250;
     }
 
-    if (cur.some((x) => x.disc === r.discipline)) s -= 30; // avoid same-sport doubles
+    // Two of the same sport on one day. Weighted to sit clearly ABOVE the spread
+    // term (-25/session) and the prefDay pull (+100/+20) — at the old -30 the scorer
+    // was near-indifferent between stacking two runs and moving one five days from
+    // its preferred day, which is how "3 runs a week" became two runs on a Monday.
+    // Still below two-hard-in-a-day (-400) and hard-adjacency (-250): when something
+    // has to give, a same-sport double is the least damaging of the three.
+    if (cur.some((x) => x.disc === r.discipline)) s -= 150;
     const dist = Math.min(Math.abs(d - r.prefDay), 7 - Math.abs(d - r.prefDay));
     s -= dist * 6; // stay near the preferred day (week wraps)
     if (d === r.prefDay) s += cur.length === 0 ? 100 : 20;
