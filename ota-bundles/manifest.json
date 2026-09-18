@@ -1,13 +1,6 @@
 {
-  "latest": "1.0.75",
+  "latest": "1.0.76",
   "bundles": [
-    {
-      "version": "1.0.73",
-      "sha256": "44d8c398404ec0579f2c514901eb6b6d34d2a07b1297e32847b80a4f1ff2e77b",
-      "size": 811829,
-      "createdAtISO": "2026-09-10T13:46:20.172Z",
-      "comment": "IRONMAN 70.3 Muskoka is now a pickable race"
-    },
     {
       "version": "1.0.74",
       "sha256": "fb4af32444427650ec636f45729eac493189eb28cd14eacad2d125a3f4ee3aa1",
@@ -21,6 +14,13 @@
       "size": 816517,
       "createdAtISO": "2026-09-17T01:52:08.598Z",
       "comment": "Hold a session on the Plan screen to move it to another day"
+    },
+    {
+      "version": "1.0.76",
+      "sha256": "55b00f58075d80305de8fbe68dde7b2ac5f2450214c90c548edd68eb9e1d7428",
+      "size": 816558,
+      "createdAtISO": "2026-09-18T22:02:45.643Z",
+      "comment": "Your sessions land on different days — the long run no longer collides with your rest day"
     }
   ]
 }
