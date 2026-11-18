@@ -1,6 +1,12 @@
+<div align="center">
+
 # Trifecta
 
-A triathlon training app that builds you a day-by-day plan for your race and adjusts it when life gets in the way.
+**A triathlon training app that builds you a day-by-day plan for your race and adjusts it when life gets in the way.**
+
+</div>
+
+<br>
 
 Triathletes train for three sports (swimming, cycling and running) plus strength work, and planning months of training is hard. Trifecta asks about your race, your date, your experience and your best times, then lays out every session from now until race day, with targets for each one. You can add it to your phone's home screen like an app, and an iPhone version is also in the works. It was built for its owner and a group of training friends.
 
