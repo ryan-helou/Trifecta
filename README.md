@@ -4,6 +4,8 @@
 
 **A triathlon training app that builds you a day-by-day plan for your race and adjusts it when life gets in the way.**
 
+<!-- facts --><img alt="Distances: Olympic to Ironman" src="https://img.shields.io/badge/Distances-Olympic_to_Ironman-24292f?style=for-the-badge"> <img alt="Race list: 55 real races" src="https://img.shields.io/badge/Race_list-55_real_races-24292f?style=for-the-badge"> <img alt="Syncs with: Strava, Apple Health" src="https://img.shields.io/badge/Syncs_with-Strava,_Apple_Health-24292f?style=for-the-badge">
+
 </div>
 
 <br>
