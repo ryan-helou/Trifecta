@@ -54,3 +54,6 @@ scripts/.capture-run.tmp.sh
 # simulator run. public/ is copied verbatim into the static export, so committing one
 # would ship a fabricated account and its whole plan to every device.
 public/__seed*.json
+.claude/
+CLAUDE.md
+AGENTS.md
